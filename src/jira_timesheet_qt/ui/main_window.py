@@ -83,11 +83,12 @@ class MainWindow(QMainWindow):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        self._header = Header()
+        self._header = Header(self._mode)
         self._header.search_changed.connect(self._proxy.setFilterFixedString)
         self._header.theme_toggled.connect(self._toggle_theme)
         self._header.settings_requested.connect(self.open_settings)
         self._header.about_requested.connect(self.open_about)
+        self._header.reload_requested.connect(self.load_month)
         self._header.previous_month.connect(lambda: self._shift_month(-1))
         self._header.next_month.connect(lambda: self._shift_month(1))
         outer.addWidget(self._header)
@@ -310,6 +311,7 @@ class MainWindow(QMainWindow):
         self._set_status("Einstellungen gespeichert")
         if self._settings.theme in ("dark", "light"):
             self._mode = Mode(self._settings.theme)
+            self._header.apply_mode(self._mode)
             self.theme_changed.emit(self._settings.theme)
 
     def open_about(self) -> None:
@@ -352,6 +354,8 @@ class MainWindow(QMainWindow):
         self._mode = Mode.LIGHT if self._mode is Mode.DARK else Mode.DARK
         self._settings.theme = self._mode.value
         self._settings.save()
+        # Die Symbole liegen je Erscheinungsbild in eigenen Dateien vor.
+        self._header.apply_mode(self._mode)
         self.theme_changed.emit(self._mode.value)
 
     @property

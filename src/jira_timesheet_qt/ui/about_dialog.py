@@ -73,34 +73,49 @@ class AboutDialog(QDialog):
         self.setWindowTitle("Über Stundenzettel")
         self.setFixedWidth(460)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(30, 26, 30, 22)
-        layout.setSpacing(4)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # Farbige Kopfzone: gibt dem Dialog Kontur, statt ihn als weisse
+        # Flaeche mit zentriertem Text stehen zu lassen.
+        banner = QWidget()
+        banner.setObjectName("AboutBanner")
+        banner_layout = QVBoxLayout(banner)
+        banner_layout.setContentsMargins(30, 26, 30, 24)
+        banner_layout.setSpacing(4)
 
         name = QLabel("Stundenzettel")
         name.setObjectName("AboutName")
         name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(name)
+        banner_layout.addWidget(name)
 
-        facts = QLabel(f"{__version__}  ·  {__author__}  ·  {__year__}")
+        subtitle = QLabel(DESCRIPTION)
+        subtitle.setObjectName("AboutBannerText")
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        banner_layout.addWidget(subtitle)
+        banner_layout.addSpacing(10)
+
+        version = QLabel(__version__)
+        version.setObjectName("AboutBadge")
+        version.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        badge_row = QHBoxLayout()
+        badge_row.addStretch(1)
+        badge_row.addWidget(version)
+        badge_row.addStretch(1)
+        banner_layout.addLayout(badge_row)
+
+        outer.addWidget(banner)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(30, 20, 30, 22)
+        layout.setSpacing(4)
+        outer.addLayout(layout)
+
+        facts = QLabel(f"{__author__}  ·  {__year__}  ·  Apache-2.0")
         facts.setObjectName("AboutFacts")
         facts.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(facts)
-        layout.addSpacing(14)
-
-        description = QLabel(DESCRIPTION)
-        description.setObjectName("AboutText")
-        description.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(description)
-        layout.addSpacing(6)
-
-        license_label = QLabel("Apache-2.0")
-        license_label.setObjectName("AboutFacts")
-        license_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(license_label)
-        layout.addSpacing(16)
-
-        layout.addWidget(self._divider())
         layout.addSpacing(16)
 
         quote = self._pick_quote()

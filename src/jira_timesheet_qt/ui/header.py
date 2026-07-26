@@ -2,14 +2,19 @@
 
 Ersetzt Menueleiste und Fusszeile der TUI. Eine QMenuBar kommt bewusst nicht
 zum Einsatz - sie ist das deutlichste Merkmal einer Standard-Desktop-Anwendung.
+Die Schaltflaechen tragen eigene SVG-Symbole statt Unicode-Glyphen: Windows
+rendert ⚙ oder ◐ als farbige Emoji, verwaschen und nicht einfaerbbar.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
+
+from jira_timesheet_qt.ui.icons import load_icon
+from jira_timesheet_qt.ui.theme import Mode
 
 _MONTHS = (
     "Januar",
@@ -36,15 +41,18 @@ class Header(QWidget):
     settings_requested = Signal()
     about_requested = Signal()
     theme_toggled = Signal()
+    reload_requested = Signal()
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, mode: Mode = Mode.DARK, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("Header")
         self.setFixedHeight(64)
+        self._mode = mode
+        self._buttons: dict[str, QPushButton] = {}
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(18, 10, 14, 10)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
 
         titles = QVBoxLayout()
         titles.setSpacing(1)
@@ -56,9 +64,9 @@ class Header(QWidget):
         titles.addWidget(self._subtitle)
         layout.addLayout(titles)
 
-        layout.addSpacing(12)
-        layout.addWidget(self._nav_button("‹", "Vorheriger Monat", self.previous_month.emit))
-        layout.addWidget(self._nav_button("›", "Nächster Monat", self.next_month.emit))
+        layout.addSpacing(14)
+        layout.addWidget(self._button("chevron-left", "Vorheriger Monat", self.previous_month.emit))
+        layout.addWidget(self._button("chevron-right", "Nächster Monat", self.next_month.emit))
         layout.addStretch(1)
 
         self._search = QLineEdit()
@@ -68,9 +76,14 @@ class Header(QWidget):
         self._search.textChanged.connect(self.search_changed.emit)
         layout.addWidget(self._search)
 
-        layout.addWidget(self._nav_button("◐", "Erscheinungsbild wechseln", self.theme_toggled.emit))
-        layout.addWidget(self._nav_button("i", "Über diese Anwendung (F1)", self.about_requested.emit))
-        layout.addWidget(self._nav_button("⚙", "Einstellungen", self.settings_requested.emit))
+        layout.addWidget(self._button("refresh", "Neu laden (F5)", self.reload_requested.emit))
+        layout.addWidget(
+            self._button(self._theme_icon(), "Erscheinungsbild wechseln", self.theme_toggled.emit, key="theme")
+        )
+        layout.addWidget(self._button("info", "Über diese Anwendung (F1)", self.about_requested.emit))
+        layout.addWidget(self._button("settings", "Einstellungen (Strg+,)", self.settings_requested.emit))
+
+    # --- Inhalte --------------------------------------------------------
 
     def set_period(self, title: str, subtitle: str) -> None:
         """Setzt Ueberschrift und Zusatzzeile."""
@@ -82,17 +95,38 @@ class Header(QWidget):
         self._search.setFocus(Qt.FocusReason.ShortcutFocusReason)
         self._search.selectAll()
 
+    def apply_mode(self, mode: Mode) -> None:
+        """Tauscht die Symbole, wenn das Erscheinungsbild wechselt."""
+        self._mode = mode
+        for key, button in self._buttons.items():
+            button.setIcon(load_icon(self._theme_icon() if key == "theme" else key, mode))
+
     @staticmethod
     def month_name(month: int) -> str:
         """Deutscher Monatsname zu einer Monatszahl von 1 bis 12."""
         return _MONTHS[month - 1] if 1 <= month <= len(_MONTHS) else ""
 
-    def _nav_button(self, glyph: str, tooltip: str, slot: Callable[[], None]) -> QPushButton:
-        """Baut eine rahmenlose Schaltflaeche fuer die Kopfzeile."""
-        button = QPushButton(glyph)
+    # --- Bausteine ------------------------------------------------------
+
+    def _theme_icon(self) -> str:
+        """Zeigt das Ziel des Wechsels, nicht den aktuellen Zustand."""
+        return "sun" if self._mode is Mode.DARK else "moon"
+
+    def _button(
+        self,
+        name: str,
+        tooltip: str,
+        slot: Callable[[], None],
+        key: str = "",
+    ) -> QPushButton:
+        """Baut eine rahmenlose Schaltflaeche mit Symbol."""
+        button = QPushButton()
         button.setProperty("variant", "ghost")
+        button.setIcon(load_icon(name, self._mode))
+        button.setIconSize(QSize(18, 18))
         button.setToolTip(tooltip)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.setFixedWidth(36)
+        button.setFixedSize(34, 34)
         button.clicked.connect(slot)
+        self._buttons[key or name] = button
         return button

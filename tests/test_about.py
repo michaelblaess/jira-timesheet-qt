@@ -53,14 +53,38 @@ class TestAboutDialog:
 
 class TestIcons:
     def test_all_icon_files_exist(self) -> None:
-        """Fehlt eine Datei, zeichnet Qt wieder seine Standardpfeile."""
-        for name in (
-            "chevron-down-dark.svg",
-            "chevron-down-light.svg",
-            "chevron-up-dark.svg",
-            "chevron-up-light.svg",
-        ):
-            assert (ICON_DIR / name).is_file(), name
+        """Fehlt eine Datei, bleibt die Schaltflaeche leer."""
+        names = (
+            "chevron-down", "chevron-up", "chevron-left", "chevron-right",
+            "info", "settings", "sun", "moon", "search", "refresh",
+        )
+        for name in names:
+            for variant in ("dark", "light"):
+                assert (ICON_DIR / f"{name}-{variant}.svg").is_file(), f"{name}-{variant}"
+
+    def test_header_buttons_carry_icons(self, qapp: QApplication) -> None:
+        """Kein Knopf darf leer bleiben - Unicode-Glyphen sind hier verboten."""
+        from PySide6.QtWidgets import QPushButton
+
+        from jira_timesheet_qt.ui.header import Header
+
+        header = Header(Mode.DARK)
+        buttons = header.findChildren(QPushButton)
+        # Das Suchfeld bringt eine eigene Loesch-Schaltflaeche mit.
+        icon_buttons = [b for b in buttons if b.toolTip()]
+        assert len(icon_buttons) == 6
+        for button in icon_buttons:
+            assert not button.icon().isNull(), button.toolTip()
+            assert button.text() == "", "Symbole statt Text-Glyphen"
+
+    def test_theme_switch_swaps_the_icons(self, qapp: QApplication) -> None:
+        """Beim Wechsel muss das Gegenstueck angeboten werden."""
+        from jira_timesheet_qt.ui.header import Header
+
+        header = Header(Mode.DARK)
+        assert header._theme_icon() == "sun"
+        header.apply_mode(Mode.LIGHT)
+        assert header._theme_icon() == "moon"
 
     def test_stylesheet_points_at_existing_files(self) -> None:
         """Jede url() im Stylesheet muss auf eine vorhandene Datei zeigen."""

@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListView,
     QListWidget,
     QPushButton,
     QSpinBox,
@@ -155,7 +156,7 @@ class SettingsDialog(QDialog):
         self.vacation.setValue(self._settings.vacation_days)
         form.addRow(self._label("Urlaubstage"), self.vacation)
 
-        self.state = QComboBox()
+        self.state = self._combo()
         for code, name in _STATES:
             self.state.addItem(name, code)
         index = self.state.findData(self._settings.federal_state)
@@ -167,7 +168,7 @@ class SettingsDialog(QDialog):
     def _page_appearance(self) -> QWidget:
         page, form = self._page("Darstellung")
 
-        self.theme = QComboBox()
+        self.theme = self._combo()
         self.theme.addItem("Wie das Betriebssystem", "system")
         self.theme.addItem("Dunkel", "dark")
         self.theme.addItem("Hell", "light")
@@ -217,6 +218,18 @@ class SettingsDialog(QDialog):
         layout.addLayout(form)
         layout.addStretch(1)
         return page, form
+
+    @staticmethod
+    def _combo() -> QComboBox:
+        """Auswahlliste, deren aufgeklapptes Feld dem Stylesheet folgt.
+
+        Ohne ein ausdrueckliches QListView zeichnet Qt das Popup mit einem
+        eigenen View, der die ::item-Regeln ignoriert - die Auswahl erscheint
+        dann im Systemblau statt in der Akzentfarbe.
+        """
+        combo = QComboBox()
+        combo.setView(QListView())
+        return combo
 
     @staticmethod
     def _label(text: str) -> QLabel:

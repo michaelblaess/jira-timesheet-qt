@@ -331,13 +331,40 @@ QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
     height: 11px;
 }}
 
+/* Das aufgeklappte Feld ist ein eigenes Fenster mit Rahmen-Widget darin.
+   Ohne die Regel fuer den Container bleibt aussen ein heller Rand stehen,
+   und die Auswahl wird im Systemblau statt in der Akzentfarbe gezeichnet. */
 QComboBox QAbstractItemView {{
     background-color: {p.bg_elevated};
     border: 1px solid {p.border};
     border-radius: {RADIUS_MD}px;
-    padding: 4px;
-    selection-background-color: {p.accent_subtle};
+    padding: 5px;
+    outline: 0;
+    selection-background-color: transparent;
     selection-color: {p.text_primary};
+}}
+
+QComboBox QAbstractItemView::item {{
+    min-height: 28px;
+    padding: 4px 10px;
+    border-radius: {RADIUS_SM}px;
+    color: {p.text_secondary};
+}}
+
+QComboBox QAbstractItemView::item:hover {{
+    background-color: {p.bg_tertiary};
+    color: {p.text_primary};
+}}
+
+QComboBox QAbstractItemView::item:selected {{
+    background-color: {p.accent_subtle};
+    color: {p.accent_hover};
+}}
+
+/* Der Rahmen des Auswahlfensters selbst - sonst bleibt ein heller Streifen. */
+QComboBox QFrame {{
+    background-color: {p.bg_elevated};
+    border: none;
 }}
 
 /* ------------------------------------------------------------------ Tabelle */
@@ -620,10 +647,31 @@ QCheckBox::indicator:checked {{
 }}
 
 /* ------------------------------------------------------------------- Info */
+#AboutBanner {{
+    background-color: {p.bg_secondary};
+    border-bottom: 1px solid {p.border};
+}}
+
 #AboutName {{
-    font-size: 24px;
+    font-size: 26px;
     font-weight: 800;
     color: {p.text_primary};
+}}
+
+#AboutBannerText {{
+    color: {p.text_secondary};
+    font-size: 13px;
+}}
+
+/* Versionsplakette in der Akzentfarbe - der einzige farbige Punkt oben. */
+#AboutBadge {{
+    background-color: {p.accent};
+    color: #ffffff;
+    {mono_rule}
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 12px;
+    border-radius: 9px;
 }}
 
 #AboutFacts {{
