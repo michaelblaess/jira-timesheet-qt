@@ -78,6 +78,11 @@ class Sidebar(QWidget):
         if self._buttons:
             self._buttons[0].set_active(True)
 
+    def select_view(self, position: int) -> None:
+        """Waehlt eine Ansicht von aussen, ohne ein Signal auszuloesen."""
+        for index, button in enumerate(self._buttons):
+            button.set_active(index == position)
+
     def set_total(self, hours: float) -> None:
         """Aktualisiert die angezeigte Summe (deutsches Dezimalkomma)."""
         self._total.setText(f"{hours:.2f} h".replace(".", ","))

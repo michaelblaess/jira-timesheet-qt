@@ -43,6 +43,8 @@ typecheck = { cmd = "mypy src", help = "mypy strict ueber src/" }
 lint = { cmd = "ruff check .", help = "Ruff Linting" }
 fmt = { cmd = "ruff format .", help = "Ruff Formatting" }
 fix = { cmd = "ruff check --fix .", help = "Ruff Auto-Fix" }
+icons = { cmd = "python assets/make_icons.py", help = "Symbole neu erzeugen" }
+core-sync = { cmd = "python assets/check_core_sync.py", help = "Kern gegen die Textual-Fassung vergleichen" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

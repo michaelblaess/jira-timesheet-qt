@@ -75,6 +75,11 @@ def main() -> int:
     window = MainWindow(settings, mode)
     window.theme_changed.connect(apply_theme)
 
+    # Fehlerdialog statt wortlosem Abbruch - PySide6 beendet den Prozess sonst.
+    from jira_timesheet_qt.ui import crash_guard
+
+    crash_guard.install(window)
+
     if args.demo:
         from jira_timesheet_qt.ui.demo import demo_timesheet
 

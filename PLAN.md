@@ -207,20 +207,22 @@ docker run --rm -v $PWD/dist:/app ubuntu:22.04 /app/jira-timesheet-qt --version
 - [ ] **E4 beantworten** - Linux-Test gegen ein nacktes Ubuntu (zurückgestellt)
 - [ ] Artefaktgröße messen und im `qt-specialist` festhalten
 
-**Stufe 1 - Tragfähigkeit zeigen**
+**Stufe 1 - Tragfähigkeit zeigen** (erledigt am 26.07.2026)
 
-- [ ] Tabelle mit `QAbstractTableModel` und `QSortFilterProxyModel` auf echten Daten
-- [ ] Seitenleiste, Kopfzeile, Detailbereich
-- [ ] Jira-Abruf angebunden, **E2 entscheiden**
-- [ ] Haftungshinweis beim ersten Start (Text aus textual-widgets übernommen, siehe unten)
+- [x] Tabelle mit `QAbstractTableModel` und `QSortFilterProxyModel`
+- [x] Seitenleiste, Kopfzeile, Detailbereich
+- [x] Jira-Abruf angebunden - **E2 entschieden: QThread**, kein qasync
+- [x] Haftungshinweis beim ersten Start
 
-**Stufe 2 - Gleichstand mit der TUI**
+**Stufe 2 - Gleichstand mit der TUI** (erledigt am 26.07.2026)
 
-- [ ] Kalender- und Jahresansicht
-- [ ] Einstellungen samt Speicherort-Bereich, Info-Dialog
-- [ ] Excel- und PDF-Export, Druckvorschau
-- [ ] Inline-Bearbeitung, Rückgängig-Funktion
-- [ ] Absturzschutz als Qt-Gegenstück zum CrashGuard
+- [x] Kalender- und Jahresansicht
+- [x] Einstellungen samt Speicherort-Bereich, Info-Dialog
+- [x] Excel- und PDF-Export, Druckvorschau
+- [x] Absturzschutz als Qt-Gegenstück zum CrashGuard
+- [x] Meldungsfenster als `QDockWidget`
+- [ ] Inline-Bearbeitung und Rückgängig-Funktion
+- [ ] Manuelle Zeiterfassung (Dialog fehlt noch, die Daten werden bereits gelesen)
 
 **Stufe 3 - darüber hinaus**
 

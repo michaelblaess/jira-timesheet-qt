@@ -95,6 +95,8 @@ class Settings:
     mark_manual_entries: bool = True
     manual_entry_color: str = DEFAULT_MANUAL_COLOR
     default_customer: str = "Vertrieb"
+    # Zuletzt im Speichern-Dialog gewaehltes Verzeichnis.
+    last_export_dir: str = ""
     # Auswahlliste fuer das Kunden-Feld im Dialog fuer manuelle Zeiten.
     customers: list[str] = field(default_factory=lambda: list(DEFAULT_CUSTOMERS))
 
@@ -131,6 +133,7 @@ class Settings:
         "manual_entry_color",
         "default_customer",
         "customers",
+        "last_export_dir",
     )
 
     def to_dict(self) -> dict[str, object]:
@@ -184,6 +187,7 @@ class Settings:
                 manual_entry_color=normalize_color(str(data.get("manual_entry_color", DEFAULT_MANUAL_COLOR))),
                 default_customer=str(data.get("default_customer", "Vertrieb")),
                 customers=Settings._parse_customers(data.get("customers")),
+                last_export_dir=str(data.get("last_export_dir", "")),
             )
         except Exception as exc:
             logger.warning("Settings konnten nicht geladen werden: %s", exc)

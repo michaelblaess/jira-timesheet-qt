@@ -29,7 +29,9 @@ from jira_timesheet_qt import __version__
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.models.timesheet import Timesheet
 from jira_timesheet_qt.ui.about_dialog import AboutDialog
+from jira_timesheet_qt.ui.calendar_view import CalendarView, DayCell
 from jira_timesheet_qt.ui.detail_panel import DetailPanel
+from jira_timesheet_qt.ui.export_service import ExportService
 from jira_timesheet_qt.ui.header import Header
 from jira_timesheet_qt.ui.jira_worker import WorklogWorker
 from jira_timesheet_qt.ui.log_dock import Level, LogDock
@@ -37,6 +39,7 @@ from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
 from jira_timesheet_qt.ui.sidebar import Sidebar
 from jira_timesheet_qt.ui.theme import Mode
 from jira_timesheet_qt.ui.timesheet_model import COLUMNS, ENTRY_ROLE, SORT_ROLE, TimesheetModel
+from jira_timesheet_qt.ui.year_view import YearView
 
 _VIEWS = ("Liste", "Kalender", "Jahr")
 
@@ -55,6 +58,7 @@ class MainWindow(QMainWindow):
         self._settings = settings
         self._mode = mode
         self._worker: WorklogWorker | None = None
+        self._timesheet: Timesheet | None = None
         self._qsettings = QSettings("michaelblaess", "jira-timesheet-qt")
 
         # Nur der reine Name: QApplication traegt den Anzeigenamen selbst bei,
@@ -66,6 +70,9 @@ class MainWindow(QMainWindow):
         today = date.today()
         self._year = today.year
         self._month = today.month
+        # Summen je Monat, gefuellt sobald ein Monat geladen wurde.
+        self._year_hours: dict[int, float] = {}
+        self._year_entries: dict[int, int] = {}
 
         self._model = TimesheetModel(self)
         self._proxy = QSortFilterProxyModel(self)
@@ -113,10 +120,16 @@ class MainWindow(QMainWindow):
         self._list_stack.addWidget(self._build_empty_state())
         self._list_stack.addWidget(self._build_table())
 
+        self._calendar = CalendarView(self._mode)
+        self._calendar.day_selected.connect(self._on_day_selected)
+
+        self._year_view = YearView(self._mode)
+        self._year_view.month_selected.connect(self._on_month_selected)
+
         self._stack = QStackedWidget()
         self._stack.addWidget(self._list_stack)
-        self._stack.addWidget(self._placeholder("Kalender", "Die Monatsansicht entsteht in Stufe 2."))
-        self._stack.addWidget(self._placeholder("Jahr", "Die Jahresansicht entsteht in Stufe 2."))
+        self._stack.addWidget(self._calendar)
+        self._stack.addWidget(self._year_view)
         body.addWidget(self._stack)
 
         self._detail = DetailPanel()
@@ -219,12 +232,18 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence(QKeySequence.StandardKey.HelpContents), self, self.open_about)
         QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
         QShortcut(QKeySequence("Ctrl+L"), self, self.toggle_log)
+        QShortcut(QKeySequence.StandardKey.Print, self, self.print_preview)
+        QShortcut(QKeySequence("Ctrl+E"), self, self.export_excel)
+        QShortcut(QKeySequence("Ctrl+Shift+E"), self, self.export_pdf)
 
     # --- Inhalte --------------------------------------------------------
 
     def set_timesheet(self, timesheet: Timesheet | None) -> None:
-        """Uebernimmt einen Stundenzettel in die Anzeige."""
+        """Uebernimmt einen Stundenzettel in alle Ansichten."""
+        self._timesheet = timesheet
         self._model.set_timesheet(timesheet)
+        self._calendar.set_month(self._year, self._month, timesheet, self._settings.federal_state)
+        self._update_year_view(timesheet)
         self._sidebar.set_total(self._model.total_hours)
         self._detail.clear()
 
@@ -333,6 +352,43 @@ class MainWindow(QMainWindow):
             self._header.apply_mode(self._mode)
             self.theme_changed.emit(self._settings.theme)
 
+    # --- Export ---------------------------------------------------------
+
+    def export_excel(self) -> None:
+        """Schreibt den aktuellen Stundenzettel als Arbeitsmappe."""
+        self._export("excel")
+
+    def export_pdf(self) -> None:
+        """Schreibt den aktuellen Stundenzettel als PDF."""
+        self._export("pdf")
+
+    def _export(self, kind: str) -> None:
+        """Gemeinsamer Weg fuer beide Dateiformate."""
+        if self._timesheet is None:
+            self._set_status("Erst Daten laden, dann exportieren.", "error")
+            return
+        service = ExportService(self._settings)
+        try:
+            result = (
+                service.export_excel(self._timesheet, self)
+                if kind == "excel"
+                else service.export_pdf(self._timesheet, self)
+            )
+        except Exception as exc:  # noqa: BLE001 - der Grund gehoert in die Anzeige
+            self._set_status(f"Export fehlgeschlagen: {exc}", "error")
+            return
+        if result.cancelled:
+            return
+        self._set_status(f"Gespeichert: {result.path}")
+        service.open_file(result.path)
+
+    def print_preview(self) -> None:
+        """Zeigt die Druckvorschau."""
+        if self._timesheet is None:
+            self._set_status("Erst Daten laden, dann drucken.", "error")
+            return
+        ExportService(self._settings).show_print_preview(self._timesheet, self)
+
     def toggle_log(self) -> None:
         """Blendet das Meldungsfenster ein oder aus und merkt sich das."""
         visible = not self._log.isVisible()
@@ -354,11 +410,48 @@ class MainWindow(QMainWindow):
             month, year = 1, year + 1
         self._month, self._year = month, year
         self._update_period_labels()
+        self._calendar.set_month(self._year, self._month, self._timesheet, self._settings.federal_state)
         if self._settings_complete():
             self.load_month()
 
     def _on_view_changed(self, position: int) -> None:
         self._stack.setCurrentIndex(position)
+
+    def _update_year_view(self, timesheet: Timesheet | None) -> None:
+        """Traegt die Summen des geladenen Zeitraums in die Jahresansicht.
+
+        Geladen ist immer nur ein Monat - die uebrigen Kacheln bleiben leer,
+        bis der Anwender sie besucht hat.
+        """
+        if timesheet is not None and timesheet.all_entries:
+            self._year_hours[self._month] = timesheet.total_hours
+            self._year_entries[self._month] = len(timesheet.all_entries)
+        self._year_view.set_year(
+            self._year,
+            self._year_hours,
+            self._year_entries,
+            self._settings.hours_per_day,
+            self._settings.federal_state,
+        )
+
+    def _on_day_selected(self, cell: DayCell) -> None:
+        """Klick auf eine Kachel zeigt den ersten Eintrag des Tages."""
+        if cell.entries:
+            self._detail.show_entry(cell.entries[0])
+            self._set_status(f"{cell.day:%d.%m.%Y}: {len(cell.entries)} Einträge")
+        else:
+            self._detail.clear()
+            reason = cell.holiday or ("Wochenende" if cell.is_weekend else "keine Buchung")
+            self._set_status(f"{cell.day:%d.%m.%Y}: {reason}")
+
+    def _on_month_selected(self, month: int) -> None:
+        """Klick auf eine Monatskachel wechselt dorthin und laedt."""
+        self._month = month
+        self._update_period_labels()
+        self._sidebar.select_view(0)
+        self._stack.setCurrentIndex(0)
+        if self._settings_complete():
+            self.load_month()
 
     def _on_row_changed(self, current: QModelIndex, _previous: QModelIndex) -> None:
         """Haelt den Detailbereich im Gleichklang mit der Auswahl."""
@@ -382,6 +475,8 @@ class MainWindow(QMainWindow):
         self._settings.save()
         # Die Symbole liegen je Erscheinungsbild in eigenen Dateien vor.
         self._header.apply_mode(self._mode)
+        self._calendar.apply_mode(self._mode)
+        self._year_view.apply_mode(self._mode)
         self.theme_changed.emit(self._mode.value)
 
     @property
