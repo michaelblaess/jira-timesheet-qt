@@ -125,6 +125,12 @@ QWidget {{
     outline: 0;
 }}
 
+/* Ohne das faerbt die QWidget-Regel oben jedes Label mit der
+   Grundfarbe ein - auf abweichenden Flaechen entstehen sichtbare Kaesten. */
+QLabel {{
+    background: transparent;
+}}
+
 QToolTip {{
     background-color: {p.bg_elevated};
     color: {p.text_primary};
@@ -432,5 +438,130 @@ QSplitter::handle {{
 
 QSplitter::handle:hover {{
     background-color: {p.accent};
+}}
+
+/* ------------------------------------------------------------------ Dialoge */
+QDialog {{
+    background-color: {p.bg_primary};
+}}
+
+#DialogButtons {{
+    background-color: {p.bg_secondary};
+    border-top: 1px solid {p.border};
+}}
+
+#SettingsNav {{
+    background-color: {p.bg_secondary};
+    border: none;
+    border-right: 1px solid {p.border};
+    padding: 14px 8px;
+    outline: 0;
+}}
+
+#SettingsNav::item {{
+    padding: 9px 12px;
+    border-radius: {RADIUS_MD}px;
+    color: {p.text_secondary};
+    font-weight: 600;
+}}
+
+#SettingsNav::item:hover {{
+    background-color: {p.bg_tertiary};
+    color: {p.text_primary};
+}}
+
+#SettingsNav::item:selected {{
+    background-color: {p.accent_subtle};
+    color: {p.accent_hover};
+}}
+
+#SettingsHeading {{
+    font-size: 17px;
+    font-weight: 700;
+    color: {p.text_primary};
+}}
+
+#SettingsLabel {{
+    color: {p.text_secondary};
+    font-weight: 600;
+}}
+
+#SettingsHint {{
+    color: {p.text_tertiary};
+    font-size: 12px;
+}}
+
+#SettingsPath {{
+    color: {p.text_secondary};
+    {mono_rule}
+    font-size: 12px;
+}}
+
+/* ------------------------------------------------------- Haftungshinweis */
+#DisclaimerTitle {{
+    font-size: 20px;
+    font-weight: 700;
+    color: {p.text_primary};
+}}
+
+#DisclaimerSection {{
+    font-size: 13px;
+    font-weight: 700;
+    color: {p.text_primary};
+    padding-top: 4px;
+}}
+
+#DisclaimerText {{
+    color: {p.text_secondary};
+    font-size: 13px;
+}}
+
+#DisclaimerScroll {{
+    background-color: {p.bg_secondary};
+    border: 1px solid {p.border};
+    border-radius: {RADIUS_MD}px;
+    padding: 14px;
+}}
+
+#DisclaimerScroll > QWidget > QWidget {{
+    background-color: {p.bg_secondary};
+}}
+
+QCheckBox {{
+    color: {p.text_primary};
+    spacing: 9px;
+}}
+
+QCheckBox::indicator {{
+    width: 17px;
+    height: 17px;
+    border: 1px solid {p.border_hover};
+    border-radius: {RADIUS_SM}px;
+    background-color: {p.bg_tertiary};
+}}
+
+QCheckBox::indicator:hover {{
+    border-color: {p.accent};
+}}
+
+QCheckBox::indicator:checked {{
+    background-color: {p.accent};
+    border-color: {p.accent};
+}}
+
+/* ------------------------------------------------------------ Statuszeile */
+#StatusBar {{
+    background-color: {p.bg_secondary};
+    border-top: 1px solid {p.border};
+    color: {p.text_tertiary};
+    font-size: 12px;
+}}
+
+#StatusBar[state="error"] {{
+    color: {p.red};
+}}
+
+#StatusBar[state="busy"] {{
+    color: {p.accent_hover};
 }}
 """

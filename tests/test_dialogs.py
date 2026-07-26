@@ -1,0 +1,166 @@
+"""Tests fuer Einstellungen, Haftungshinweis und Leerzustand."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from PySide6.QtWidgets import QApplication
+
+from jira_timesheet_qt.models.settings import Settings
+from jira_timesheet_qt.ui.disclaimer_dialog import (
+    DISCLAIMER_VERSION,
+    DUTIES,
+    DisclaimerDialog,
+    DisclaimerStore,
+)
+from jira_timesheet_qt.ui.main_window import MainWindow
+from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
+from jira_timesheet_qt.ui.theme import Mode
+
+
+@pytest.fixture(autouse=True)
+def _isolated_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Verlegt alle Nutzerdateien, damit die echten unberuehrt bleiben."""
+    monkeypatch.setattr(Settings, "SETTINGS_DIR", tmp_path)
+    monkeypatch.setattr(Settings, "SETTINGS_FILE", tmp_path / "settings.json")
+    return tmp_path
+
+
+def _configured() -> Settings:
+    """Einstellungen mit vollstaendigem Zugang."""
+    return Settings(
+        jira_host="https://beispiel.atlassian.net",
+        email="person@beispiel.de",
+        jira_token="geheim",
+    )
+
+
+class TestDisclaimerStore:
+    def test_no_consent_initially(self, _isolated_settings: Path) -> None:
+        store = DisclaimerStore(_isolated_settings / "disclaimer.json")
+        assert store.accepted_version is None
+
+    def test_records_the_current_version(self, _isolated_settings: Path) -> None:
+        path = _isolated_settings / "disclaimer.json"
+        store = DisclaimerStore(path)
+        store.record()
+        assert store.accepted_version == DISCLAIMER_VERSION
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert "accepted_at" in data
+
+    def test_older_version_counts_as_missing(self, _isolated_settings: Path) -> None:
+        """Aendert sich der Wortlaut, wird erneut gefragt."""
+        path = _isolated_settings / "disclaimer.json"
+        path.write_text(json.dumps({"accepted_version": "2020-01-01"}), encoding="utf-8")
+        assert DisclaimerStore(path).accepted_version != DISCLAIMER_VERSION
+
+    def test_broken_file_counts_as_missing(self, _isolated_settings: Path) -> None:
+        path = _isolated_settings / "disclaimer.json"
+        path.write_text("kein json", encoding="utf-8")
+        assert DisclaimerStore(path).accepted_version is None
+
+
+class TestDisclaimerDialog:
+    def test_confirm_is_disabled_until_the_box_is_ticked(self, qapp: QApplication) -> None:
+        """Ohne Haken darf sich der Hinweis nicht bestaetigen lassen."""
+        dialog = DisclaimerDialog("Test 1.0")
+        assert not dialog._accept.isEnabled()
+        dialog._agree.setChecked(True)
+        assert dialog._accept.isEnabled()
+
+    def test_text_names_the_foreign_data(self, qapp: QApplication) -> None:
+        """Der Kern der Begruendung muss im Text stehen."""
+        joined = " ".join(DUTIES)
+        assert "Berechtigung des Betreibers" in joined
+        assert "Buchungen anderer Personen" in joined
+
+
+class TestSettingsDialog:
+    def test_fields_are_prefilled(self, qapp: QApplication) -> None:
+        dialog = SettingsDialog(_configured())
+        assert dialog.host.text() == "https://beispiel.atlassian.net"
+        assert dialog.email.text() == "person@beispiel.de"
+
+    def test_token_is_masked(self, qapp: QApplication) -> None:
+        """Der Token darf nicht im Klartext auf dem Bildschirm stehen."""
+        dialog = SettingsDialog(_configured())
+        assert dialog.token.echoMode() == dialog.token.EchoMode.Password
+
+    def test_result_takes_over_the_values(self, qapp: QApplication) -> None:
+        dialog = SettingsDialog(Settings())
+        dialog.host.setText("https://neu.atlassian.net/")
+        dialog.email.setText("  neu@beispiel.de  ")
+        dialog.token.setText("token")
+        result = dialog.result_settings()
+        # Abschliessender Schraegstrich und Leerzeichen werden entfernt.
+        assert result.jira_host == "https://neu.atlassian.net"
+        assert result.email == "neu@beispiel.de"
+
+    def test_empty_budget_field_falls_back(self, qapp: QApplication) -> None:
+        dialog = SettingsDialog(Settings())
+        dialog.budget_field.setText("")
+        assert dialog.result_settings().budget_field == "customfield_XXXXX"
+
+    def test_all_pages_are_reachable(self, qapp: QApplication) -> None:
+        dialog = SettingsDialog(Settings())
+        assert dialog._nav.count() == dialog._pages.count() == 4
+
+
+class TestEmptyState:
+    def test_asks_for_credentials_when_missing(self, qapp: QApplication) -> None:
+        window = MainWindow(Settings(), Mode.DARK)
+        window.set_timesheet(None)
+        assert window._empty_button.text() == "Einstellungen öffnen"
+        assert "Jira-Zugang" in window._empty_text.text()
+
+    def test_offers_loading_when_configured(self, qapp: QApplication) -> None:
+        window = MainWindow(_configured(), Mode.DARK)
+        window.set_timesheet(None)
+        assert window._empty_button.text() == "Aus Jira laden"
+
+    def test_table_replaces_the_empty_state_once_data_arrives(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.ui.demo import demo_timesheet
+
+        window = MainWindow(_configured(), Mode.DARK)
+        window.set_timesheet(None)
+        assert window._list_stack.currentIndex() == 0
+        window.set_timesheet(demo_timesheet())
+        assert window._list_stack.currentIndex() == 1
+
+
+class TestMonthNavigation:
+    def test_stepping_back_from_january_lands_in_december(self, qapp: QApplication) -> None:
+        window = MainWindow(Settings(), Mode.DARK)
+        window._year, window._month = 2026, 1
+        window._shift_month(-1)
+        assert (window._year, window._month) == (2025, 12)
+
+    def test_stepping_forward_from_december_lands_in_january(self, qapp: QApplication) -> None:
+        window = MainWindow(Settings(), Mode.DARK)
+        window._year, window._month = 2026, 12
+        window._shift_month(1)
+        assert (window._year, window._month) == (2027, 1)
+
+    def test_header_follows_the_month(self, qapp: QApplication) -> None:
+        window = MainWindow(Settings(), Mode.DARK)
+        window._year, window._month = 2026, 3
+        window._update_period_labels()
+        assert window._header._title.text() == "März 2026"
+
+
+class TestStatusBar:
+    def test_state_is_kept_for_the_stylesheet(self, qapp: QApplication) -> None:
+        window = MainWindow(Settings(), Mode.DARK)
+        window._set_status("Fehlgeschlagen", "error")
+        assert window._status.text() == "Fehlgeschlagen"
+        assert window._status.property("state") == "error"
+
+    def test_loading_without_credentials_reports_an_error(self, qapp: QApplication, monkeypatch) -> None:
+        """Ohne Zugang darf kein Arbeitsfaden starten."""
+        window = MainWindow(Settings(), Mode.DARK)
+        monkeypatch.setattr(window, "open_settings", lambda: None)
+        window.load_month()
+        assert window._status.property("state") == "error"
+        assert window._worker is None

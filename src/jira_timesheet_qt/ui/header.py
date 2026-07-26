@@ -6,6 +6,8 @@ zum Einsatz - sie ist das deutlichste Merkmal einer Standard-Desktop-Anwendung.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
@@ -83,12 +85,12 @@ class Header(QWidget):
         """Deutscher Monatsname zu einer Monatszahl von 1 bis 12."""
         return _MONTHS[month - 1] if 1 <= month <= len(_MONTHS) else ""
 
-    def _nav_button(self, glyph: str, tooltip: str, slot: object) -> QPushButton:
+    def _nav_button(self, glyph: str, tooltip: str, slot: Callable[[], None]) -> QPushButton:
         """Baut eine rahmenlose Schaltflaeche fuer die Kopfzeile."""
         button = QPushButton(glyph)
         button.setProperty("variant", "ghost")
         button.setToolTip(tooltip)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setFixedWidth(36)
-        button.clicked.connect(slot)  # type: ignore[arg-type]
+        button.clicked.connect(slot)
         return button

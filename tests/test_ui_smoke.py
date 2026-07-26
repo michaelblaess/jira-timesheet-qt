@@ -127,7 +127,10 @@ class TestWindow:
         assert "15 Einträge" in window._header._subtitle.text()
 
     def test_empty_state(self, qapp: QApplication) -> None:
+        """Ohne Daten bleibt der Monat sichtbar, die Zusatzzeile erklaert es."""
         win = MainWindow(Settings(), Mode.DARK)
+        win._year, win._month = 2026, 3
         win.set_timesheet(None)
-        assert win._header._title.text() == "Kein Zeitraum"
+        assert win._header._title.text() == "März 2026"
+        assert win._header._subtitle.text() == "Keine Einträge geladen"
         assert win._detail._key.text() == "Kein Eintrag gewählt"

@@ -8,8 +8,13 @@ from __future__ import annotations
 
 import argparse
 import sys
+from typing import TYPE_CHECKING
 
 from jira_timesheet_qt import __version__
+
+if TYPE_CHECKING:  # nur fuer die Typpruefung - Qt bleibt bis main() ungeladen
+    from jira_timesheet_qt.models.settings import Settings
+    from jira_timesheet_qt.ui.theme import Mode
 
 
 def main() -> int:
@@ -46,7 +51,6 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     app.setApplicationName("jira-timesheet-qt")
-    app.setApplicationDisplayName("Stundenzettel")
     app.setApplicationVersion(__version__)
     app.setOrganizationName("michaelblaess")
     # Fusion ist der einzige Qt-Stil, der sich vollstaendig ueber QSS steuern
@@ -64,6 +68,10 @@ def main() -> int:
 
     apply_theme(mode.value)
 
+    # Haftungshinweis vor allem anderen. Ohne Zustimmung startet nichts.
+    if not _confirm_disclaimer(settings):
+        return 0
+
     window = MainWindow(settings, mode)
     window.theme_changed.connect(apply_theme)
 
@@ -78,7 +86,35 @@ def main() -> int:
     return app.exec()
 
 
-def _resolve_mode(name: str, app: object) -> object:
+def _confirm_disclaimer(settings: Settings) -> bool:
+    """Holt die Zustimmung zum Haftungshinweis ein, falls sie noch fehlt.
+
+    Args:
+        settings:
+            Die geladenen Einstellungen, fuer den Speicherort.
+
+    Returns:
+        True, wenn die Anwendung starten darf.
+    """
+    from jira_timesheet_qt import __version__ as version
+    from jira_timesheet_qt.ui.disclaimer_dialog import (
+        DISCLAIMER_VERSION,
+        DisclaimerDialog,
+        DisclaimerStore,
+    )
+
+    store = DisclaimerStore(settings.SETTINGS_DIR / "disclaimer.json")
+    if store.accepted_version == DISCLAIMER_VERSION:
+        return True
+
+    dialog = DisclaimerDialog(f"Stundenzettel {version}")
+    if dialog.exec() != int(DisclaimerDialog.DialogCode.Accepted):
+        return False
+    store.record()
+    return True
+
+
+def _resolve_mode(name: str, app: object) -> Mode:
     """Loest "system" in ein konkretes Erscheinungsbild auf.
 
     Args:

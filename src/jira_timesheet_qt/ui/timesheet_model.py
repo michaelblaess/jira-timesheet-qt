@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, QPersistentModelIndex, Qt
 
 from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
 
@@ -32,6 +32,9 @@ class Column:
     width: int
     numeric: bool = False
 
+
+# Qt reicht beide Indexarten durch - die Signatur muss beide annehmen.
+AnyIndex = QModelIndex | QPersistentModelIndex
 
 COLUMNS: tuple[Column, ...] = (
     Column("date", "Datum", 110),
@@ -66,12 +69,12 @@ class TimesheetModel(QAbstractTableModel):
 
     # --- Qt-Schnittstelle ----------------------------------------------
 
-    def rowCount(self, parent: QModelIndex | None = None) -> int:  # noqa: N802
+    def rowCount(self, parent: AnyIndex | None = None) -> int:  # noqa: N802
         if parent is not None and parent.isValid():
             return 0
         return len(self._entries)
 
-    def columnCount(self, parent: QModelIndex | None = None) -> int:  # noqa: N802
+    def columnCount(self, parent: AnyIndex | None = None) -> int:  # noqa: N802
         if parent is not None and parent.isValid():
             return 0
         return len(COLUMNS)
@@ -90,7 +93,7 @@ class TimesheetModel(QAbstractTableModel):
             return self._alignment(COLUMNS[section])
         return None
 
-    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
+    def data(self, index: AnyIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
         if not index.isValid():
             return None
         entry = self.entry_at(index.row())
