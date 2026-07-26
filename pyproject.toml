@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jira-timesheet-qt"
+version = "0.1.0"
+description = "Desktop GUI for generating timesheets from Jira worklogs"
+requires-python = ">=3.12"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Michael Blaess"},
+]
+dependencies = [
+    "PySide6>=6.8",
+    "httpx>=0.25",
+    "openpyxl>=3.1",
+    "fpdf2>=2.7",
+    "holidays>=0.40",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-qt>=4.4",
+    "pytest-cov>=4.0",
+    "pytest-xdist>=3.5",
+    "mypy>=1.8",
+    "poethepoet>=0.29",
+    "ruff>=0.3",
+    "types-openpyxl>=3.1.5.20260518",
+]
+
+[project.scripts]
+jira-timesheet-qt = "jira_timesheet_qt.__main__:main"
+
+[tool.poe.tasks]
+run = { cmd = "python -m jira_timesheet_qt", help = "Startet die Anwendung" }
+test = { cmd = "pytest", help = "Tests sequentiell" }
+test-parallel = { cmd = "pytest -n auto", help = "Tests parallel" }
+cov = { cmd = "pytest --cov=jira_timesheet_qt --cov-report=term-missing", help = "Tests + Coverage" }
+typecheck = { cmd = "mypy src", help = "mypy strict ueber src/" }
+lint = { cmd = "ruff check .", help = "Ruff Linting" }
+fmt = { cmd = "ruff format .", help = "Ruff Formatting" }
+fix = { cmd = "ruff check --fix .", help = "Ruff Auto-Fix" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+jira_timesheet_qt = ["locale/*.json", "resources/**/*"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "ASYNC"]
+ignore = ["E501", "ASYNC109", "ASYNC240", "E402", "N806"]
