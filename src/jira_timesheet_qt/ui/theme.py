@@ -12,6 +12,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
+
+# Eigene Symbole. Qt zeichnet sonst seine Standardpfeile, die je nach Stil und
+# Betriebssystem anders aussehen und die Anwendung sofort verraten.
+ICON_DIR = Path(__file__).resolve().parent.parent / "resources" / "icons"
 
 
 class Mode(StrEnum):
@@ -114,6 +119,9 @@ def build_qss(mode: Mode, font_sans: str, font_mono: str) -> str:
     # Angabe weglassen, damit Qt seine Standardschrift nimmt.
     sans_rule = f'font-family: "{font_sans}";' if font_sans else ""
     mono_rule = f'font-family: "{font_mono}";' if font_mono else ""
+    # QSS erwartet auch unter Windows Schraegstriche in url().
+    icons = ICON_DIR.as_posix()
+    suffix = "dark" if mode is Mode.DARK else "light"
     return f"""
 /* ---------------------------------------------------------------- Grundlage */
 QWidget {{
@@ -274,7 +282,53 @@ QLineEdit::placeholder {{
 
 QComboBox::drop-down {{
     border: none;
+    width: 26px;
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+}}
+
+QComboBox::down-arrow {{
+    image: url({icons}/chevron-down-{suffix}.svg);
+    width: 12px;
+    height: 12px;
+}}
+
+/* Zahlenfelder: die Standardknoepfe von Qt sind kantige Kaesten mit
+   Systempfeilen - hier flache Flaechen mit eigenen Chevrons. */
+QSpinBox::up-button, QDoubleSpinBox::up-button,
+QSpinBox::down-button, QDoubleSpinBox::down-button {{
+    subcontrol-origin: border;
+    background: transparent;
+    border: none;
     width: 22px;
+}}
+
+QSpinBox::up-button, QDoubleSpinBox::up-button {{
+    subcontrol-position: top right;
+    margin: 3px 4px 0 0;
+}}
+
+QSpinBox::down-button, QDoubleSpinBox::down-button {{
+    subcontrol-position: bottom right;
+    margin: 0 4px 3px 0;
+}}
+
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
+    background: {p.bg_elevated};
+    border-radius: {RADIUS_SM}px;
+}}
+
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+    image: url({icons}/chevron-up-{suffix}.svg);
+    width: 11px;
+    height: 11px;
+}}
+
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+    image: url({icons}/chevron-down-{suffix}.svg);
+    width: 11px;
+    height: 11px;
 }}
 
 QComboBox QAbstractItemView {{
@@ -563,5 +617,43 @@ QCheckBox::indicator:checked {{
 
 #StatusBar[state="busy"] {{
     color: {p.accent_hover};
+}}
+
+/* ------------------------------------------------------------------- Info */
+#AboutName {{
+    font-size: 24px;
+    font-weight: 800;
+    color: {p.text_primary};
+}}
+
+#AboutFacts {{
+    color: {p.text_tertiary};
+    font-size: 12px;
+}}
+
+#AboutText {{
+    color: {p.text_secondary};
+    font-size: 13px;
+}}
+
+#AboutQuote {{
+    color: {p.text_secondary};
+    font-size: 13px;
+    font-style: italic;
+}}
+
+#AboutQuoteAuthor {{
+    color: {p.text_tertiary};
+    font-size: 12px;
+    padding-top: 6px;
+}}
+
+#AboutLink {{
+    font-size: 12px;
+}}
+
+#AboutLink a {{
+    color: {p.accent_hover};
+    text-decoration: none;
 }}
 """

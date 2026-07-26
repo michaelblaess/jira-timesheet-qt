@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 from jira_timesheet_qt import __version__
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.models.timesheet import Timesheet
+from jira_timesheet_qt.ui.about_dialog import AboutDialog
 from jira_timesheet_qt.ui.detail_panel import DetailPanel
 from jira_timesheet_qt.ui.header import Header
 from jira_timesheet_qt.ui.jira_worker import WorklogWorker
@@ -86,6 +87,7 @@ class MainWindow(QMainWindow):
         self._header.search_changed.connect(self._proxy.setFilterFixedString)
         self._header.theme_toggled.connect(self._toggle_theme)
         self._header.settings_requested.connect(self.open_settings)
+        self._header.about_requested.connect(self.open_about)
         self._header.previous_month.connect(lambda: self._shift_month(-1))
         self._header.next_month.connect(lambda: self._shift_month(1))
         outer.addWidget(self._header)
@@ -200,6 +202,7 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence.StandardKey.Find, self, self._header.focus_search)
         QShortcut(QKeySequence.StandardKey.Refresh, self, self.load_month)
         QShortcut(QKeySequence("Ctrl+,"), self, self.open_settings)
+        QShortcut(QKeySequence(QKeySequence.StandardKey.HelpContents), self, self.open_about)
         QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
 
     # --- Inhalte --------------------------------------------------------
@@ -308,6 +311,10 @@ class MainWindow(QMainWindow):
         if self._settings.theme in ("dark", "light"):
             self._mode = Mode(self._settings.theme)
             self.theme_changed.emit(self._settings.theme)
+
+    def open_about(self) -> None:
+        """Zeigt den Info-Dialog."""
+        AboutDialog(self).exec()
 
     def _shift_month(self, delta: int) -> None:
         """Blaettert um einen Monat vor oder zurueck."""

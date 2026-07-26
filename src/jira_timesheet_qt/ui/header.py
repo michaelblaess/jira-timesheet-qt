@@ -34,6 +34,7 @@ class Header(QWidget):
     next_month = Signal()
     search_changed = Signal(str)
     settings_requested = Signal()
+    about_requested = Signal()
     theme_toggled = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -68,6 +69,7 @@ class Header(QWidget):
         layout.addWidget(self._search)
 
         layout.addWidget(self._nav_button("◐", "Erscheinungsbild wechseln", self.theme_toggled.emit))
+        layout.addWidget(self._nav_button("i", "Über diese Anwendung (F1)", self.about_requested.emit))
         layout.addWidget(self._nav_button("⚙", "Einstellungen", self.settings_requested.emit))
 
     def set_period(self, title: str, subtitle: str) -> None:
