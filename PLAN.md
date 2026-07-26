@@ -166,6 +166,13 @@ Der Jira-Abruf ist heute `async` über httpx. Qt bringt eine eigene Ereignisschl
 Da hier nur wenige Netzwerkaufrufe betroffen sind, ist die Entscheidung überschaubar -
 im Prototyp beide Varianten an einem echten Abruf messen.
 
+### E5 - Schriften mitliefern
+
+Manrope und JetBrains Mono liegen in den GitHub-Pages nur als **woff2** vor, was Qt
+nicht laden kann. Für `resources/fonts/` werden TTF oder OTF gebraucht. Solange sie
+fehlen, greift die Rückfallkette (unter Windows 11: Segoe UI Variable Text und Cascadia
+Code) - das sieht gut aus, ist aber je nach Betriebssystem verschieden.
+
 ### E3 - Wie weit trägt QSS?
 
 Ob sich die Designsprache vollständig in QSS abbilden lässt oder ob einzelne Stellen
@@ -189,11 +196,15 @@ docker run --rm -v $PWD/dist:/app ubuntu:22.04 /app/jira-timesheet-qt --version
 
 ## Reihenfolge
 
-**Stufe 0 - Fundament (zuerst)**
+**Stufe 0 - Fundament** (erledigt am 26.07.2026)
 
-- [ ] `bootstrap`, `run`, `compile-*`-Skripte auf PySide6
-- [ ] Leeres Hauptfenster, QSS-Grundgerüst, beide Themen, Schriften eingebettet
-- [ ] **E4 beantworten** - Linux-Test gegen ein nacktes Ubuntu
+- [x] `bootstrap`- und `run`-Skripte für beide Plattformen
+- [x] Hauptfenster mit Kopfzeile, Seitenleiste, Liste und Detailbereich
+- [x] QSS für beide Themen, Umschalten zur Laufzeit
+- [x] Schriftauswahl mit Rückfallkette (Manrope und JetBrains Mono fehlen noch als TTF)
+- [x] Tabelle über `QAbstractTableModel` und `QSortFilterProxyModel`, Beispieldaten über `--demo`
+- [ ] `compile-*`-Skripte auf PySide6
+- [ ] **E4 beantworten** - Linux-Test gegen ein nacktes Ubuntu (zurückgestellt)
 - [ ] Artefaktgröße messen und im `qt-specialist` festhalten
 
 **Stufe 1 - Tragfähigkeit zeigen**

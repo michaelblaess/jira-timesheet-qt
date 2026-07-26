@@ -2,8 +2,17 @@
 
 Desktop-GUI für Stundenzettel aus Jira-Worklogs, auf PySide6 (Qt 6).
 
-> **Status:** Im Aufbau. Es gibt noch keine lauffähige Oberfläche - bisher stehen der
-> fachliche Kern und das Oberflächenkonzept. Siehe [PLAN.md](PLAN.md).
+> **Status:** Im Aufbau. Das Fenster steht mit Liste, Suche, Sortierung und
+> Detailbereich, die Anbindung an Jira fehlt noch. Siehe [PLAN.md](PLAN.md).
+
+<p align="center">
+  <img src="docs/screenshots/main-dark.png" width="49%" alt="Dunkles Erscheinungsbild">
+  <img src="docs/screenshots/main-light.png" width="49%" alt="Helles Erscheinungsbild">
+</p>
+
+```bash
+./run.ps1 --demo     # startet mit Beispieldaten, ohne Jira
+```
 
 Nachfolger der Textual-TUI
 [jira-timesheet](https://github.com/michaelblaess/jira-timesheet). Der fachliche Kern
