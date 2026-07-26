@@ -33,6 +33,10 @@ from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.services.cache_service import CACHE_DIR
 from jira_timesheet_qt.services.manual_entry_service import DB_FILE
 
+# Einheitliche Breite aller Eingabefelder. Ohne das richtet sich jedes Feld
+# nach seinem Inhalt, und die rechte Kante wirkt zerfranst.
+FIELD_WIDTH = 240
+
 # Bundeslaender fuer die Feiertagsberechnung.
 _STATES = (
     ("BW", "Baden-Württemberg"),
@@ -99,15 +103,18 @@ class SettingsDialog(QDialog):
         page, form = self._page("Zugang zu Jira")
 
         self.host = QLineEdit(self._settings.jira_host)
+        self.host.setFixedWidth(FIELD_WIDTH)
         self.host.setPlaceholderText("https://deine-firma.atlassian.net")
         form.addRow(self._label("Jira-Host"), self.host)
 
         self.email = QLineEdit(self._settings.email)
+        self.email.setFixedWidth(FIELD_WIDTH)
         self.email.setPlaceholderText("vorname.nachname@firma.de")
         form.addRow(self._label("E-Mail"), self.email)
 
         self.token = QLineEdit(self._settings.jira_token)
         self.token.setEchoMode(QLineEdit.EchoMode.Password)
+        self.token.setFixedWidth(FIELD_WIDTH)
         self.token.setPlaceholderText("API-Token von id.atlassian.com")
         form.addRow(self._label("Token"), self.token)
 
@@ -116,10 +123,12 @@ class SettingsDialog(QDialog):
         form.addRow(self._label(""), self.legacy)
 
         self.proxy = QLineEdit(self._settings.proxy_url)
+        self.proxy.setFixedWidth(FIELD_WIDTH)
         self.proxy.setPlaceholderText("http://proxy:8080 - leer lässt die Umgebung entscheiden")
         form.addRow(self._label("Proxy"), self.proxy)
 
         self.budget_field = QLineEdit(self._settings.budget_field)
+        self.budget_field.setFixedWidth(FIELD_WIDTH)
         self.budget_field.setPlaceholderText("customfield_XXXXX")
         form.addRow(self._label("Budget-Feld"), self.budget_field)
 
@@ -140,6 +149,7 @@ class SettingsDialog(QDialog):
         self.hours_per_day.setDecimals(1)
         self.hours_per_day.setSuffix(" h")
         self.hours_per_day.setValue(self._settings.hours_per_day)
+        self.hours_per_day.setFixedWidth(FIELD_WIDTH)
         form.addRow(self._label("Stunden pro Tag"), self.hours_per_day)
 
         self.max_yearly = QDoubleSpinBox()
@@ -148,12 +158,14 @@ class SettingsDialog(QDialog):
         self.max_yearly.setDecimals(1)
         self.max_yearly.setSuffix(" h")
         self.max_yearly.setValue(self._settings.max_yearly_hours)
+        self.max_yearly.setFixedWidth(FIELD_WIDTH)
         form.addRow(self._label("Jahresbudget"), self.max_yearly)
 
         self.vacation = QSpinBox()
         self.vacation.setRange(0, 90)
         self.vacation.setSuffix(" Tage")
         self.vacation.setValue(self._settings.vacation_days)
+        self.vacation.setFixedWidth(FIELD_WIDTH)
         form.addRow(self._label("Urlaubstage"), self.vacation)
 
         self.state = self._combo()
@@ -214,7 +226,9 @@ class SettingsDialog(QDialog):
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         form.setHorizontalSpacing(16)
         form.setVerticalSpacing(12)
-        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        # Felder wachsen NICHT mit der Dialogbreite - sonst haetten die
+        # Textfelder eine andere Kante als die Zahlenfelder daneben.
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
         layout.addLayout(form)
         layout.addStretch(1)
         return page, form
@@ -229,6 +243,7 @@ class SettingsDialog(QDialog):
         """
         combo = QComboBox()
         combo.setView(QListView())
+        combo.setFixedWidth(FIELD_WIDTH)
         return combo
 
     @staticmethod

@@ -32,12 +32,16 @@ from jira_timesheet_qt.ui.about_dialog import AboutDialog
 from jira_timesheet_qt.ui.detail_panel import DetailPanel
 from jira_timesheet_qt.ui.header import Header
 from jira_timesheet_qt.ui.jira_worker import WorklogWorker
+from jira_timesheet_qt.ui.log_dock import Level, LogDock
 from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
 from jira_timesheet_qt.ui.sidebar import Sidebar
 from jira_timesheet_qt.ui.theme import Mode
 from jira_timesheet_qt.ui.timesheet_model import COLUMNS, ENTRY_ROLE, SORT_ROLE, TimesheetModel
 
 _VIEWS = ("Liste", "Kalender", "Jahr")
+
+# Zustand der Statuszeile -> Ebene im Meldungsfenster.
+_LEVELS = {"error": Level.ERROR, "busy": Level.INFO, "": Level.SUCCESS}
 
 
 class MainWindow(QMainWindow):
@@ -74,6 +78,10 @@ class MainWindow(QMainWindow):
         self._install_shortcuts()
         self._restore_geometry()
         self._update_period_labels()
+        # Zuletzt, und nach restoreState: ein hide() vor dem ersten Anzeigen
+        # des Fensters haelt nicht, sobald danach noch etwas ins Fenster
+        # geschrieben wird - der Bildlauf hebt das Verstecken wieder auf.
+        self._log.setVisible(self._settings.log_visible)
 
     # --- Aufbau ---------------------------------------------------------
 
@@ -127,6 +135,11 @@ class MainWindow(QMainWindow):
         outer.addWidget(self._status)
 
         self.setCentralWidget(central)
+
+        self._log = LogDock(self)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._log)
+        self._log.resize(self._log.width(), 180)
+        self._log.write("Bereit")
 
     def _build_table(self) -> QTableView:
         """Baut die Liste der Eintraege."""
@@ -205,6 +218,7 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+,"), self, self.open_settings)
         QShortcut(QKeySequence(QKeySequence.StandardKey.HelpContents), self, self.open_about)
         QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
+        QShortcut(QKeySequence("Ctrl+L"), self, self.toggle_log)
 
     # --- Inhalte --------------------------------------------------------
 
@@ -284,7 +298,12 @@ class MainWindow(QMainWindow):
         self._worker = None
 
     def _set_status(self, text: str, state: str = "") -> None:
-        """Schreibt in die Statuszeile. state faerbt sie ueber das Stylesheet."""
+        """Schreibt in Statuszeile und Meldungsfenster.
+
+        Die Statuszeile zeigt nur den letzten Stand, das Meldungsfenster den
+        ganzen Verlauf - bei einem fehlgeschlagenen Abruf braucht man beides.
+        """
+        self._log.write(text, _LEVELS.get(state, Level.INFO))
         self._status.setText(text)
         self._status.setProperty("state", state)
         style = self._status.style()
@@ -313,6 +332,13 @@ class MainWindow(QMainWindow):
             self._mode = Mode(self._settings.theme)
             self._header.apply_mode(self._mode)
             self.theme_changed.emit(self._settings.theme)
+
+    def toggle_log(self) -> None:
+        """Blendet das Meldungsfenster ein oder aus und merkt sich das."""
+        visible = not self._log.isVisible()
+        self._log.setVisible(visible)
+        self._settings.log_visible = visible
+        self._settings.save()
 
     def open_about(self) -> None:
         """Zeigt den Info-Dialog."""
@@ -373,11 +399,16 @@ class MainWindow(QMainWindow):
         sizes = self._qsettings.value("window/splitter")
         if isinstance(sizes, list) and len(sizes) == 3:
             self._splitter.setSizes([int(value) for value in sizes])
+        state = self._qsettings.value("window/state")
+        if state is not None:
+            # Stellt auch die Sichtbarkeit des Meldungsfensters wieder her.
+            self.restoreState(state)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         """Merkt Fenstergroesse und Aufteilung, wartet auf den Arbeitsfaden."""
         self._qsettings.setValue("window/geometry", self.saveGeometry())
         self._qsettings.setValue("window/splitter", self._splitter.sizes())
+        self._qsettings.setValue("window/state", self.saveState())
         if self._worker is not None and self._worker.isRunning():
             # Ohne das kann Qt beim Beenden ueber einen laufenden Faden stolpern.
             self._worker.wait(3000)

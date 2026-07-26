@@ -73,7 +73,9 @@ class Settings:
     logo_path: str = ""
     last_date_from: str = ""
     last_date_to: str = ""
-    log_visible: bool = True
+    # In der GUI beim ersten Start ausgeblendet: die Statuszeile zeigt den
+    # letzten Stand, der Verlauf wird nur bei Bedarf gebraucht.
+    log_visible: bool = False
     budget_field: str = "customfield_XXXXX"
     federal_state: str = "SN"
     hours_per_day: float = 8.0

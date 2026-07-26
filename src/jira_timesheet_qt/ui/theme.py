@@ -704,4 +704,35 @@ QCheckBox::indicator:checked {{
     color: {p.accent_hover};
     text-decoration: none;
 }}
+
+/* --------------------------------------------------------- Meldungsfenster */
+QDockWidget {{
+    color: {p.text_secondary};
+    font-size: 12px;
+    font-weight: 600;
+    titlebar-close-icon: url({icons}/chevron-down-{suffix}.svg);
+    titlebar-normal-icon: url({icons}/chevron-up-{suffix}.svg);
+}}
+
+QDockWidget::title {{
+    background-color: {p.bg_secondary};
+    border-top: 1px solid {p.border};
+    padding: 7px 12px;
+    text-align: left;
+}}
+
+#LogView {{
+    background-color: {p.bg_primary};
+    border: none;
+    {mono_rule}
+    font-size: 12px;
+    padding: 8px 12px;
+    selection-background-color: {p.accent};
+    selection-color: #ffffff;
+}}
+
+#LogButtons {{
+    background-color: {p.bg_secondary};
+    border-top: 1px solid {p.border};
+}}
 """
