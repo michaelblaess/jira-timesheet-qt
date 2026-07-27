@@ -83,6 +83,8 @@ class MainWindow(QMainWindow):
         # Summen je Monat, gefuellt sobald ein Monat geladen wurde.
         self._year_hours: dict[int, float] = {}
         self._year_entries: dict[int, int] = {}
+        # Fuer welches Jahr die Jahresansicht zuletzt vollstaendig geladen wurde.
+        self._year_loaded_for: int | None = None
 
         self._model = TimesheetModel(self)
         self._proxy = QSortFilterProxyModel(self)
@@ -129,7 +131,7 @@ class MainWindow(QMainWindow):
         self._header.theme_toggled.connect(self._toggle_theme)
         self._header.settings_requested.connect(self.open_settings)
         self._header.about_requested.connect(self.open_about)
-        self._header.reload_requested.connect(self.load_month)
+        self._header.reload_requested.connect(self.reload_current)
         self._header.log_toggled.connect(self.toggle_log)
         self._header.manual_requested.connect(self.action_new_manual)
         self._header.group_toggled.connect(self._on_group_toggled)
@@ -314,7 +316,7 @@ class MainWindow(QMainWindow):
     def _install_shortcuts(self) -> None:
         """Standardtasten statt der Einzelbuchstaben aus der TUI."""
         QShortcut(QKeySequence.StandardKey.Find, self, self._header.focus_search)
-        QShortcut(QKeySequence.StandardKey.Refresh, self, self.load_month)
+        QShortcut(QKeySequence.StandardKey.Refresh, self, self.reload_current)
         QShortcut(QKeySequence("Ctrl+,"), self, self.open_settings)
         QShortcut(QKeySequence(QKeySequence.StandardKey.HelpContents), self, self.open_about)
         QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
@@ -582,6 +584,49 @@ class MainWindow(QMainWindow):
     def _on_worker_done(self) -> None:
         self._worker = None
 
+    def load_year(self) -> None:
+        """Holt alle zwoelf Monate des Jahres in einem einzigen Bereichs-Abruf."""
+        if self._worker is not None and self._worker.isRunning():
+            return
+        if not self._settings_complete():
+            self._set_status("Zugang unvollständig - bitte Host, E-Mail und Token hinterlegen.", "error")
+            self.open_settings()
+            return
+        self._set_status(f"Lade Jahr {self._year} ...", "busy")
+        worker = WorklogWorker(self._settings, date(self._year, 1, 1), date(self._year, 12, 31), self)
+        worker.progress.connect(lambda text: self._set_status(text, "busy"))
+        worker.finished_ok.connect(self._on_year_loaded)
+        worker.failed.connect(self._on_failed)
+        worker.finished.connect(self._on_worker_done)
+        self._worker = worker
+        worker.start()
+
+    def _on_year_loaded(self, timesheet: Timesheet) -> None:
+        """Aggregiert einen Jahres-Stundenzettel in die zwoelf Monatskacheln."""
+        hours: dict[int, float] = {}
+        entries: dict[int, int] = {}
+        for entry in timesheet.all_entries:
+            month = entry.date.month
+            hours[month] = hours.get(month, 0.0) + entry.hours
+            entries[month] = entries.get(month, 0) + 1
+        self._year_hours = hours
+        self._year_entries = entries
+        self._year_loaded_for = self._year
+        self._year_view.set_year(
+            self._year, hours, entries, self._settings.hours_per_day, self._settings.federal_state
+        )
+        count = sum(entries.values())
+        total = f"{sum(hours.values()):.2f}".replace(".", ",")
+        self._set_status(f"Jahr {self._year}: {count} Einträge · {total} h")
+
+    def reload_current(self) -> None:
+        """Laedt neu - je nach aktiver Ansicht den Monat oder das ganze Jahr."""
+        if self._stack.currentIndex() == 2:
+            self._year_loaded_for = None
+            self.load_year()
+        else:
+            self.load_month()
+
     def _set_status(self, text: str, state: str = "") -> None:
         """Schreibt in Statuszeile und Meldungsfenster.
 
@@ -682,6 +727,10 @@ class MainWindow(QMainWindow):
 
     def _on_view_changed(self, position: int) -> None:
         self._stack.setCurrentIndex(position)
+        # Beim ersten Wechsel in die Jahresansicht (oder nach Jahreswechsel) alle
+        # zwoelf Monate in einem Bereichs-Abruf laden.
+        if position == 2 and self._settings_complete() and self._year_loaded_for != self._year:
+            self.load_year()
 
     def _update_year_view(self, timesheet: Timesheet | None) -> None:
         """Traegt die Summen des geladenen Zeitraums in die Jahresansicht.
