@@ -102,6 +102,10 @@ class MainWindow(QMainWindow):
         self._tree_proxy.setRecursiveFilteringEnabled(True)
         self._grouped = bool(self._qsettings.value("grouped", False, type=bool))
 
+        # Inline-Aenderungen an manuellen Eintraegen persistieren.
+        self._model.manual_edited.connect(self._persist_inline_edit)
+        self._tree_model.manual_edited.connect(self._persist_inline_edit)
+
         self._build_ui()
         self._header.set_grouped(self._grouped)
         self._install_shortcuts()
@@ -191,6 +195,9 @@ class MainWindow(QMainWindow):
         table.sortByColumn(0, Qt.SortOrder.AscendingOrder)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        table.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.EditKeyPressed
+        )
         table.setAlternatingRowColors(True)
         table.setShowGrid(False)
         table.setWordWrap(False)
@@ -223,6 +230,9 @@ class MainWindow(QMainWindow):
         tree.setModel(self._tree_proxy)
         tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        tree.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.EditKeyPressed
+        )
         tree.setAlternatingRowColors(True)
         tree.setUniformRowHeights(True)
         tree.setRootIsDecorated(True)
@@ -462,6 +472,28 @@ class MainWindow(QMainWindow):
     def _reload_after_manual(self) -> None:
         """Laedt den Monat neu, damit die manuellen Zeiten neu eingemischt werden."""
         self.load_month()
+
+    def _persist_inline_edit(self, entry: WorklogEntry) -> None:
+        """Speichert eine Inline-Aenderung an einem manuellen Eintrag.
+
+        Der Eintrag im Speicher ist bereits geaendert; hier wird der zugehoerige
+        Datensatz aktualisiert und die Ansicht aus dem geaenderten Stundenzettel
+        neu aufgebaut (Tagessummen, Gruppen und Summenleiste ziehen nach). Ein
+        erneuter Jira-Abruf ist dafuer nicht noetig.
+        """
+        if not entry.manual or entry.manual_id <= 0:
+            return
+        with ManualEntryService() as service:
+            current = service.get(entry.manual_id)
+            if current is None:
+                self._set_status("Manueller Eintrag nicht gefunden.", "error")
+                return
+            current.summary = entry.summary
+            current.hours = entry.hours
+            service.update(current)
+        self._set_status("Manueller Eintrag geändert.")
+        if self._timesheet is not None:
+            self.set_timesheet(self._timesheet)
 
     def _default_manual_date(self) -> date:
         """Vorbelegtes Datum: heute im aktuellen Monat, sonst der Monatserste."""

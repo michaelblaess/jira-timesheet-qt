@@ -12,9 +12,52 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, QPersistentModelIndex, Qt
+from PySide6.QtCore import (
+    QAbstractTableModel,
+    QModelIndex,
+    QObject,
+    QPersistentModelIndex,
+    Qt,
+    Signal,
+)
 
 from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
+from jira_timesheet_qt.services.hours_parser import parse_hours
+
+# Spalten, die bei manuellen Eintraegen direkt in der Tabelle editierbar sind.
+# Datum/Kunde bleiben dem vollen Erfassungsdialog vorbehalten (Datum wuerde den
+# Eintrag zwischen Tagen/Gruppen verschieben).
+EDITABLE_KEYS = ("summary", "hours")
+
+
+def apply_manual_edit(entry: WorklogEntry, key: str, value: object) -> bool:
+    """Uebernimmt eine Inline-Aenderung in den Eintrag.
+
+    Args:
+        entry:
+            Der zu aendernde (manuelle) Eintrag.
+        key:
+            Spaltenschluessel - "summary" oder "hours".
+        value:
+            Der neue Wert aus dem Editor (Text).
+
+    Returns:
+        True bei gueltiger Uebernahme, False wenn der Wert ungueltig ist
+        (leere Beschreibung, nicht parsbare oder nicht-positive Stunden).
+    """
+    if key == "hours":
+        parsed = parse_hours(str(value))
+        if parsed is None:
+            return False
+        entry.hours = parsed
+        return True
+    if key == "summary":
+        text = str(value).strip()
+        if not text:
+            return False
+        entry.summary = text
+        return True
+    return False
 
 # Rohwert einer Zelle zum Sortieren - die Anzeige ist lokalisiert und taugt
 # dafuer nicht ("23.07.2026" sortiert als Zeichenkette falsch).
@@ -50,6 +93,10 @@ _WEEKDAYS = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 
 class TimesheetModel(QAbstractTableModel):
     """Stellt die Eintraege eines Stundenzettels als Tabelle bereit."""
+
+    # Meldet, dass ein manueller Eintrag inline geaendert wurde (fuer die
+    # Persistenz durch das Hauptfenster).
+    manual_edited = Signal(object)
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -101,7 +148,7 @@ class TimesheetModel(QAbstractTableModel):
             return None
         column = COLUMNS[index.column()]
 
-        if role == Qt.ItemDataRole.DisplayRole:
+        if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             return self._display(entry, column)
         if role == SORT_ROLE:
             return self._sort_value(entry, column)
@@ -110,6 +157,34 @@ class TimesheetModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.TextAlignmentRole:
             return self._alignment(column)
         return None
+
+    def flags(self, index: AnyIndex) -> Qt.ItemFlag:
+        """Manuelle Eintraege sind in den editierbaren Spalten aenderbar."""
+        flags = super().flags(index)
+        if not index.isValid():
+            return flags
+        entry = self.entry_at(index.row())
+        if entry is not None and entry.manual and COLUMNS[index.column()].key in EDITABLE_KEYS:
+            return flags | Qt.ItemFlag.ItemIsEditable
+        return flags
+
+    def setData(  # noqa: N802
+        self,
+        index: AnyIndex,
+        value: Any,
+        role: int = Qt.ItemDataRole.EditRole,
+    ) -> bool:
+        """Uebernimmt eine Inline-Aenderung an einem manuellen Eintrag."""
+        if role != Qt.ItemDataRole.EditRole or not index.isValid():
+            return False
+        entry = self.entry_at(index.row())
+        if entry is None or not entry.manual:
+            return False
+        if not apply_manual_edit(entry, COLUMNS[index.column()].key, value):
+            return False
+        self.dataChanged.emit(index, index)
+        self.manual_edited.emit(entry)
+        return True
 
     # --- Zellinhalte ----------------------------------------------------
 

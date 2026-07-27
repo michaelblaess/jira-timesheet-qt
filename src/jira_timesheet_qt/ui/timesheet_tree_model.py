@@ -16,11 +16,25 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, QObject, QPersistentModelIndex, Qt
+from PySide6.QtCore import (
+    QAbstractItemModel,
+    QModelIndex,
+    QObject,
+    QPersistentModelIndex,
+    Qt,
+    Signal,
+)
 from PySide6.QtGui import QFont
 
 from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
-from jira_timesheet_qt.ui.timesheet_model import COLUMNS, ENTRY_ROLE, SORT_ROLE, Column
+from jira_timesheet_qt.ui.timesheet_model import (
+    COLUMNS,
+    EDITABLE_KEYS,
+    ENTRY_ROLE,
+    SORT_ROLE,
+    Column,
+    apply_manual_edit,
+)
 
 AnyIndex = QModelIndex | QPersistentModelIndex
 
@@ -65,6 +79,9 @@ class _Node:
 
 class TimesheetTreeModel(QAbstractItemModel):
     """Stellt die Eintraege eines Stundenzettels nach Tag gruppiert dar."""
+
+    # Meldet, dass ein manueller Eintrag inline geaendert wurde.
+    manual_edited = Signal(object)
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -166,6 +183,34 @@ class TimesheetTreeModel(QAbstractItemModel):
             return self._entry_data(node.entry, column, role)
         return None
 
+    def flags(self, index: AnyIndex) -> Qt.ItemFlag:
+        """Nur manuelle Eintragszeilen sind in den editierbaren Spalten aenderbar."""
+        flags = super().flags(index)
+        if not index.isValid():
+            return flags
+        entry = self.entry_at_index(index)
+        if entry is not None and entry.manual and COLUMNS[index.column()].key in EDITABLE_KEYS:
+            return flags | Qt.ItemFlag.ItemIsEditable
+        return flags
+
+    def setData(  # noqa: N802
+        self,
+        index: AnyIndex,
+        value: Any,
+        role: int = Qt.ItemDataRole.EditRole,
+    ) -> bool:
+        """Uebernimmt eine Inline-Aenderung an einem manuellen Eintrag."""
+        if role != Qt.ItemDataRole.EditRole or not index.isValid():
+            return False
+        entry = self.entry_at_index(index)
+        if entry is None or not entry.manual:
+            return False
+        if not apply_manual_edit(entry, COLUMNS[index.column()].key, value):
+            return False
+        self.dataChanged.emit(index, index)
+        self.manual_edited.emit(entry)
+        return True
+
     # --- Zellinhalte ----------------------------------------------------
 
     def _group_data(self, group: _Group, column: Column, role: int) -> Any:
@@ -195,7 +240,7 @@ class TimesheetTreeModel(QAbstractItemModel):
         return None
 
     def _entry_data(self, entry: WorklogEntry, column: Column, role: int) -> Any:
-        if role == Qt.ItemDataRole.DisplayRole:
+        if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             # Datum und Tag stehen schon in der Gruppenzeile darueber.
             if column.key in ("date", "weekday"):
                 return ""
