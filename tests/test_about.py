@@ -7,8 +7,9 @@ from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 from jira_timesheet_qt import __author__, __version__
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.ui.about_dialog import QUOTES, AboutDialog
+from jira_timesheet_qt.ui.icons import GLYPHS, load_icon
 from jira_timesheet_qt.ui.main_window import MainWindow
-from jira_timesheet_qt.ui.theme import ICON_DIR, Mode, build_qss
+from jira_timesheet_qt.ui.theme import Mode, build_qss
 
 
 def _label_text(dialog: AboutDialog) -> str:
@@ -52,16 +53,17 @@ class TestAboutDialog:
 
 
 class TestIcons:
-    def test_all_icon_files_exist(self) -> None:
-        """Fehlt eine Datei, bleibt die Schaltflaeche leer."""
-        names = (
-            "chevron-down", "chevron-up", "chevron-left", "chevron-right",
-            "info", "settings", "sun", "moon", "search", "refresh", "log", "plus",
-            "group",
-        )
-        for name in names:
-            for variant in ("dark", "light"):
-                assert (ICON_DIR / f"{name}-{variant}.svg").is_file(), f"{name}-{variant}"
+    def test_every_glyph_renders_in_both_modes(self, qapp: QApplication) -> None:
+        """Jeder App-Symbolname muss ueber QtAwesome ein Icon liefern.
+
+        Ein unbekannter mdi6-Name gaebe ein leeres QIcon - dann bliebe die
+        Schaltflaeche leer.
+        """
+        # Die erwarteten Namen und ihre mdi6-Glyphen liegen in GLYPHS.
+        assert "group" in GLYPHS and "refresh" in GLYPHS  # Vollstaendigkeit stichprobenartig
+        for name in GLYPHS:
+            for mode in (Mode.DARK, Mode.LIGHT):
+                assert not load_icon(name, mode).isNull(), f"{name} ({mode.value})"
 
     def test_header_buttons_carry_icons(self, qapp: QApplication) -> None:
         """Kein Knopf darf leer bleiben - Unicode-Glyphen sind hier verboten."""

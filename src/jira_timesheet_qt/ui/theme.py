@@ -14,13 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
 
 from PySide6.QtGui import QColor, QPalette
-
-# Eigene Symbole fuer die Kopfzeilen-Schaltflaechen (plus, log, refresh, ...).
-# Die Pfeile der Steuerelemente zeichnet jetzt Fusion selbst.
-ICON_DIR = Path(__file__).resolve().parent.parent / "resources" / "icons"
 
 
 class Mode(StrEnum):

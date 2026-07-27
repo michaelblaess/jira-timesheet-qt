@@ -17,6 +17,9 @@ dependencies = [
     "openpyxl>=3.1",
     "fpdf2>=2.7",
     "holidays>=0.40",
+    # Material Design Icons (Apache 2.0) als zur Laufzeit einfaerbbare QIcons -
+    # loest das fehlende currentColor und skaliert auf beliebige Themenfarben.
+    "QtAwesome>=1.4",
 ]
 
 [project.optional-dependencies]
@@ -58,6 +61,12 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+
+# QtAwesome liefert keine Typ-Stubs (kein py.typed) - die eigene icons.py
+# kapselt es hinter einer getypten Fassade.
+[[tool.mypy.overrides]]
+module = ["qtawesome.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
