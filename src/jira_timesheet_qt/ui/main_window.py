@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QStackedWidget,
     QTableView,
+    QTreeView,
     QVBoxLayout,
     QWidget,
 )
@@ -47,6 +48,7 @@ from jira_timesheet_qt.ui.sidebar import Sidebar
 from jira_timesheet_qt.ui.summary_bar import SummaryBar
 from jira_timesheet_qt.ui.theme import Mode
 from jira_timesheet_qt.ui.timesheet_model import COLUMNS, ENTRY_ROLE, SORT_ROLE, TimesheetModel
+from jira_timesheet_qt.ui.timesheet_tree_model import TimesheetTreeModel
 from jira_timesheet_qt.ui.year_view import YearView
 
 _VIEWS = ("Liste", "Kalender", "Jahr")
@@ -89,7 +91,19 @@ class MainWindow(QMainWindow):
         self._proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self._proxy.setFilterKeyColumn(-1)
 
+        # Nach Tag gruppierte Ansicht (umschaltbar). Rekursives Filtern haelt
+        # eine Gruppe, sobald ein Eintrag den Suchbegriff enthaelt.
+        self._tree_model = TimesheetTreeModel(self)
+        self._tree_proxy = QSortFilterProxyModel(self)
+        self._tree_proxy.setSourceModel(self._tree_model)
+        self._tree_proxy.setSortRole(SORT_ROLE)
+        self._tree_proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._tree_proxy.setFilterKeyColumn(-1)
+        self._tree_proxy.setRecursiveFilteringEnabled(True)
+        self._grouped = bool(self._qsettings.value("grouped", False, type=bool))
+
         self._build_ui()
+        self._header.set_grouped(self._grouped)
         self._install_shortcuts()
         self._restore_geometry()
         self._update_period_labels()
@@ -114,6 +128,7 @@ class MainWindow(QMainWindow):
         self._header.reload_requested.connect(self.load_month)
         self._header.log_toggled.connect(self.toggle_log)
         self._header.manual_requested.connect(self.action_new_manual)
+        self._header.group_toggled.connect(self._on_group_toggled)
         self._header.previous_month.connect(lambda: self._shift_month(-1))
         self._header.next_month.connect(lambda: self._shift_month(1))
         outer.addWidget(self._header)
@@ -129,6 +144,7 @@ class MainWindow(QMainWindow):
         self._list_stack = QStackedWidget()
         self._list_stack.addWidget(self._build_empty_state())
         self._list_stack.addWidget(self._build_table())
+        self._list_stack.addWidget(self._build_tree())
 
         self._calendar = CalendarView(self._mode)
         self._calendar.day_selected.connect(self._on_day_selected)
@@ -201,12 +217,45 @@ class MainWindow(QMainWindow):
         self._table = table
         return table
 
+    def _build_tree(self) -> QTreeView:
+        """Baut die nach Tag gruppierte Ansicht (auf-/zuklappbar)."""
+        tree = QTreeView()
+        tree.setModel(self._tree_proxy)
+        tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        tree.setAlternatingRowColors(True)
+        tree.setUniformRowHeights(True)
+        tree.setRootIsDecorated(True)
+        tree.setSortingEnabled(False)
+        tree.setWordWrap(False)
+        tree.setFrameShape(QTreeView.Shape.NoFrame)
+        # Derselbe Delegate wie die flache Liste - hebt den Suchbegriff hervor.
+        tree.setItemDelegate(self._highlight)
+
+        header = tree.header()
+        header.setHighlightSections(False)
+        header.setSectionsMovable(True)
+        for index, column in enumerate(COLUMNS):
+            tree.setColumnWidth(index, column.width)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+
+        tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        tree.customContextMenuRequested.connect(self._on_tree_context_menu)
+        tree.selectionModel().currentRowChanged.connect(self._on_row_changed)
+        self._tree = tree
+        return tree
+
     def _on_search_changed(self, text: str) -> None:
-        """Filtert die Tabelle und hebt den Suchbegriff in den Zellen hervor."""
+        """Filtert beide Ansichten und hebt den Suchbegriff in den Zellen hervor."""
         self._proxy.setFilterFixedString(text)
+        self._tree_proxy.setFilterFixedString(text)
         self._highlight.set_needle(text)
         # Neu zeichnen, damit die Hervorhebung sofort erscheint bzw. verschwindet.
         self._table.viewport().update()
+        self._tree.viewport().update()
+        # Bei aktiver Suche die Gruppen aufklappen, damit Treffer sichtbar sind.
+        if self._grouped and text:
+            self._tree.expandAll()
 
     def _build_empty_state(self) -> QWidget:
         """Zustand ohne Daten - erklaert, was als Naechstes zu tun ist."""
@@ -271,6 +320,8 @@ class MainWindow(QMainWindow):
         """Uebernimmt einen Stundenzettel in alle Ansichten."""
         self._timesheet = timesheet
         self._model.set_timesheet(timesheet)
+        self._tree_model.set_timesheet(timesheet)
+        self._tree.expandAll()
         self._calendar.set_month(self._year, self._month, timesheet, self._settings.federal_state)
         self._update_year_view(timesheet)
         self._sidebar.set_total(self._model.total_hours)
@@ -278,11 +329,25 @@ class MainWindow(QMainWindow):
         self._detail.clear()
 
         has_rows = self._model.rowCount() > 0
-        self._list_stack.setCurrentIndex(1 if has_rows else 0)
+        self._list_stack.setCurrentIndex(self._list_page(has_rows))
         if not has_rows:
             self._update_empty_state()
 
         self._update_period_labels()
+
+    def _list_page(self, has_rows: bool) -> int:
+        """Waehlt die Seite des Listen-Stacks: leer (0), flach (1) oder gruppiert (2)."""
+        if not has_rows:
+            return 0
+        return 2 if self._grouped else 1
+
+    def _on_group_toggled(self, grouped: bool) -> None:
+        """Schaltet zwischen flacher und nach Tag gruppierter Ansicht um."""
+        self._grouped = grouped
+        self._qsettings.setValue("grouped", grouped)
+        if grouped:
+            self._tree.expandAll()
+        self._list_stack.setCurrentIndex(self._list_page(self._model.rowCount() > 0))
 
     def _update_summary(self, timesheet: Timesheet | None) -> None:
         """Fuellt die Summenleiste; Soll aus den Arbeitstagen des Zeitraums."""
@@ -296,9 +361,8 @@ class MainWindow(QMainWindow):
 
     # --- Manuelle Zeiten -----------------------------------------------
 
-    def _on_table_context_menu(self, pos: QPoint) -> None:
-        """Baut das Rechtsklick-Menue der Liste an der Mausposition."""
-        entry = self._entry_at_pos(pos)
+    def _entry_menu(self, entry: WorklogEntry | None, day: date | None) -> QMenu:
+        """Baut das Rechtsklick-Menue fuer eine Zeile (Eintrag oder Tag)."""
         menu = QMenu(self)
 
         if entry is not None and entry.ticket and self._settings.jira_host:
@@ -306,7 +370,6 @@ class MainWindow(QMainWindow):
             open_action.triggered.connect(lambda _checked=False, e=entry: self._open_ticket(e))
             menu.addSeparator()
 
-        day = entry.date if entry is not None else None
         new_action = menu.addAction("Manuelle Zeit erfassen")
         new_action.triggered.connect(lambda _checked=False, d=day: self.action_new_manual(d))
 
@@ -316,7 +379,20 @@ class MainWindow(QMainWindow):
             delete_action = menu.addAction("Manuellen Eintrag löschen")
             delete_action.triggered.connect(lambda _checked=False, e=entry: self._delete_manual(e))
 
-        menu.exec(self._table.viewport().mapToGlobal(pos))
+        return menu
+
+    def _on_table_context_menu(self, pos: QPoint) -> None:
+        """Rechtsklick-Menue der flachen Liste an der Mausposition."""
+        entry = self._entry_at_pos(pos)
+        day = entry.date if entry is not None else None
+        self._entry_menu(entry, day).exec(self._table.viewport().mapToGlobal(pos))
+
+    def _on_tree_context_menu(self, pos: QPoint) -> None:
+        """Rechtsklick-Menue der gruppierten Ansicht (auch auf Gruppenzeilen)."""
+        source = self._tree_proxy.mapToSource(self._tree.indexAt(pos))
+        entry = self._tree_model.entry_at_index(source)
+        day = self._tree_model.day_at_index(source)
+        self._entry_menu(entry, day).exec(self._tree.viewport().mapToGlobal(pos))
 
     def _entry_at_pos(self, pos: QPoint) -> WorklogEntry | None:
         """Liefert den Eintrag unter der Mausposition (oder None)."""

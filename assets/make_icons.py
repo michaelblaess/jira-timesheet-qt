@@ -52,6 +52,9 @@ PATHS: dict[str, str] = {
         '<path d="M20 12 A8 8 0 1 1 17.3 6.1"/>'
         '<path d="M20.4 3.4 L20.4 8.2 L15.6 8.2" stroke-linejoin="round"/>'
     ),
+    # Nach Tag gruppieren: je eine volle Gruppenzeile mit einer eingerueckten
+    # Unterzeile - klar abgesetzt vom Protokoll-Symbol (Fenster mit Rahmen).
+    "group": '<path d="M4 6 L20 6 M9 10 L20 10 M4 15 L20 15 M9 19 L20 19"/>',
 }
 
 # Kleinere Symbole fuer Auswahllisten und Zahlenfelder, eigenes Raster.

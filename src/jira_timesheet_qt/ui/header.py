@@ -44,6 +44,7 @@ class Header(QWidget):
     reload_requested = Signal()
     log_toggled = Signal()
     manual_requested = Signal()
+    group_toggled = Signal(bool)
 
     def __init__(self, mode: Mode = Mode.DARK, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -78,6 +79,15 @@ class Header(QWidget):
         self._search.textChanged.connect(self.search_changed.emit)
         layout.addWidget(self._search)
 
+        layout.addWidget(
+            self._button(
+                "group",
+                "Nach Tag gruppieren",
+                self.group_toggled.emit,
+                key="group",
+                checkable=True,
+            )
+        )
         layout.addWidget(
             self._button("plus", "Manuelle Zeit erfassen (Strg+N)", self.manual_requested.emit)
         )
@@ -118,14 +128,28 @@ class Header(QWidget):
         """Zeigt das Ziel des Wechsels, nicht den aktuellen Zustand."""
         return "sun" if self._mode is Mode.DARK else "moon"
 
+    def set_grouped(self, grouped: bool) -> None:
+        """Setzt den Zustand des Gruppieren-Schalters ohne Signal auszuloesen."""
+        button = self._buttons.get("group")
+        if button is None:
+            return
+        button.blockSignals(True)
+        button.setChecked(grouped)
+        button.blockSignals(False)
+
     def _button(
         self,
         name: str,
         tooltip: str,
-        slot: Callable[[], None],
+        slot: Callable[..., None],
         key: str = "",
+        checkable: bool = False,
     ) -> QPushButton:
-        """Baut eine rahmenlose Schaltflaeche mit Symbol."""
+        """Baut eine rahmenlose Schaltflaeche mit Symbol.
+
+        Ist checkable True, entsteht ein Umschalter, der seinen Zustand (bool)
+        an den Slot meldet; sonst eine einfache Schaltflaeche.
+        """
         button = QPushButton()
         button.setProperty("variant", "ghost")
         button.setIcon(load_icon(name, self._mode))
@@ -133,6 +157,10 @@ class Header(QWidget):
         button.setToolTip(tooltip)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setFixedSize(34, 34)
-        button.clicked.connect(slot)
+        button.setCheckable(checkable)
+        if checkable:
+            button.toggled.connect(slot)
+        else:
+            button.clicked.connect(slot)
         self._buttons[key or name] = button
         return button
