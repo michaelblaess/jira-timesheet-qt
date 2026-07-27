@@ -38,6 +38,7 @@ from jira_timesheet_qt.ui.calendar_view import CalendarView, DayCell
 from jira_timesheet_qt.ui.detail_panel import DetailPanel
 from jira_timesheet_qt.ui.export_service import ExportService
 from jira_timesheet_qt.ui.header import Header
+from jira_timesheet_qt.ui.highlight_delegate import HighlightDelegate
 from jira_timesheet_qt.ui.jira_worker import WorklogWorker
 from jira_timesheet_qt.ui.log_dock import Level, LogDock
 from jira_timesheet_qt.ui.manual_entry_dialog import ManualEntryDialog
@@ -106,7 +107,7 @@ class MainWindow(QMainWindow):
         outer.setSpacing(0)
 
         self._header = Header(self._mode)
-        self._header.search_changed.connect(self._proxy.setFilterFixedString)
+        self._header.search_changed.connect(self._on_search_changed)
         self._header.theme_toggled.connect(self._toggle_theme)
         self._header.settings_requested.connect(self.open_settings)
         self._header.about_requested.connect(self.open_about)
@@ -192,8 +193,20 @@ class MainWindow(QMainWindow):
         table.customContextMenuRequested.connect(self._on_table_context_menu)
 
         table.selectionModel().currentRowChanged.connect(self._on_row_changed)
+
+        # Hebt den aktuellen Suchbegriff in den Zellen hervor.
+        self._highlight = HighlightDelegate(table)
+        table.setItemDelegate(self._highlight)
+
         self._table = table
         return table
+
+    def _on_search_changed(self, text: str) -> None:
+        """Filtert die Tabelle und hebt den Suchbegriff in den Zellen hervor."""
+        self._proxy.setFilterFixedString(text)
+        self._highlight.set_needle(text)
+        # Neu zeichnen, damit die Hervorhebung sofort erscheint bzw. verschwindet.
+        self._table.viewport().update()
 
     def _build_empty_state(self) -> QWidget:
         """Zustand ohne Daten - erklaert, was als Naechstes zu tun ist."""
