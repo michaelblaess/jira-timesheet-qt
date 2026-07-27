@@ -13,7 +13,7 @@ import html
 import re
 
 from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QRectF, Qt
-from PySide6.QtGui import QPainter, QPalette, QTextDocument, QTextOption
+from PySide6.QtGui import QFontMetrics, QPainter, QPalette, QTextDocument, QTextOption
 from PySide6.QtWidgets import (
     QApplication,
     QStyle,
@@ -93,16 +93,21 @@ class HighlightDelegate(QStyledItemDelegate):
         align = index.data(Qt.ItemDataRole.TextAlignmentRole)
         alignment = Qt.AlignmentFlag(int(align)) if align is not None else Qt.AlignmentFlag.AlignLeft
 
+        pad = 8
+        width = max(0, opt.rect.width() - 2 * pad)
+
+        # Wie die native Zelle rechts mit "..." kuerzen. Ein sichtbarer Treffer
+        # bleibt markiert; liegt der Treffer im abgeschnittenen Teil, zeigt die
+        # Zelle nur "..." - die Zeile ist trotzdem gefiltert.
+        elided = QFontMetrics(opt.font).elidedText(text, Qt.TextElideMode.ElideRight, width)
+
         doc = QTextDocument()
         doc.setDefaultFont(opt.font)
         text_option = QTextOption(alignment)
         text_option.setWrapMode(QTextOption.WrapMode.NoWrap)
         doc.setDefaultTextOption(text_option)
-        inner = self.highlight_html(text, self._needle)
+        inner = self.highlight_html(elided, self._needle)
         doc.setHtml(f'<span style="color:{base_color};">{inner}</span>')
-
-        pad = 8
-        width = max(0, opt.rect.width() - 2 * pad)
         doc.setTextWidth(width)
 
         painter.save()
