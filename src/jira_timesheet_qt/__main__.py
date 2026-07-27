@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING
 from jira_timesheet_qt import __version__
 
 if TYPE_CHECKING:  # nur fuer die Typpruefung - Qt bleibt bis main() ungeladen
+    from pathlib import Path
+
     from jira_timesheet_qt.models.settings import Settings
     from jira_timesheet_qt.ui.theme import Mode
 
@@ -45,6 +47,8 @@ def main() -> int:
     from PySide6.QtWidgets import QApplication
 
     from jira_timesheet_qt.models.settings import Settings
+
+    _setup_logging(Settings.SETTINGS_DIR)
     from jira_timesheet_qt.ui.fonts import load_fonts
     from jira_timesheet_qt.ui.main_window import MainWindow
     from jira_timesheet_qt.ui.theme import Mode, build_qss
@@ -59,6 +63,22 @@ def main() -> int:
     app.setStyle("Fusion")
 
     settings = Settings.load()
+
+    # Sprachpaket laden, BEVOR Fenster und Dienste t() aufrufen - sonst geben
+    # die Uebersetzer nur die Schluessel zurueck (z.B. "jira.budget_unassigned").
+    from jira_timesheet_qt.i18n import load_locale
+
+    load_locale(settings.language)
+
+    # Einmalig die manuellen Zeiten der Textual-TUI uebernehmen, falls die
+    # eigene Datenbank noch leer ist.
+    from pathlib import Path as _Path
+
+    from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
+
+    with ManualEntryService() as _manual:
+        _manual.import_from_legacy(_Path.home() / ".jira-timesheet" / "manual-entries.db")
+
     fonts = load_fonts()
     mode = _resolve_mode(args.theme or settings.theme, app)
 
@@ -91,6 +111,42 @@ def main() -> int:
     return app.exec()
 
 
+def _setup_logging(log_dir: Path) -> None:
+    """Richtet ein persistentes, rotierendes Datei-Log ein.
+
+    Ohne das gehen alle logger-Aufrufe (Einstellungen, Jira-Client, ...) ins
+    Leere - fuer die Fehlersuche unbrauchbar. Das Log liegt neben den
+    Einstellungen und laesst sich im Speicherort-Tab oeffnen.
+
+    Args:
+        log_dir:
+            Verzeichnis fuer die Logdatei (wird bei Bedarf angelegt).
+    """
+    import logging
+    from logging.handlers import RotatingFileHandler
+
+    root = logging.getLogger()
+    if root.handlers:
+        return  # schon eingerichtet (z.B. im Test)
+
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        handler = RotatingFileHandler(
+            log_dir / "app.log",
+            maxBytes=1_000_000,
+            backupCount=3,
+            encoding="utf-8",
+        )
+    except OSError:
+        return  # kein Log ist besser als ein Absturz beim Start
+
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s"),
+    )
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+
+
 def _confirm_disclaimer(settings: Settings) -> bool:
     """Holt die Zustimmung zum Haftungshinweis ein, falls sie noch fehlt.
 
@@ -101,6 +157,7 @@ def _confirm_disclaimer(settings: Settings) -> bool:
     Returns:
         True, wenn die Anwendung starten darf.
     """
+    from jira_timesheet_qt import __app_name__ as app_name
     from jira_timesheet_qt import __version__ as version
     from jira_timesheet_qt.ui.disclaimer_dialog import (
         DISCLAIMER_VERSION,
@@ -112,7 +169,7 @@ def _confirm_disclaimer(settings: Settings) -> bool:
     if store.accepted_version == DISCLAIMER_VERSION:
         return True
 
-    dialog = DisclaimerDialog(f"Stundenzettel {version}")
+    dialog = DisclaimerDialog(f"{app_name} {version}")
     if dialog.exec() != int(DisclaimerDialog.DialogCode.Accepted):
         return False
     store.record()

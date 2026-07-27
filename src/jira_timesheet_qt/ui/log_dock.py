@@ -68,12 +68,12 @@ class LogDock(QDockWidget):
         button_layout.addStretch(1)
 
         copy = QPushButton("Kopieren")
-        copy.setProperty("variant", "ghost")
+        copy.setProperty("variant", "secondary")
         copy.clicked.connect(self.copy_all)
         button_layout.addWidget(copy)
 
         clear = QPushButton("Leeren")
-        clear.setProperty("variant", "ghost")
+        clear.setProperty("variant", "secondary")
         clear.clicked.connect(self.clear)
         button_layout.addWidget(clear)
         layout.addWidget(buttons)

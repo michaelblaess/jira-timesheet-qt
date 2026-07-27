@@ -56,7 +56,7 @@ class TestIcons:
         """Fehlt eine Datei, bleibt die Schaltflaeche leer."""
         names = (
             "chevron-down", "chevron-up", "chevron-left", "chevron-right",
-            "info", "settings", "sun", "moon", "search", "refresh",
+            "info", "settings", "sun", "moon", "search", "refresh", "log", "plus",
         )
         for name in names:
             for variant in ("dark", "light"):
@@ -72,7 +72,7 @@ class TestIcons:
         buttons = header.findChildren(QPushButton)
         # Das Suchfeld bringt eine eigene Loesch-Schaltflaeche mit.
         icon_buttons = [b for b in buttons if b.toolTip()]
-        assert len(icon_buttons) == 6
+        assert len(icon_buttons) == 8
         for button in icon_buttons:
             assert not button.icon().isNull(), button.toolTip()
             assert button.text() == "", "Symbole statt Text-Glyphen"

@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import logging
 import re
+import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from jira_timesheet_qt.models.export_column import ExportColumn, default_columns, parse_columns
 
@@ -57,6 +59,27 @@ def normalize_color(value: str, fallback: str = DEFAULT_MANUAL_COLOR) -> str:
 # Themen der Oberflaeche. "system" folgt der Einstellung des Betriebssystems.
 THEMES = ("system", "dark", "light")
 DEFAULT_THEME = "system"
+
+# Einstellungsdatei der aelteren Textual-TUI "jira-timesheet". Die Feldnamen
+# sind identisch, deshalb lassen sich die Werte ohne Umbau uebernehmen - der
+# Anwender soll Host, Token und Co. nicht erneut eingeben muessen.
+LEGACY_SETTINGS_FILE: Path = Path.home() / ".jira-timesheet" / "settings.json"
+
+# Zugangsfelder, die der Import-Knopf im Einstellungsdialog uebernimmt. Bewusst
+# nur der Jira-Zugang - Arbeitszeit und Darstellung bleiben unangetastet, damit
+# ein bewusster Klick keine schon getroffenen Entscheidungen ueberschreibt.
+ACCESS_FIELDS = (
+    "jira_host",
+    "email",
+    "jira_token",
+    "use_legacy_api",
+    "proxy_url",
+    "budget_field",
+)
+
+# Kernfelder des Zugangs: sind ALLE drei leer, gilt der Zugang als
+# unkonfiguriert. Grundlage fuer den Datenverlust-Schutz beim Speichern.
+_ACCESS_CORE = ("jira_host", "email", "jira_token")
 
 
 @dataclass
@@ -147,17 +170,51 @@ class Settings:
     def load() -> Settings:
         """Laedt die Einstellungen aus der JSON-Datei.
 
+        Fehlt die eigene Datei, wird beim ersten Start einmalig die
+        Einstellungsdatei der aelteren Textual-TUI uebernommen, sofern
+        vorhanden - so muss der Jira-Zugang nicht erneut eingegeben werden.
         Gibt Default-Einstellungen zurueck bei Fehler.
         """
-        if not Settings.SETTINGS_FILE.is_file():
-            return Settings()
+        data = Settings._read_json(Settings.SETTINGS_FILE)
+        if data is None:
+            # Keine eigene Datei - beim ersten Start komplett aus der Textual-TUI
+            # uebernehmen, sofern vorhanden.
+            legacy = Settings._read_json(LEGACY_SETTINGS_FILE)
+            settings = Settings._from_dict(legacy) if legacy is not None else Settings()
+            source = "TUI-Datei" if legacy is not None else "Vorgaben"
+            logger.info("Erststart ohne eigene Einstellungsdatei - geladen aus: %s", source)
+            return settings
 
+        settings = Settings._from_dict(data)
+        has_access = bool(settings.jira_host or settings.email or settings.jira_token)
+        logger.info(
+            "Einstellungen geladen aus %s (Jira-Zugang: %s)",
+            Settings.SETTINGS_FILE,
+            "vorhanden" if has_access else "LEER",
+        )
+        return settings
+
+    @staticmethod
+    def _read_json(path: Path) -> dict[str, Any] | None:
+        """Liest eine JSON-Datei defensiv; None bei Fehlen oder Fehler.
+
+        Rueckgabe ist bewusst ``dict[str, Any]`` - der Inhalt kommt aus JSON,
+        und die Feld-Parser unten pruefen jeden Wert einzeln.
+        """
+        if not path.is_file():
+            return None
         try:
-            raw = Settings.SETTINGS_FILE.read_text(encoding="utf-8")
-            data = json.loads(raw)
-            if not isinstance(data, dict):
-                return Settings()
-            settings = Settings(
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning("Datei %s konnte nicht gelesen werden: %s", path, exc)
+            return None
+        return data if isinstance(data, dict) else None
+
+    @staticmethod
+    def _from_dict(data: dict[str, Any]) -> Settings:
+        """Baut Einstellungen aus einem Dictionary (defensiv, mit Vorgaben)."""
+        try:
+            return Settings(
                 theme=Settings._parse_theme(data.get("theme")),
                 language=data.get("language", "de"),
                 jira_host=data.get("jira_host", ""),
@@ -168,18 +225,18 @@ class Settings:
                 logo_path=data.get("logo_path", ""),
                 last_date_from=data.get("last_date_from", ""),
                 last_date_to=data.get("last_date_to", ""),
-                log_visible=data.get("log_visible", True),
+                log_visible=bool(data.get("log_visible", False)),
                 budget_field=data.get("budget_field", "customfield_XXXXX"),
                 federal_state=data.get("federal_state", "SN"),
                 hours_per_day=data.get("hours_per_day", 8.0),
                 max_yearly_hours=data.get("max_yearly_hours", 1720.0),
-                show_target_hours_in_export=data.get("show_target_hours_in_export", False),
-                show_ticket_links_in_export=data.get("show_ticket_links_in_export", False),
+                show_target_hours_in_export=bool(data.get("show_target_hours_in_export", False)),
+                show_ticket_links_in_export=bool(data.get("show_ticket_links_in_export", False)),
                 hourly_rate=data.get("hourly_rate", 0.0),
                 vat_rate=data.get("vat_rate", 19.0),
                 year=data.get("year", 0),
                 vacation_days=data.get("vacation_days", 30),
-                config_collapsed=data.get("config_collapsed", False),
+                config_collapsed=bool(data.get("config_collapsed", False)),
                 search_history=[str(x) for x in data.get("search_history", []) if isinstance(x, str)],
                 column_widths=Settings._parse_column_widths(data.get("column_widths")),
                 export_columns=parse_columns(data.get("export_columns")),
@@ -190,10 +247,30 @@ class Settings:
                 last_export_dir=str(data.get("last_export_dir", "")),
             )
         except Exception as exc:
-            logger.warning("Settings konnten nicht geladen werden: %s", exc)
+            logger.warning("Settings konnten nicht aufgebaut werden: %s", exc)
             return Settings()
 
-        return settings
+    @staticmethod
+    def legacy_available() -> bool:
+        """Meldet, ob eine Einstellungsdatei der Textual-TUI existiert."""
+        return LEGACY_SETTINGS_FILE.is_file()
+
+    @staticmethod
+    def legacy_access() -> dict[str, object] | None:
+        """Liefert nur die Jira-Zugangsfelder aus der Textual-TUI.
+
+        Bewusst lesend und ohne Seiteneffekt: der Einstellungsdialog fuellt
+        damit seine Felder, uebernommen wird erst beim Speichern. Arbeitszeit
+        und Darstellung bleiben aussen vor.
+
+        Returns:
+            Ein Dictionary der Zugangsfelder, oder None ohne Legacy-Datei.
+        """
+        legacy = Settings._read_json(LEGACY_SETTINGS_FILE)
+        if legacy is None:
+            return None
+        source = Settings._from_dict(legacy)
+        return {name: getattr(source, name) for name in ACCESS_FIELDS}
 
     @staticmethod
     def _parse_theme(raw: object) -> str:
@@ -221,12 +298,52 @@ class Settings:
         return {str(key): int(value) for key, value in raw.items() if isinstance(value, int) and value > 0}
 
     def save(self) -> None:
-        """Speichert die Einstellungen in die JSON-Datei."""
+        """Speichert die Einstellungen in die JSON-Datei.
+
+        Vor dem Schreiben greift ein Datenverlust-Schutz: Wuerde dieser Vorgang
+        einen zuvor gesetzten Jira-Zugang leeren, wird das als Fehler geloggt
+        (mit Aufrufpfad) und die vorhandenen Werte werden bewahrt.
+        """
         try:
             Settings.SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
+            data = self.to_dict()
+            Settings._guard_access_loss(data)
             Settings.SETTINGS_FILE.write_text(
-                json.dumps(self.to_dict(), indent=2, ensure_ascii=False),
+                json.dumps(data, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
         except Exception as exc:
             logger.warning("Settings konnten nicht gespeichert werden: %s", exc)
+
+    @staticmethod
+    def _guard_access_loss(data: dict[str, Any]) -> None:
+        """Bewahrt einen vorhandenen Jira-Zugang vor dem Leerschreiben.
+
+        Sind Host, E-Mail UND Token im zu schreibenden Datensatz leer, die
+        bereits gespeicherte Datei hatte sie aber, gilt das als Fehler: WARNUNG
+        samt Aufrufpfad (Stacktrace) ins Log, und die vorhandenen Zugangsfelder
+        werden aus der alten Datei uebernommen. So verliert niemand seine
+        muehsam eingegebenen Werte, und der Ausloeser bleibt im Log auffindbar.
+
+        Args:
+            data:
+                Der zu schreibende Datensatz; wird bei Bedarf in-place ergaenzt.
+        """
+        writing_empty = not any(str(data.get(field_name, "")).strip() for field_name in _ACCESS_CORE)
+        if not writing_empty:
+            return
+        previous = Settings._read_json(Settings.SETTINGS_FILE)
+        if previous is None:
+            return
+        had_access = any(str(previous.get(field_name, "")).strip() for field_name in _ACCESS_CORE)
+        if not had_access:
+            return
+
+        logger.warning(
+            "DATENVERLUST VERHINDERT: Speichern haette den Jira-Zugang geleert. "
+            "Vorhandene Werte wurden bewahrt. Aufrufpfad:\n%s",
+            "".join(traceback.format_stack()),
+        )
+        for name in ACCESS_FIELDS:
+            if name in previous:
+                data[name] = previous[name]

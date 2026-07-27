@@ -260,6 +260,22 @@ QPushButton[variant="ghost"]:hover {{
     color: {p.text_primary};
 }}
 
+/* Zweitrangige Text-Schaltflaechen (z.B. "Oeffnen", Import): sichtbar als
+   Schaltflaeche - mit Rahmen und Flaeche, aber schlanker als die Hauptaktion. */
+QPushButton[variant="secondary"] {{
+    background-color: {p.bg_tertiary};
+    color: {p.text_primary};
+    border: 1px solid {p.border};
+    border-radius: {RADIUS_MD}px;
+    padding: 6px 14px;
+    font-weight: 600;
+}}
+
+QPushButton[variant="secondary"]:hover {{
+    background-color: {p.bg_elevated};
+    border-color: {p.border_hover};
+}}
+
 /* ---------------------------------------------------------------- Eingaben */
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit {{
     background-color: {p.bg_tertiary};
@@ -411,6 +427,87 @@ QHeaderView::section:hover {{
 QTableView QTableCornerButton::section {{
     background-color: {p.bg_primary};
     border: none;
+}}
+
+/* ------------------------------------------------------------- Kalender */
+/* QCalendarWidget nutzt intern eine QTableView - ohne eigene Regeln erben die
+   Tageszellen das Zellen-Padding und die Trennlinien der grossen Tabelle und
+   ueberlappen. Deshalb hier vollstaendig eigenstaendig gestylt. */
+QCalendarWidget {{
+    background-color: {p.bg_primary};
+    border: 1px solid {p.border};
+    border-radius: {RADIUS_MD}px;
+}}
+
+QCalendarWidget QWidget {{
+    alternate-background-color: {p.bg_secondary};
+}}
+
+QCalendarWidget QAbstractItemView:enabled {{
+    background-color: {p.bg_primary};
+    color: {p.text_primary};
+    selection-background-color: {p.accent};
+    selection-color: #ffffff;
+    outline: none;
+    border-bottom-left-radius: {RADIUS_MD}px;
+    border-bottom-right-radius: {RADIUS_MD}px;
+}}
+
+QCalendarWidget QAbstractItemView:disabled {{
+    color: {p.text_tertiary};
+}}
+
+/* Hebt das globale QTableView::item-Padding/-Border fuer die Tageszellen auf. */
+QCalendarWidget QAbstractItemView::item {{
+    padding: 1px;
+    border: none;
+}}
+
+/* Navigationsleiste (Monat/Jahr + Pfeile). */
+QCalendarWidget QWidget#qt_calendar_navigationbar {{
+    background-color: {p.bg_secondary};
+    border-bottom: 1px solid {p.border};
+    border-top-left-radius: {RADIUS_MD}px;
+    border-top-right-radius: {RADIUS_MD}px;
+}}
+
+QCalendarWidget QToolButton {{
+    color: {p.text_primary};
+    background-color: transparent;
+    border: none;
+    border-radius: {RADIUS_SM}px;
+    padding: 4px 12px;
+    margin: 3px 2px;
+    font-weight: 600;
+    icon-size: 16px;
+}}
+
+QCalendarWidget QToolButton:hover {{
+    background-color: {p.bg_tertiary};
+}}
+
+QCalendarWidget QToolButton::menu-indicator {{
+    image: none;
+}}
+
+/* Monats-Auswahlmenue der Navigationsleiste. */
+QCalendarWidget QMenu {{
+    background-color: {p.bg_elevated};
+    border: 1px solid {p.border};
+}}
+
+QCalendarWidget QMenu::item:selected {{
+    background-color: {p.accent};
+    color: #ffffff;
+}}
+
+/* Jahres-Eingabe (QSpinBox) in der Navigationsleiste. */
+QCalendarWidget QSpinBox {{
+    background-color: {p.bg_tertiary};
+    color: {p.text_primary};
+    border: 1px solid {p.border};
+    border-radius: {RADIUS_SM}px;
+    padding: 2px 6px;
 }}
 
 /* -------------------------------------------------------------- Bildlaufleiste */
@@ -628,6 +725,27 @@ QCheckBox::indicator:hover {{
 QCheckBox::indicator:checked {{
     background-color: {p.accent};
     border-color: {p.accent};
+}}
+
+/* --------------------------------------------------------- Summenleiste */
+#SummaryBar {{
+    background-color: {p.bg_secondary};
+    border-top: 1px solid {p.border};
+}}
+
+#SummaryStatLabel {{
+    color: {p.text_tertiary};
+    font-size: 12px;
+}}
+
+#SummaryStatValue {{
+    color: {p.text_primary};
+    font-size: 12px;
+    font-weight: 700;
+}}
+
+#SummarySep {{
+    color: {p.border};
 }}
 
 /* ------------------------------------------------------------ Statuszeile */

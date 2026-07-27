@@ -110,6 +110,9 @@ class TestFieldWidths:
             *dialog.findChildren(QComboBox),
         ]
         # findChildren liefert auch das interne "qt_spinbox_lineedit" jeder
-        # Zahlenbox mit - das ist ein Kind, kein eigenes Feld.
-        widths = {f.width() for f in fields if f.objectName() != "qt_spinbox_lineedit"}
+        # Zahlenbox mit - das ist ein Kind, kein eigenes Feld. Bewusst breite
+        # Felder (Logo-Pfad, Spalten-Bezeichnungen) sind mit "ExpandingField"
+        # markiert und von der einheitlichen Breite ausgenommen.
+        ignored = {"qt_spinbox_lineedit", "ExpandingField"}
+        widths = {f.width() for f in fields if f.objectName() not in ignored}
         assert widths == {FIELD_WIDTH}, widths

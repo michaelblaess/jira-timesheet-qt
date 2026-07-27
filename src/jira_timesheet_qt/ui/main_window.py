@@ -8,15 +8,18 @@ Seitenleiste und ein QStackedWidget, das keine Reiter zeichnet.
 from __future__ import annotations
 
 import calendar
+import webbrowser
 from datetime import date
 
-from PySide6.QtCore import QModelIndex, QSettings, QSortFilterProxyModel, Qt, Signal
+from PySide6.QtCore import QModelIndex, QPoint, QSettings, QSortFilterProxyModel, Qt, Signal
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
     QLabel,
     QMainWindow,
+    QMenu,
+    QMessageBox,
     QPushButton,
     QSplitter,
     QStackedWidget,
@@ -25,9 +28,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from jira_timesheet_qt import __version__
+from jira_timesheet_qt import __app_name__, __version__
 from jira_timesheet_qt.models.settings import Settings
-from jira_timesheet_qt.models.timesheet import Timesheet
+from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
+from jira_timesheet_qt.services.holiday_service import HolidayService
+from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
 from jira_timesheet_qt.ui.about_dialog import AboutDialog
 from jira_timesheet_qt.ui.calendar_view import CalendarView, DayCell
 from jira_timesheet_qt.ui.detail_panel import DetailPanel
@@ -35,8 +40,10 @@ from jira_timesheet_qt.ui.export_service import ExportService
 from jira_timesheet_qt.ui.header import Header
 from jira_timesheet_qt.ui.jira_worker import WorklogWorker
 from jira_timesheet_qt.ui.log_dock import Level, LogDock
+from jira_timesheet_qt.ui.manual_entry_dialog import ManualEntryDialog
 from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
 from jira_timesheet_qt.ui.sidebar import Sidebar
+from jira_timesheet_qt.ui.summary_bar import SummaryBar
 from jira_timesheet_qt.ui.theme import Mode
 from jira_timesheet_qt.ui.timesheet_model import COLUMNS, ENTRY_ROLE, SORT_ROLE, TimesheetModel
 from jira_timesheet_qt.ui.year_view import YearView
@@ -63,7 +70,7 @@ class MainWindow(QMainWindow):
 
         # Nur der reine Name: QApplication traegt den Anzeigenamen selbst bei,
         # sonst steht er doppelt in der Titelleiste.
-        self.setWindowTitle(f"Stundenzettel {__version__}")
+        self.setWindowTitle(f"{__app_name__} {__version__}")
         self.resize(1280, 780)
         self.setMinimumSize(940, 560)
 
@@ -104,6 +111,8 @@ class MainWindow(QMainWindow):
         self._header.settings_requested.connect(self.open_settings)
         self._header.about_requested.connect(self.open_about)
         self._header.reload_requested.connect(self.load_month)
+        self._header.log_toggled.connect(self.toggle_log)
+        self._header.manual_requested.connect(self.action_new_manual)
         self._header.previous_month.connect(lambda: self._shift_month(-1))
         self._header.next_month.connect(lambda: self._shift_month(1))
         outer.addWidget(self._header)
@@ -142,6 +151,9 @@ class MainWindow(QMainWindow):
         self._splitter = body
         outer.addWidget(body, 1)
 
+        self._summary = SummaryBar()
+        outer.addWidget(self._summary)
+
         self._status = QLabel("Bereit")
         self._status.setObjectName("StatusBar")
         self._status.setContentsMargins(18, 7, 18, 7)
@@ -175,6 +187,9 @@ class MainWindow(QMainWindow):
         for index, column in enumerate(COLUMNS):
             table.setColumnWidth(index, column.width)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+
+        table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        table.customContextMenuRequested.connect(self._on_table_context_menu)
 
         table.selectionModel().currentRowChanged.connect(self._on_row_changed)
         self._table = table
@@ -232,6 +247,7 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence(QKeySequence.StandardKey.HelpContents), self, self.open_about)
         QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
         QShortcut(QKeySequence("Ctrl+L"), self, self.toggle_log)
+        QShortcut(QKeySequence("Ctrl+N"), self, self.action_new_manual)
         QShortcut(QKeySequence.StandardKey.Print, self, self.print_preview)
         QShortcut(QKeySequence("Ctrl+E"), self, self.export_excel)
         QShortcut(QKeySequence("Ctrl+Shift+E"), self, self.export_pdf)
@@ -245,6 +261,7 @@ class MainWindow(QMainWindow):
         self._calendar.set_month(self._year, self._month, timesheet, self._settings.federal_state)
         self._update_year_view(timesheet)
         self._sidebar.set_total(self._model.total_hours)
+        self._update_summary(timesheet)
         self._detail.clear()
 
         has_rows = self._model.rowCount() > 0
@@ -253,6 +270,134 @@ class MainWindow(QMainWindow):
             self._update_empty_state()
 
         self._update_period_labels()
+
+    def _update_summary(self, timesheet: Timesheet | None) -> None:
+        """Fuellt die Summenleiste; Soll aus den Arbeitstagen des Zeitraums."""
+        if timesheet is None:
+            self._summary.show_timesheet(None, self._settings, 0)
+            return
+        target_workdays = HolidayService(self._settings.federal_state).count_workdays(
+            timesheet.date_from, timesheet.date_to
+        )
+        self._summary.show_timesheet(timesheet, self._settings, target_workdays)
+
+    # --- Manuelle Zeiten -----------------------------------------------
+
+    def _on_table_context_menu(self, pos: QPoint) -> None:
+        """Baut das Rechtsklick-Menue der Liste an der Mausposition."""
+        entry = self._entry_at_pos(pos)
+        menu = QMenu(self)
+
+        if entry is not None and entry.ticket and self._settings.jira_host:
+            open_action = menu.addAction("Ticket im Browser öffnen")
+            open_action.triggered.connect(lambda _checked=False, e=entry: self._open_ticket(e))
+            menu.addSeparator()
+
+        day = entry.date if entry is not None else None
+        new_action = menu.addAction("Manuelle Zeit erfassen")
+        new_action.triggered.connect(lambda _checked=False, d=day: self.action_new_manual(d))
+
+        if entry is not None and entry.manual and entry.manual_id > 0:
+            edit_action = menu.addAction("Manuellen Eintrag bearbeiten")
+            edit_action.triggered.connect(lambda _checked=False, e=entry: self._edit_manual(e))
+            delete_action = menu.addAction("Manuellen Eintrag löschen")
+            delete_action.triggered.connect(lambda _checked=False, e=entry: self._delete_manual(e))
+
+        menu.exec(self._table.viewport().mapToGlobal(pos))
+
+    def _entry_at_pos(self, pos: QPoint) -> WorklogEntry | None:
+        """Liefert den Eintrag unter der Mausposition (oder None)."""
+        index = self._table.indexAt(pos)
+        if not index.isValid():
+            return None
+        source = self._proxy.mapToSource(index)
+        return self._model.entry_at(source.row())
+
+    def action_new_manual(self, default_date: date | None = None) -> None:
+        """Oeffnet den Dialog fuer einen neuen manuellen Eintrag."""
+        start = default_date if isinstance(default_date, date) else self._default_manual_date()
+        dialog = ManualEntryDialog(
+            customers=self._customer_options(),
+            default_customer=self._settings.default_customer,
+            default_date=start,
+            parent=self,
+        )
+        if dialog.exec() != int(ManualEntryDialog.DialogCode.Accepted):
+            return
+        entry = dialog.result_entry()
+        if entry is None:
+            return
+        with ManualEntryService() as service:
+            saved = service.add(entry)
+        if saved > 0:
+            self._set_status("Manueller Eintrag gespeichert.")
+            self._reload_after_manual()
+
+    def _edit_manual(self, entry: WorklogEntry) -> None:
+        """Oeffnet den Dialog zum Bearbeiten eines manuellen Eintrags."""
+        with ManualEntryService() as service:
+            current = service.get(entry.manual_id)
+        if current is None:
+            self._set_status("Manueller Eintrag nicht gefunden.", "error")
+            return
+        dialog = ManualEntryDialog(
+            customers=self._customer_options(),
+            default_customer=self._settings.default_customer,
+            entry=current,
+            parent=self,
+        )
+        if dialog.exec() != int(ManualEntryDialog.DialogCode.Accepted):
+            return
+        updated = dialog.result_entry()
+        if updated is None:
+            return
+        with ManualEntryService() as service:
+            service.update(updated)
+        self._set_status("Manueller Eintrag geändert.")
+        self._reload_after_manual()
+
+    def _delete_manual(self, entry: WorklogEntry) -> None:
+        """Loescht einen manuellen Eintrag nach Rueckfrage."""
+        answer = QMessageBox.question(
+            self,
+            "Löschen",
+            f"Manuellen Eintrag vom {entry.date:%d.%m.%Y} ({entry.hours:.2f} h) löschen?".replace(".", ",", 1),
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        with ManualEntryService() as service:
+            service.delete(entry.manual_id)
+        self._set_status("Manueller Eintrag gelöscht.")
+        self._reload_after_manual()
+
+    def _reload_after_manual(self) -> None:
+        """Laedt den Monat neu, damit die manuellen Zeiten neu eingemischt werden."""
+        self.load_month()
+
+    def _default_manual_date(self) -> date:
+        """Vorbelegtes Datum: heute im aktuellen Monat, sonst der Monatserste."""
+        today = date.today()
+        if today.year == self._year and today.month == self._month:
+            return today
+        return date(self._year, self._month, 1)
+
+    def _customer_options(self) -> list[str]:
+        """Kundenliste fuer den Dialog: Einstellungen + bereits benutzte."""
+        options = list(self._settings.customers)
+        default = self._settings.default_customer
+        if default and default not in options:
+            options.insert(0, default)
+        with ManualEntryService() as service:
+            for name in service.distinct_customers():
+                if name not in options:
+                    options.append(name)
+        return options
+
+    def _open_ticket(self, entry: WorklogEntry) -> None:
+        """Oeffnet das Ticket im Standardbrowser."""
+        host = self._settings.jira_host.rstrip("/")
+        if host and entry.ticket:
+            webbrowser.open(f"{host}/browse/{entry.ticket}")
 
     def _update_period_labels(self) -> None:
         """Setzt Ueberschrift und Zusatzzeile der Kopfzeile."""

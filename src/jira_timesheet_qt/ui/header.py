@@ -42,6 +42,8 @@ class Header(QWidget):
     about_requested = Signal()
     theme_toggled = Signal()
     reload_requested = Signal()
+    log_toggled = Signal()
+    manual_requested = Signal()
 
     def __init__(self, mode: Mode = Mode.DARK, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -76,7 +78,11 @@ class Header(QWidget):
         self._search.textChanged.connect(self.search_changed.emit)
         layout.addWidget(self._search)
 
+        layout.addWidget(
+            self._button("plus", "Manuelle Zeit erfassen (Strg+N)", self.manual_requested.emit)
+        )
         layout.addWidget(self._button("refresh", "Neu laden (F5)", self.reload_requested.emit))
+        layout.addWidget(self._button("log", "Log ein-/ausblenden (Strg+L)", self.log_toggled.emit))
         layout.addWidget(
             self._button(self._theme_icon(), "Erscheinungsbild wechseln", self.theme_toggled.emit, key="theme")
         )

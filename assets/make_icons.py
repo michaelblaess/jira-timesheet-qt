@@ -40,6 +40,14 @@ PATHS: dict[str, str] = {
         ' M18.9 5.1 L17.5 6.5 M6.5 17.5 L5.1 18.9"/>'
     ),
     "search": '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.4 15.4 L20 20"/>',
+    # Manuelle Zeit erfassen: Pluszeichen.
+    "plus": '<path d="M12 5 L12 19 M5 12 L19 12"/>',
+    # Protokoll/Verlauf: ein Fenster mit Textzeilen - klar abgesetzt vom
+    # Schieberegler-Symbol der Einstellungen (Zeilen mit Kreisen).
+    "log": (
+        '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/>'
+        '<path d="M6.8 9 L14 9 M6.8 12.5 L17.2 12.5 M6.8 16 L11.5 16"/>'
+    ),
     "refresh": (
         '<path d="M20 12 A8 8 0 1 1 17.3 6.1"/>'
         '<path d="M20.4 3.4 L20.4 8.2 L15.6 8.2" stroke-linejoin="round"/>'

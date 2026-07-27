@@ -105,7 +105,7 @@ class TestSettingsDialog:
 
     def test_all_pages_are_reachable(self, qapp: QApplication) -> None:
         dialog = SettingsDialog(Settings())
-        assert dialog._nav.count() == dialog._pages.count() == 4
+        assert dialog._nav.count() == dialog._pages.count() == 6
 
 
 class TestEmptyState:

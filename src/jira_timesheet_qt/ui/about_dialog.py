@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from jira_timesheet_qt import __author__, __version__, __year__
+from jira_timesheet_qt import __app_name__, __author__, __version__, __year__
 
 REPO_URL = "https://github.com/michaelblaess/jira-timesheet-qt"
 HOMEPAGE_URL = "https://www.michaelblaess.de/"
@@ -70,7 +70,7 @@ class AboutDialog(QDialog):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Über Stundenzettel")
+        self.setWindowTitle(f"Über {__app_name__}")
         self.setFixedWidth(460)
 
         outer = QVBoxLayout(self)
@@ -85,7 +85,7 @@ class AboutDialog(QDialog):
         banner_layout.setContentsMargins(30, 26, 30, 24)
         banner_layout.setSpacing(4)
 
-        name = QLabel("Stundenzettel")
+        name = QLabel(__app_name__)
         name.setObjectName("AboutName")
         name.setAlignment(Qt.AlignmentFlag.AlignCenter)
         banner_layout.addWidget(name)

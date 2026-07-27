@@ -274,6 +274,53 @@ class ManualEntryService:
             return False
         return cursor.rowcount > 0
 
+    def import_from_legacy(self, legacy_path: Path) -> int:
+        """Uebernimmt einmalig die manuellen Zeiten der Textual-TUI.
+
+        Kopiert nur, wenn die EIGENE Datenbank noch keine Eintraege hat - so
+        laeuft der Import genau einmal und ueberschreibt spaeter nichts.
+
+        Args:
+            legacy_path:
+                Pfad zur manual-entries.db der TUI.
+
+        Returns:
+            Anzahl der uebernommenen Eintraege (0, wenn nichts zu tun war).
+        """
+        if legacy_path == self.db_path or not legacy_path.is_file():
+            return 0
+        if self.count() > 0:
+            return 0
+
+        try:
+            source = sqlite3.connect(str(legacy_path))
+            source.row_factory = sqlite3.Row
+            try:
+                rows = source.execute(
+                    "SELECT entry_date, ticket, summary, customer, hours FROM manual_entries"
+                ).fetchall()
+            finally:
+                source.close()
+        except sqlite3.Error as exc:
+            logger.warning("TUI-Manuell-DB %s konnte nicht gelesen werden: %s", legacy_path, exc)
+            return 0
+
+        imported = 0
+        for row in rows:
+            entry = ManualEntry(
+                entry_date=date.fromisoformat(str(row["entry_date"])),
+                ticket=str(row["ticket"] or ""),
+                summary=str(row["summary"] or ""),
+                customer=str(row["customer"] or ""),
+                hours=float(row["hours"] or 0.0),
+            )
+            if self.add(entry) > 0:
+                imported += 1
+
+        if imported:
+            logger.info("%d manuelle Eintraege aus %s uebernommen", imported, legacy_path)
+        return imported
+
     # --- Interna ----------------------------------------------------
 
     @staticmethod

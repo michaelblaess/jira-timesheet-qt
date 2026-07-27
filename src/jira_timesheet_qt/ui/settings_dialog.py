@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListView,
     QListWidget,
+    QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QSpinBox,
     QStackedWidget,
@@ -29,6 +31,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from jira_timesheet_qt.models.export_column import ExportColumn, default_label
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.services.cache_service import CACHE_DIR
 from jira_timesheet_qt.services.manual_entry_service import DB_FILE
@@ -82,13 +85,15 @@ class SettingsDialog(QDialog):
         self._nav = QListWidget()
         self._nav.setObjectName("SettingsNav")
         self._nav.setFixedWidth(180)
-        self._nav.addItems(["Zugang", "Arbeitszeit", "Darstellung", "Speicherort"])
+        self._nav.addItems(["Zugang", "Arbeitszeit", "Export", "Spalten", "Darstellung", "Speicherort"])
         self._nav.setCurrentRow(0)
         body.addWidget(self._nav)
 
         self._pages = QStackedWidget()
         self._pages.addWidget(self._page_access())
         self._pages.addWidget(self._page_worktime())
+        self._pages.addWidget(self._page_export())
+        self._pages.addWidget(self._page_columns())
         self._pages.addWidget(self._page_appearance())
         self._pages.addWidget(self._page_storage())
         self._nav.currentRowChanged.connect(self._pages.setCurrentIndex)
@@ -96,6 +101,10 @@ class SettingsDialog(QDialog):
 
         outer.addLayout(body, 1)
         outer.addWidget(self._buttons())
+
+        # Der Import-Knopf gehoert zur Zugang-Seite und wird nur dort gezeigt.
+        self._nav.currentRowChanged.connect(self._update_import_visibility)
+        self._update_import_visibility(self._nav.currentRow())
 
     # --- Seiten ---------------------------------------------------------
 
@@ -140,6 +149,39 @@ class SettingsDialog(QDialog):
         )
         return page
 
+    def _update_import_visibility(self, row: int) -> None:
+        """Zeigt den Import-Knopf nur auf der Zugang-Seite (erste Zeile)."""
+        if self._import_button is not None:
+            self._import_button.setVisible(row == 0)
+
+    def _import_legacy_access(self) -> None:
+        """Fuellt die Zugangsfelder aus der Einstellungsdatei der Textual-TUI.
+
+        Uebernommen werden nur die Jira-Zugangsdaten und erst in die Felder -
+        gespeichert wird wie ueberall erst beim Klick auf "Speichern".
+        """
+        access = Settings.legacy_access()
+        if access is None:
+            QMessageBox.information(
+                self,
+                "Import",
+                "Es wurde keine Einstellungsdatei der jira-timesheet-TUI gefunden.",
+            )
+            return
+
+        self.host.setText(str(access["jira_host"]))
+        self.email.setText(str(access["email"]))
+        self.token.setText(str(access["jira_token"]))
+        self.legacy.setChecked(bool(access["use_legacy_api"]))
+        self.proxy.setText(str(access["proxy_url"]))
+        self.budget_field.setText(str(access["budget_field"]))
+        QMessageBox.information(
+            self,
+            "Import",
+            "Der Jira-Zugang aus jira-timesheet wurde übernommen.\n"
+            "Zum Sichern auf „Speichern“ klicken.",
+        )
+
     def _page_worktime(self) -> QWidget:
         page, form = self._page("Arbeitszeit")
 
@@ -161,6 +203,24 @@ class SettingsDialog(QDialog):
         self.max_yearly.setFixedWidth(FIELD_WIDTH)
         form.addRow(self._label("Jahresbudget"), self.max_yearly)
 
+        self.hourly_rate = QDoubleSpinBox()
+        self.hourly_rate.setRange(0.0, 100000.0)
+        self.hourly_rate.setSingleStep(5.0)
+        self.hourly_rate.setDecimals(2)
+        self.hourly_rate.setSuffix(" €")
+        self.hourly_rate.setValue(self._settings.hourly_rate)
+        self.hourly_rate.setFixedWidth(FIELD_WIDTH)
+        form.addRow(self._label("Stundensatz"), self.hourly_rate)
+
+        self.vat_rate = QDoubleSpinBox()
+        self.vat_rate.setRange(0.0, 100.0)
+        self.vat_rate.setSingleStep(1.0)
+        self.vat_rate.setDecimals(1)
+        self.vat_rate.setSuffix(" %")
+        self.vat_rate.setValue(self._settings.vat_rate)
+        self.vat_rate.setFixedWidth(FIELD_WIDTH)
+        form.addRow(self._label("MwSt-Satz"), self.vat_rate)
+
         self.vacation = QSpinBox()
         self.vacation.setRange(0, 90)
         self.vacation.setSuffix(" Tage")
@@ -176,6 +236,99 @@ class SettingsDialog(QDialog):
         form.addRow(self._label("Bundesland"), self.state)
         form.addRow(self._hint("Bestimmt, welche Feiertage als arbeitsfrei gelten."))
         return page
+
+    def _page_export(self) -> QWidget:
+        page, form = self._page("Export")
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+
+        self.logo_path = QLineEdit(self._settings.logo_path)
+        self.logo_path.setObjectName("ExpandingField")
+        self.logo_path.setPlaceholderText("Pfad zu einer Logo-Grafik (PNG/JPG) fuer Excel und PDF")
+        form.addRow(self._label("Logo-Pfad"), self.logo_path)
+
+        self.show_target = QCheckBox("Soll-Stunden im Excel-/PDF-Export anzeigen")
+        self.show_target.setChecked(self._settings.show_target_hours_in_export)
+        form.addRow(self._label(""), self.show_target)
+
+        self.show_ticket_links = QCheckBox("Ticket-Links im Excel-/PDF-Export anzeigen")
+        self.show_ticket_links.setChecked(self._settings.show_ticket_links_in_export)
+        form.addRow(self._label(""), self.show_ticket_links)
+
+        self.default_customer = QLineEdit(self._settings.default_customer)
+        self.default_customer.setFixedWidth(FIELD_WIDTH)
+        self.default_customer.setPlaceholderText("Vertrieb")
+        form.addRow(self._label("Standard-Kunde"), self.default_customer)
+
+        self.customers = QPlainTextEdit("\n".join(self._settings.customers))
+        self.customers.setFixedHeight(110)
+        form.addRow(self._label("Kunden-Auswahl"), self.customers)
+        form.addRow(self._hint("Ein Kunde pro Zeile. Das ist die Auswahlliste im Dialog fuer manuelle Zeiten."))
+        return page
+
+    def _page_columns(self) -> QWidget:
+        page, form = self._page("Spalten")
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        form.addRow(
+            self._hint(
+                "Anzeige steuert die Listenansicht, Export die Excel- und PDF-Datei. Die "
+                "Bezeichnung gilt fuer den Export; leer gelassen gilt die Standard-Bezeichnung."
+            )
+        )
+        form.addRow(self._columns_header())
+
+        # (key, Anzeige-Checkbox, Export-Checkbox, Bezeichnungs-Feld) je Spalte.
+        self._column_rows: list[tuple[str, QCheckBox, QCheckBox, QLineEdit]] = []
+        for column in self._settings.export_columns:
+            form.addRow(self._column_row(column))
+        return page
+
+    def _columns_header(self) -> QWidget:
+        """Kopfzeile ueber den Spalten-Reihen (Anzeige | Export | Bezeichnung)."""
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        spacer = QLabel("")
+        spacer.setFixedWidth(120)
+        layout.addWidget(spacer)
+        for text in ("Anzeige", "Export"):
+            head = QLabel(text)
+            head.setObjectName("SidebarSection")
+            head.setFixedWidth(64)
+            layout.addWidget(head)
+        caption = QLabel("Bezeichnung im Export")
+        caption.setObjectName("SidebarSection")
+        layout.addWidget(caption, 1)
+        return row
+
+    def _column_row(self, column: ExportColumn) -> QWidget:
+        """Baut eine Zeile fuer eine konfigurierbare Spalte."""
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
+        name = QLabel(default_label(column.key) or column.key)
+        name.setFixedWidth(120)
+        layout.addWidget(name)
+
+        visible = QCheckBox()
+        visible.setChecked(column.visible)
+        visible.setFixedWidth(64)
+        layout.addWidget(visible)
+
+        enabled = QCheckBox()
+        enabled.setChecked(column.enabled)
+        enabled.setFixedWidth(64)
+        layout.addWidget(enabled)
+
+        label = QLineEdit(column.label)
+        label.setObjectName("ExpandingField")
+        label.setPlaceholderText(default_label(column.key))
+        layout.addWidget(label, 1)
+
+        self._column_rows.append((column.key, visible, enabled, label))
+        return row
 
     def _page_appearance(self) -> QWidget:
         page, form = self._page("Darstellung")
@@ -197,8 +350,13 @@ class SettingsDialog(QDialog):
 
     def _page_storage(self) -> QWidget:
         page, form = self._page("Speicherort")
+        # Anders als bei den Eingabeseiten sollen die Pfad-Zeilen die volle
+        # Breite fuellen - nur so stehen die "Oeffnen"-Knoepfe buendig
+        # rechts untereinander statt an jeder Pfadlaenge ausgerichtet.
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         for caption, path in (
             ("Einstellungen", Settings.SETTINGS_FILE),
+            ("Protokoll", Settings.SETTINGS_DIR / "app.log"),
             ("Zwischenspeicher", CACHE_DIR),
             ("Manuelle Zeiten", DB_FILE),
             ("Zustimmung", Settings.SETTINGS_DIR / "disclaimer.json"),
@@ -273,7 +431,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(value, 1)
 
         button = QPushButton("Öffnen")
-        button.setProperty("variant", "ghost")
+        button.setProperty("variant", "secondary")
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.clicked.connect(lambda: self._open_path(path))
         layout.addWidget(button)
@@ -293,6 +451,17 @@ class SettingsDialog(QDialog):
         layout = QHBoxLayout(row)
         layout.setContentsMargins(24, 14, 24, 16)
         layout.setSpacing(10)
+
+        # Import-Knopf unten links - nur, wenn die Textual-TUI hier einen
+        # Zugang hinterlassen hat. Sichtbar gesteuert ueber die aktive Seite.
+        self._import_button: QPushButton | None = None
+        if Settings.legacy_access() is not None:
+            self._import_button = QPushButton("Zugang aus jira-timesheet (TUI) übernehmen")
+            self._import_button.setProperty("variant", "secondary")
+            self._import_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._import_button.clicked.connect(self._import_legacy_access)
+            layout.addWidget(self._import_button)
+
         layout.addStretch(1)
 
         cancel = QPushButton("Abbrechen")
@@ -319,8 +488,29 @@ class SettingsDialog(QDialog):
         s.budget_field = self.budget_field.text().strip() or "customfield_XXXXX"
         s.hours_per_day = self.hours_per_day.value()
         s.max_yearly_hours = self.max_yearly.value()
+        s.hourly_rate = self.hourly_rate.value()
+        s.vat_rate = self.vat_rate.value()
         s.vacation_days = self.vacation.value()
         s.federal_state = str(self.state.currentData())
+        s.logo_path = self.logo_path.text().strip()
+        s.show_target_hours_in_export = self.show_target.isChecked()
+        s.show_ticket_links_in_export = self.show_ticket_links.isChecked()
+        s.default_customer = self.default_customer.text().strip() or "Vertrieb"
+        s.customers = self._customers_from_input()
+        s.export_columns = [
+            ExportColumn(
+                key=key,
+                label=label.text().strip() or default_label(key),
+                enabled=enabled.isChecked(),
+                visible=visible.isChecked(),
+            )
+            for key, visible, enabled, label in self._column_rows
+        ]
         s.theme = str(self.theme.currentData())
         s.mark_manual_entries = self.mark_manual.isChecked()
         return s
+
+    def _customers_from_input(self) -> list[str]:
+        """Liest die Kundenliste (ein Kunde je Zeile); leer -> bisherige Liste."""
+        names = [line.strip() for line in self.customers.toPlainText().splitlines() if line.strip()]
+        return names or list(self._settings.customers)
