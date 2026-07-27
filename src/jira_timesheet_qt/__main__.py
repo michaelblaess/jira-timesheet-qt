@@ -51,7 +51,7 @@ def main() -> int:
     _setup_logging(Settings.SETTINGS_DIR)
     from jira_timesheet_qt.ui.fonts import load_fonts
     from jira_timesheet_qt.ui.main_window import MainWindow
-    from jira_timesheet_qt.ui.theme import Mode, build_qss
+    from jira_timesheet_qt.ui.theme import Mode, build_palette, build_qss
 
     app = QApplication(sys.argv)
     app.setApplicationName("jira-timesheet-qt")
@@ -83,8 +83,14 @@ def main() -> int:
     mode = _resolve_mode(args.theme or settings.theme, app)
 
     def apply_theme(name: str) -> None:
-        """Setzt das Stylesheet der Anwendung neu."""
-        app.setStyleSheet(build_qss(Mode(name), fonts.sans, fonts.mono))
+        """Setzt Palette und Stylesheet der Anwendung neu.
+
+        Fusion faerbt die nativen Steuerelemente ueber die Palette, das duenne
+        QSS uebernimmt nur die strukturellen Flaechen und die Typografie.
+        """
+        mode = Mode(name)
+        app.setPalette(build_palette(mode))
+        app.setStyleSheet(build_qss(mode, fonts.sans, fonts.mono))
 
     apply_theme(mode.value)
 

@@ -20,7 +20,7 @@ der gelesene Stand von `src/jira_timesheet_qt/ui/theme.py`.
 | Grid | Bordmittel-Model/View, Gruppierung als handgebautes QTreeView-Modell | Kein freies, gepflegtes "Super-Grid" fuer PySide6 |
 | Fehlende Widgets | **superqt (BSD-3)** | Range-/Labeled-Slider, Collapsible, searchable Combos - nuechtern |
 | Icons | **QtAwesome (MIT)** + eigene SVG-Paare fuer App-Symbole | Loest das fehlende `currentColor` (Laufzeit-Umfaerbung) |
-| Theme-Basis | Offene Entscheidung E1: Fusion+QPalette **oder** eigener Look ausbauen | Siehe Abschnitt 5 - das ist Deine Entscheidung |
+| Theme-Basis | **Entschieden (E1, 27.07.2026): Fusion nativ + QPalette + duennes Struktur-QSS** | Klassisch, leicht verstaendlich, wartungsarm - Enterprise vor Distinktion |
 | Design-System | Token-Dataclass mit **Spacing- und Typo-Scale**, ein `theme.qss.tmpl` | Genau der fehlende Baustein zum heutigen `theme.py` |
 | App-Architektur | **MVP / Humble View** + ViewModels, Model/View nur fuers Grid | Qt Model/View ist keine App-Architektur |
 | Widgets bauen | **Handgeschrieben + geteilte Builder**, kein Qt Designer als Default | Erzwingt Konsistenz |
@@ -164,22 +164,23 @@ Fremd-Library.
 
 ## 5. Themes und Design-System
 
-### Offene Entscheidung E1: konservative Basis
+### Entscheidung E1 (27.07.2026): Fusion nativ - Variante A
 
-Unser heutiges `theme.py` ist ein moderner Dark-Look (Blau-Akzent, runde Ecken, aus precision.css).
-Du willst jetzt "konservativ". Zwei Wege, das ist Deine Entscheidung:
+Zwei Prototypen wurden gebaut und in Hell und Dunkel mit gefuelltem Grid verglichen
+(`docs/screenshots/qt-prototypes/`):
 
 - **A - Fusion + QPalette + duennes QSS.** Der `Fusion`-Style ist Qts plattformneutraler, nuechterner
   Business-Look, folgt der `QPalette` und schaltet ab Qt 6.5 automatisch Hell/Dunkel nach
-  OS-Einstellung (`styleHints().colorScheme()`). Man setzt Farben grossteils ueber eine QPalette
-  (robuster als ein Riesen-QSS) und legt nur duennes QSS drueber. Am ehesten "konservativ", am
-  wenigsten bruechig.
-- **B - eigenen precision-Look behalten**, aber zuruecknehmen (weniger Radius, gedecktere Akzente)
-  und die Token-Disziplin aus dem naechsten Abschnitt nachziehen. Behaelt die Marken-Naehe zur
-  Web-Seite, bleibt aber ein vollstaendig selbstgestyltes QSS (mehr Pflege, mehr Fallen).
+  OS-Einstellung (`styleHints().colorScheme()`). Farben grossteils ueber eine QPalette (robuster als
+  ein Riesen-QSS), nur duennes Struktur-QSS drueber. Steuerelemente bleiben nativ.
+- **B - eigenen precision-Look zurueckgenommen** (weniger Radius, gedeckter Akzent, Mono-Ziffern).
+  Behaelt die Marken-Naehe zur Web-Seite, bleibt aber vollstaendig selbstgestyltes QSS (mehr Pflege,
+  mehr Fallen).
 
-Empfehlung: **A**, wenn "konservativ und wartungsarm" das Ziel ist. B nur, wenn die optische
-Naehe zur GitHub-Pages-Seite wichtiger ist als der Aufwand.
+**Gewaehlt: A.** Begruendung (Michael): es geht um enterprise-faehige Anwendungen, die Benutzer
+ohne Einarbeitung verstehen und bedienen sollen - auch wenn es langweilig aussieht. Leichte
+Verstaendlichkeit und Wartungsarmut schlagen Distinktion. Der distinktive ("wilde") Look wie bei
+DAWs kommt spaeter und getrennt, nicht in Enterprise-Werkzeugen.
 
 ### Design-System: Token-Dataclass mit Spacing- und Typo-Scale
 
@@ -339,7 +340,8 @@ Das dient zugleich als manuelle QA und als Onboarding-Doku.
 
 ## 11. Empfohlene naechste Schritte
 
-1. **Entscheidung E1** treffen: Fusion+QPalette (A) oder eigenen Look ausbauen (B).
+1. **Entscheidung E1 getroffen: Variante A** (Fusion nativ). Naechster Umbau: `theme.py` von schwerem
+   Custom-QSS auf QPalette (Hell/Dunkel) + duennes Struktur-QSS umstellen, Steuerelemente nativ lassen.
 2. **Token-Schicht einziehen**: `Tokens`-Dataclass um Spacing- und Typo-Scale erweitern, `theme.py`
    darauf umstellen, verstreute Pixelwerte durch Scale-Stufen ersetzen.
 3. **Gallery-App** (`ui/gallery/`) als lebenden Styleguide aufsetzen - deckt sofort die

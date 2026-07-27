@@ -120,6 +120,11 @@ class SummaryBar(QWidget):
                 continue
             widget = item.widget()
             if widget is not None:
+                # setParent(None) entfernt das Widget SOFORT aus der Anzeige.
+                # deleteLater allein wuerde es bis zum naechsten Event-Loop-Lauf
+                # als Geist an seiner alten Stelle stehen lassen (ueberlappt die
+                # neuen Werte, bis der Platzhalter endlich geloescht ist).
+                widget.setParent(None)
                 widget.deleteLater()
 
     @staticmethod

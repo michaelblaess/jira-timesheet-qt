@@ -86,27 +86,20 @@ class TestIcons:
         header.apply_mode(Mode.LIGHT)
         assert header._theme_icon() == "moon"
 
-    def test_stylesheet_points_at_existing_files(self) -> None:
-        """Jede url() im Stylesheet muss auf eine vorhandene Datei zeigen."""
+    def test_stylesheet_has_no_dangling_icon_urls(self) -> None:
+        """Jede url() im Stylesheet muss auf eine vorhandene Datei zeigen.
+
+        Seit dem Wechsel auf den nativen Fusion-Look (E1) zeichnet Qt die Pfeile
+        der Steuerelemente selbst - das QSS enthaelt in der Regel keine url()
+        mehr. Kommt doch eine dazu, darf sie nicht ins Leere zeigen.
+        """
         import re
+        from pathlib import Path
 
         for mode in (Mode.DARK, Mode.LIGHT):
             qss = build_qss(mode, "Segoe UI", "Consolas")
-            urls = re.findall(r"url\(([^)]+)\)", qss)
-            assert urls, "keine Symbole im Stylesheet"
-            for url in urls:
-                from pathlib import Path
-
+            for url in re.findall(r"url\(([^)]+)\)", qss):
                 assert Path(url).is_file(), url
-
-    def test_arrows_are_styled_for_both_widgets(self) -> None:
-        qss = build_qss(Mode.DARK, "Segoe UI", "Consolas")
-        for selector in (
-            "QComboBox::down-arrow",
-            "QSpinBox::up-arrow",
-            "QDoubleSpinBox::down-arrow",
-        ):
-            assert selector in qss, selector
 
 
 class TestAboutReachable:

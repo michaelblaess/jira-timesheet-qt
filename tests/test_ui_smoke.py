@@ -12,13 +12,14 @@ from datetime import date
 
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QApplication, QTableView
 
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.ui.demo import demo_timesheet
 from jira_timesheet_qt.ui.fonts import load_fonts
 from jira_timesheet_qt.ui.main_window import MainWindow
-from jira_timesheet_qt.ui.theme import DARK, LIGHT, Mode, build_qss
+from jira_timesheet_qt.ui.theme import DARK, LIGHT, Mode, build_palette, build_qss
 from jira_timesheet_qt.ui.timesheet_model import COLUMNS, ENTRY_ROLE, TimesheetModel
 
 
@@ -34,16 +35,24 @@ class TestTheme:
     def test_qss_is_built_for_both_modes(self) -> None:
         for mode, palette in ((Mode.DARK, DARK), (Mode.LIGHT, LIGHT)):
             qss = build_qss(mode, "Segoe UI", "Consolas")
-            assert palette.bg_primary in qss
+            # Die strukturellen Flaechen werden per QSS gesetzt, die Farben
+            # stammen aus der Palette. Die Steuerelemente bleiben nativ (Fusion).
+            assert "#Header" in qss
+            assert "#Sidebar" in qss
+            assert "#SummaryBar" in qss
+            assert palette.bg_secondary in qss
             assert palette.accent in qss
-            # Ohne diese Regeln bleiben die Qt-Vorgaben sichtbar.
-            assert "QScrollBar" in qss
-            assert "QHeaderView::section" in qss
 
     def test_stylesheet_applies_to_application(self, qapp: QApplication) -> None:
         fonts = load_fonts()
         qapp.setStyleSheet(build_qss(Mode.DARK, fonts.sans, fonts.mono))
-        assert DARK.bg_primary in qapp.styleSheet()
+        assert "#Header" in qapp.styleSheet()
+
+    def test_palette_is_built_for_both_modes(self, qapp: QApplication) -> None:
+        for mode, palette in ((Mode.DARK, DARK), (Mode.LIGHT, LIGHT)):
+            qpal = build_palette(mode)
+            assert qpal.color(QPalette.ColorRole.Window).name() == palette.bg_primary
+            assert qpal.color(QPalette.ColorRole.Highlight).name() == palette.accent
 
 
 class TestModel:
