@@ -22,7 +22,7 @@ from PySide6.QtWidgets import QWidget
 
 from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
 from jira_timesheet_qt.services.holiday_service import HolidayService
-from jira_timesheet_qt.ui.theme import Mode, palette_for
+from jira_timesheet_qt.ui.theme import Mode, Palette, palette_for
 
 _WEEKDAYS = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 
@@ -73,6 +73,8 @@ class CalendarView(QWidget):
 
     HEADER_HEIGHT = 26
     PADDING = 14
+    # Breite der Wochensummen-Spalte rechts (KW-Nummer + Wochenstunden).
+    SUMMARY_WIDTH = 66
 
     def __init__(self, mode: Mode = Mode.DARK, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -81,6 +83,8 @@ class CalendarView(QWidget):
         self._year = date.today().year
         self._month = date.today().month
         self._selected: date | None = None
+        # Soll-Stunden je Arbeitstag - Grundlage der Farbkodierung der Tage.
+        self._target_hours = 8.0
         self.setMinimumHeight(360)
         self.setMouseTracking(True)
 
@@ -92,9 +96,11 @@ class CalendarView(QWidget):
         month: int,
         timesheet: Timesheet | None,
         federal_state: str = "SN",
+        hours_per_day: float = 8.0,
     ) -> None:
         """Baut das Raster fuer einen Monat auf."""
         self._year, self._month = year, month
+        self._target_hours = hours_per_day if hours_per_day > 0 else 8.0
         holidays = HolidayService(federal_state)
 
         by_day: dict[date, list[WorklogEntry]] = {}
@@ -130,6 +136,21 @@ class CalendarView(QWidget):
         """Arbeitstage des Monats ohne Buchung."""
         return [c for c in self._cells if c.in_month and c.is_workday and c.hours == 0.0]
 
+    def week_summaries(self) -> list[tuple[int, float]]:
+        """Je Rasterzeile die Kalenderwoche und die Summe ihrer Stunden.
+
+        Returns:
+            Liste aus (KW-Nummer, Wochenstunden) - eine je Zeile, von oben nach
+            unten. Jede Zeile ist eine volle ISO-Woche (Montag bis Sonntag).
+        """
+        rows = len(self._cells) // 7
+        summaries: list[tuple[int, float]] = []
+        for row in range(rows):
+            week = self._cells[row * 7 : row * 7 + 7]
+            kw = week[0].day.isocalendar().week
+            summaries.append((kw, sum(cell.hours for cell in week)))
+        return summaries
+
     # --- Zeichnen -------------------------------------------------------
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
@@ -142,10 +163,7 @@ class CalendarView(QWidget):
             painter.end()
             return
 
-        rows = len(self._cells) // 7
-        area = self.rect().adjusted(self.PADDING, self.PADDING, -self.PADDING, -self.PADDING)
-        cell_w = area.width() / 7
-        cell_h = (area.height() - self.HEADER_HEIGHT) / max(1, rows)
+        area, cell_w, cell_h, rows = self._geometry()
 
         self._paint_header(painter, area.x(), area.y(), cell_w)
 
@@ -158,16 +176,64 @@ class CalendarView(QWidget):
                 cell_h - 4,
             )
             self._paint_cell(painter, rect, cell)
+
+        # Wochensummen-Spalte rechts.
+        summary_x = area.x() + 7 * cell_w
+        for row, (kw, total) in enumerate(self.week_summaries()):
+            rect = QRectF(
+                summary_x,
+                area.y() + self.HEADER_HEIGHT + row * cell_h,
+                self.SUMMARY_WIDTH - 4,
+                cell_h - 4,
+            )
+            self._paint_summary(painter, rect, kw, total)
         painter.end()
 
+    def _geometry(self) -> tuple[QRectF, float, float, int]:
+        """Liefert Zeichenflaeche, Tagesbreite, Zeilenhoehe und Zeilenzahl.
+
+        Die Wochensummen-Spalte rechts belegt SUMMARY_WIDTH, die sieben Tage
+        teilen sich den Rest. Paint und Trefferpruefung nutzen dieselbe Rechnung.
+        """
+        rows = len(self._cells) // 7
+        area = QRectF(self.rect().adjusted(self.PADDING, self.PADDING, -self.PADDING, -self.PADDING))
+        cell_w = (area.width() - self.SUMMARY_WIDTH) / 7
+        cell_h = (area.height() - self.HEADER_HEIGHT) / max(1, rows)
+        return area, cell_w, cell_h, rows
+
     def _paint_header(self, painter: QPainter, x: float, y: float, cell_w: float) -> None:
-        """Zeichnet die Wochentagsleiste."""
+        """Zeichnet die Wochentagsleiste samt Kopf der Wochensummen-Spalte."""
         p = palette_for(self._mode)
         painter.setFont(scaled_font(self.font(), -2, bold=True))
         painter.setPen(QColor(p.text_tertiary))
         for column, name in enumerate(_WEEKDAYS):
             rect = QRectF(x + column * cell_w, y, cell_w - 4, self.HEADER_HEIGHT)
             painter.drawText(rect, int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), f" {name}")
+        summary_rect = QRectF(x + 7 * cell_w, y, self.SUMMARY_WIDTH - 4, self.HEADER_HEIGHT)
+        painter.drawText(summary_rect, int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter), "Σ h")
+
+    def _paint_summary(self, painter: QPainter, rect: QRectF, kw: int, total: float) -> None:
+        """Zeichnet eine Wochensummen-Kachel: KW-Nummer oben, Stunden unten."""
+        p = palette_for(self._mode)
+        painter.setBrush(QColor(p.bg_secondary))
+        painter.setPen(QColor(p.border))
+        painter.drawRoundedRect(rect, 8, 8)
+
+        painter.setFont(scaled_font(self.font(), -3, bold=True))
+        painter.setPen(QColor(p.text_tertiary))
+        painter.drawText(
+            rect.adjusted(0, 6, -8, 0),
+            int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop),
+            f"KW {kw}",
+        )
+        if total > 0:
+            painter.setFont(scaled_font(self.font(), 1, bold=True))
+            painter.setPen(QColor(p.text_secondary))
+            painter.drawText(
+                rect.adjusted(0, 0, -8, -6),
+                int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom),
+                f"{total:.2f}".replace(".", ","),
+            )
 
     def _paint_cell(self, painter: QPainter, rect: QRectF, cell: DayCell) -> None:
         """Zeichnet eine Tageskachel."""
@@ -186,8 +252,8 @@ class CalendarView(QWidget):
         if cell.day == self._selected:
             border = QColor(p.accent)
         elif cell.in_month and cell.is_workday and cell.hours == 0.0:
-            # Arbeitstag ohne Buchung - der Grund fuer diese Ansicht.
-            border = QColor(p.orange)
+            # Arbeitstag ohne Buchung - der Grund fuer diese Ansicht (rot).
+            border = QColor(p.red)
         painter.setPen(border)
         painter.drawRoundedRect(rect, 8, 8)
 
@@ -203,10 +269,11 @@ class CalendarView(QWidget):
             str(cell.day.day),
         )
 
-        # Stunden
+        # Stunden - an Arbeitstagen nach Erfuellung des Solls eingefaerbt
+        # (gruen ab Soll, orange darunter); Wochenende/Feiertag bleibt neutral.
         if cell.hours > 0:
             painter.setFont(scaled_font(self.font(), 2, bold=True))
-            painter.setPen(QColor(p.text_primary))
+            painter.setPen(self._hours_color(cell, p))
             painter.drawText(
                 rect.adjusted(8, 5, -8, 0),
                 int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop),
@@ -224,6 +291,14 @@ class CalendarView(QWidget):
                 detail,
             )
 
+    def _hours_color(self, cell: DayCell, p: Palette) -> QColor:
+        """Farbe der Tagesstunden: gruen ab Soll, orange darunter, sonst neutral."""
+        if not cell.is_workday:
+            return QColor(p.text_primary)
+        if cell.hours + 1e-6 >= self._target_hours:
+            return QColor(p.green)
+        return QColor(p.orange)
+
     # --- Auswahl --------------------------------------------------------
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
@@ -234,13 +309,10 @@ class CalendarView(QWidget):
             self.day_selected.emit(cell)
 
     def _cell_at(self, x: float, y: float) -> DayCell | None:
-        """Findet die Kachel unter einem Punkt."""
+        """Findet die Kachel unter einem Punkt (Wochensummen-Spalte ausgenommen)."""
         if not self._cells:
             return None
-        rows = len(self._cells) // 7
-        area = self.rect().adjusted(self.PADDING, self.PADDING, -self.PADDING, -self.PADDING)
-        cell_w = area.width() / 7
-        cell_h = (area.height() - self.HEADER_HEIGHT) / max(1, rows)
+        area, cell_w, cell_h, rows = self._geometry()
 
         column = int((x - area.x()) // cell_w)
         row = int((y - area.y() - self.HEADER_HEIGHT) // cell_h)

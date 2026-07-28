@@ -469,7 +469,9 @@ class MainWindow(QMainWindow):
         self._model.set_timesheet(timesheet)
         self._tree_model.set_timesheet(timesheet)
         self._tree.expandAll()
-        self._calendar.set_month(self._year, self._month, timesheet, self._settings.federal_state)
+        self._calendar.set_month(
+            self._year, self._month, timesheet, self._settings.federal_state, self._settings.hours_per_day
+        )
         self._update_year_view(timesheet)
         self._sidebar.set_total(self._model.total_hours)
         self._update_summary(timesheet)
@@ -858,7 +860,9 @@ class MainWindow(QMainWindow):
             month, year = 1, year + 1
         self._month, self._year = month, year
         self._update_period_labels()
-        self._calendar.set_month(self._year, self._month, self._timesheet, self._settings.federal_state)
+        self._calendar.set_month(
+            self._year, self._month, self._timesheet, self._settings.federal_state, self._settings.hours_per_day
+        )
         if self._settings_complete():
             self.load_month()
 

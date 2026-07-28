@@ -6,6 +6,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
 from jira_timesheet_qt.models.settings import Settings
@@ -73,6 +74,29 @@ class TestCalendarView:
         saturday = next(c for c in view.cells if c.day == date(2026, 7, 25))
         assert saturday.is_weekend
         assert not saturday.is_workday
+
+    def test_week_summaries_carry_kw_and_total(self, qapp: QApplication) -> None:
+        view = CalendarView()
+        view.set_month(2026, 7, demo_timesheet())
+        summaries = view.week_summaries()
+        # Eine Summe je Rasterzeile.
+        assert len(summaries) == len(view.cells) // 7
+        by_kw = dict(summaries)
+        # KW 30 (20.-24.07.): 8,0 + 8,0 + 8,0 + 6,5 + 7,0 = 37,5
+        assert by_kw[30] == pytest.approx(37.5)
+        # KW 31 (27.-31.07.): 5,5 + 5,0 + 6,0 = 16,5
+        assert by_kw[31] == pytest.approx(16.5)
+
+    def test_day_hours_color_reflects_target(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.ui.theme import palette_for
+
+        view = CalendarView()
+        view.set_month(2026, 7, demo_timesheet(), "SN", 8.0)
+        p = palette_for(view._mode)
+        full = next(c for c in view.cells if c.day == date(2026, 7, 20))  # 8,0 h -> Soll erfuellt
+        partial = next(c for c in view.cells if c.day == date(2026, 7, 23))  # 6,5 h -> unter Soll
+        assert view._hours_color(full, p).name() == QColor(p.green).name()
+        assert view._hours_color(partial, p).name() == QColor(p.orange).name()
 
 
 class TestYearView:
