@@ -40,7 +40,7 @@ from jira_timesheet_qt.services.holiday_service import HolidayService
 from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
 from jira_timesheet_qt.ui.about_dialog import AboutDialog
 from jira_timesheet_qt.ui.calendar_view import CalendarView, DayCell
-from jira_timesheet_qt.ui.detail_panel import DetailPanel
+from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
 from jira_timesheet_qt.ui.export_service import ExportService
 from jira_timesheet_qt.ui.header import Header
 from jira_timesheet_qt.ui.highlight_delegate import HighlightDelegate
@@ -74,6 +74,9 @@ class MainWindow(QMainWindow):
         self._mode = mode
         self._worker: WorklogWorker | None = None
         self._timesheet: Timesheet | None = None
+        # Zuletzt in der Liste gewaehlter Eintrag - fuer den Details-Befehl aus
+        # Toolbar/Menue (Doppelklick und Kontextmenue bringen ihren mit).
+        self._current_entry: WorklogEntry | None = None
         self._qsettings = QSettings("michaelblaess", "jira-timesheet-qt")
 
         # Nur der reine Name: QApplication traegt den Anzeigenamen selbst bei,
@@ -168,6 +171,7 @@ class MainWindow(QMainWindow):
 
         self._calendar = CalendarView(self._mode)
         self._calendar.day_selected.connect(self._on_day_selected)
+        self._calendar.day_activated.connect(self._on_day_activated)
 
         self._year_view = YearView(self._mode)
         self._year_view.month_selected.connect(self._on_month_selected)
@@ -178,13 +182,9 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._year_view)
         body.addWidget(self._stack)
 
-        self._detail = DetailPanel()
-        body.addWidget(self._detail)
-
         body.setStretchFactor(0, 0)
         body.setStretchFactor(1, 1)
-        body.setStretchFactor(2, 0)
-        body.setSizes([200, 780, 300])
+        body.setSizes([200, 1080])
         self._splitter = body
         outer.addWidget(body, 1)
 
@@ -257,6 +257,7 @@ class MainWindow(QMainWindow):
                     is_checked=lambda: self._stack.currentIndex() == 1))
         add(Command("view.year", run=lambda: self._go_to_view(2),
                     is_checked=lambda: self._stack.currentIndex() == 2))
+        add(Command("view.detail", run=self._show_detail_current))
         add(Command("view.group", run=lambda: self._on_group_toggled(not self._grouped),
                     is_checked=lambda: self._grouped))
         add(Command("view.log", run=self.toggle_log,
@@ -316,6 +317,7 @@ class MainWindow(QMainWindow):
         table.customContextMenuRequested.connect(self._on_table_context_menu)
 
         table.selectionModel().currentRowChanged.connect(self._on_row_changed)
+        table.doubleClicked.connect(self._on_row_activated)
 
         # Hebt den aktuellen Suchbegriff in den Zellen hervor.
         self._highlight = HighlightDelegate(table)
@@ -350,6 +352,7 @@ class MainWindow(QMainWindow):
         tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         tree.customContextMenuRequested.connect(self._on_tree_context_menu)
         tree.selectionModel().currentRowChanged.connect(self._on_row_changed)
+        tree.doubleClicked.connect(self._on_row_activated)
         self._tree = tree
         return tree
 
@@ -475,7 +478,7 @@ class MainWindow(QMainWindow):
         self._update_year_view(timesheet)
         self._sidebar.set_total(self._model.total_hours)
         self._update_summary(timesheet)
-        self._detail.clear()
+        self._current_entry = None
 
         has_rows = self._model.rowCount() > 0
         self._list_stack.setCurrentIndex(self._list_page(has_rows))
@@ -514,9 +517,15 @@ class MainWindow(QMainWindow):
         """Baut das Rechtsklick-Menue fuer eine Zeile (Eintrag oder Tag)."""
         menu = QMenu(self)
 
+        if entry is not None:
+            detail_action = menu.addAction("Details anzeigen")
+            detail_action.triggered.connect(lambda _checked=False, e=entry: self._show_detail(e))
+
         if entry is not None and entry.ticket and self._settings.jira_host:
             open_action = menu.addAction("Ticket im Browser öffnen")
             open_action.triggered.connect(lambda _checked=False, e=entry: self._open_ticket(e))
+
+        if entry is not None:
             menu.addSeparator()
 
         new_action = menu.addAction("Manuelle Zeit erfassen")
@@ -891,14 +900,19 @@ class MainWindow(QMainWindow):
         )
 
     def _on_day_selected(self, cell: DayCell) -> None:
-        """Klick auf eine Kachel zeigt den ersten Eintrag des Tages."""
+        """Klick auf eine Kachel meldet den Tag; Doppelklick zeigt die Details."""
         if cell.entries:
-            self._detail.show_entry(cell.entries[0])
+            self._current_entry = cell.entries[0]
             self._set_status(f"{cell.day:%d.%m.%Y}: {len(cell.entries)} Einträge")
         else:
-            self._detail.clear()
+            self._current_entry = None
             reason = cell.holiday or ("Wochenende" if cell.is_weekend else "keine Buchung")
             self._set_status(f"{cell.day:%d.%m.%Y}: {reason}")
+
+    def _on_day_activated(self, cell: DayCell) -> None:
+        """Doppelklick auf eine Kachel oeffnet die Details des ersten Eintrags."""
+        if cell.entries:
+            self._show_detail(cell.entries[0])
 
     def _on_month_selected(self, month: int) -> None:
         """Klick auf eine Monatskachel wechselt dorthin und laedt."""
@@ -910,15 +924,31 @@ class MainWindow(QMainWindow):
             self.load_month()
 
     def _on_row_changed(self, current: QModelIndex, _previous: QModelIndex) -> None:
-        """Haelt den Detailbereich im Gleichklang mit der Auswahl."""
-        if not current.isValid():
-            self._detail.clear()
+        """Merkt sich den gewaehlten Eintrag fuer den Details-Befehl."""
+        self._current_entry = current.data(ENTRY_ROLE) if current.isValid() else None
+
+    def _on_row_activated(self, index: QModelIndex) -> None:
+        """Doppelklick auf eine Zeile oeffnet die Details.
+
+        Editierbare Zellen (Beschreibung/Stunden manueller Eintraege) bleiben
+        ausgenommen - dort startet der Doppelklick die Inline-Bearbeitung.
+        """
+        if not index.isValid() or index.flags() & Qt.ItemFlag.ItemIsEditable:
             return
-        entry = current.data(ENTRY_ROLE)
-        if entry is None:
-            self._detail.clear()
+        entry = index.data(ENTRY_ROLE)
+        if entry is not None:
+            self._show_detail(entry)
+
+    def _show_detail(self, entry: WorklogEntry) -> None:
+        """Oeffnet den modalen Detail-Dialog fuer einen Eintrag."""
+        TicketDetailDialog(entry, self._settings.jira_host, self).exec()
+
+    def _show_detail_current(self) -> None:
+        """Details-Befehl aus Toolbar/Menue: zeigt den gewaehlten Eintrag."""
+        if self._current_entry is not None:
+            self._show_detail(self._current_entry)
         else:
-            self._detail.show_entry(entry)
+            self._set_status("Kein Eintrag gewählt.")
 
     def _toggle_theme(self) -> None:
         """Schaltet zwischen hellem und dunklem Erscheinungsbild um.

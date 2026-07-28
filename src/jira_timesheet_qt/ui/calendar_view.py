@@ -70,6 +70,7 @@ class CalendarView(QWidget):
     """Monatsraster mit den Buchungen eines Stundenzettels."""
 
     day_selected = Signal(object)
+    day_activated = Signal(object)
 
     HEADER_HEIGHT = 26
     PADDING = 14
@@ -307,6 +308,14 @@ class CalendarView(QWidget):
             self._selected = cell.day
             self.update()
             self.day_selected.emit(cell)
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        """Doppelklick auf eine Kachel meldet den Tag zur Detailanzeige."""
+        cell = self._cell_at(event.position().x(), event.position().y())
+        if cell is not None and cell.in_month:
+            self._selected = cell.day
+            self.update()
+            self.day_activated.emit(cell)
 
     def _cell_at(self, x: float, y: float) -> DayCell | None:
         """Findet die Kachel unter einem Punkt (Wochensummen-Spalte ausgenommen)."""

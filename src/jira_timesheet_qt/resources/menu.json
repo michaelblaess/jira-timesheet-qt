@@ -87,6 +87,18 @@
             "type": "separator"
           },
           {
+            "id": "act.view.detail",
+            "type": "action",
+            "command": "view.detail",
+            "title": "cmd.view.detail",
+            "icon": "mdi6.card-text-outline",
+            "shortcut": "Ctrl+D",
+            "surfaces": [
+              "menu",
+              "toolbar"
+            ]
+          },
+          {
             "id": "act.view.group",
             "type": "action",
             "command": "view.group",

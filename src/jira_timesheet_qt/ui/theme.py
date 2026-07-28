@@ -355,40 +355,27 @@ QSplitter::handle {{
     background-color: {p.border};
 }}
 
-/* ------------------------------------------------------------ Detailbereich */
-#DetailPanel {{
-    background-color: {p.bg_secondary};
-    border-left: 1px solid {p.border};
-}}
-
-#DetailKey {{
+/* ----------------------------------------------------- Detail-Dialog (modal) */
+#DetailDialogTitle {{
     color: {p.text_primary};
-    {mono_rule}
     font-size: 15px;
     font-weight: 700;
 }}
 
-#DetailSummary {{
-    color: {p.text_secondary};
-    font-size: 13px;
-}}
-
-#DetailLabel {{
+#DetailDialogLabel {{
     color: {p.text_tertiary};
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
-    letter-spacing: 0.6px;
 }}
 
-#DetailValue {{
+#DetailDialogValue {{
     color: {p.text_primary};
     font-size: 13px;
 }}
 
-#DetailValueMono {{
-    color: {p.text_primary};
-    {mono_rule}
-    font-size: 13px;
+#DetailDialogLink {{
+    color: {p.accent};
+    font-size: 12px;
 }}
 
 /* -------------------------------------------------------------- Leerzustand */

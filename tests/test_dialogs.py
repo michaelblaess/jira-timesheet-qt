@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 from jira_timesheet_qt.models.settings import Settings
+from jira_timesheet_qt.models.timesheet import WorklogEntry
+from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
 from jira_timesheet_qt.ui.disclaimer_dialog import (
     DISCLAIMER_VERSION,
     DUTIES,
@@ -176,3 +179,43 @@ class TestStatusBar:
         window.load_month()
         assert window._status.property("state") == "error"
         assert window._worker is None
+
+
+def _jira_entry() -> WorklogEntry:
+    return WorklogEntry(
+        date=date(2026, 7, 23), ticket="PROJ-0", summary="Deployment anpassen",
+        author="Mustermann, Max", budget="", hours=4.5, status="IN ARBEIT",
+        issuetype="Story", priority="High", assignee="Mustermann, Max",
+    )
+
+
+class TestTicketDetailDialog:
+    def test_title_carries_ticket_and_summary(self, qapp: QApplication) -> None:
+        dialog = TicketDetailDialog(_jira_entry())
+        title = dialog.findChild(QLabel, "DetailDialogTitle")
+        assert title is not None
+        assert "PROJ-0" in title.text()
+        assert "Deployment anpassen" in title.text()
+
+    def test_values_include_hours_and_status(self, qapp: QApplication) -> None:
+        dialog = TicketDetailDialog(_jira_entry())
+        values = " | ".join(
+            label.text() for label in dialog.findChildren(QLabel, "DetailDialogValue")
+        )
+        assert "4,50 h" in values
+        assert "IN ARBEIT" in values
+        assert "Aus Jira" in values
+
+    def test_link_shown_for_jira_entry(self, qapp: QApplication) -> None:
+        dialog = TicketDetailDialog(_jira_entry(), "https://beispiel.atlassian.net")
+        link = dialog.findChild(QLabel, "DetailDialogLink")
+        assert link is not None
+        assert "beispiel.atlassian.net/browse/PROJ-0" in link.text()
+
+    def test_no_link_for_manual_entry(self, qapp: QApplication) -> None:
+        manual = WorklogEntry(
+            date=date(2026, 7, 1), ticket="", summary="Besprechung", author="Ich",
+            budget="", hours=1.0, manual=True, manual_id=3,
+        )
+        dialog = TicketDetailDialog(manual, "https://beispiel.atlassian.net")
+        assert dialog.findChild(QLabel, "DetailDialogLink") is None

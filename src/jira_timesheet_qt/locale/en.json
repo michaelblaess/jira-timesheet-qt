@@ -30,6 +30,7 @@
   "cmd.reload": "Reload",
   "cmd.settings": "Settings",
   "cmd.view.calendar": "Calendar",
+  "cmd.view.detail": "Show details",
   "cmd.view.group": "Group by day",
   "cmd.view.list": "List",
   "cmd.view.log": "Show messages",

@@ -148,13 +148,14 @@ class TestWindow:
         proxy.sort(_HOURS_COL, Qt.SortOrder.AscendingOrder)
         assert proxy.index(0, _HOURS_COL).data(Qt.ItemDataRole.DisplayRole) == "0,50"
 
-    def test_selection_updates_the_detail_panel(self, window: MainWindow) -> None:
+    def test_selection_tracks_the_current_entry(self, window: MainWindow) -> None:
         table = window.findChild(QTableView)
         assert table is not None
         table.selectRow(0)
         entry = window._proxy.index(0, 0).data(ENTRY_ROLE)
         assert entry is not None
-        assert window._detail._key.text() == entry.ticket
+        # Der gewaehlte Eintrag wird fuer den Details-Befehl gemerkt.
+        assert window._current_entry is entry
 
     def test_view_switch_changes_the_page(self, window: MainWindow) -> None:
         assert window._stack.currentIndex() == 0
@@ -179,4 +180,4 @@ class TestWindow:
         win.set_timesheet(None)
         assert win._header._title.text() == "März 2026"
         assert win._header._subtitle.text() == "Keine Einträge geladen"
-        assert win._detail._key.text() == "Kein Eintrag gewählt"
+        assert win._current_entry is None
