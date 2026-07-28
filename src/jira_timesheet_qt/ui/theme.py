@@ -187,6 +187,94 @@ QToolTip {{
     padding: 6px 10px;
 }}
 
+/* ---------------------------------------------------------- Menue + Toolbar */
+/* Ohne einen vollstaendigen Block uebernimmt QStyleSheetStyle das Menue (weil
+   app-weit ein Stylesheet gesetzt ist) und zeichnet das Icon eines gehoverten
+   Eintrags nicht mehr. Deshalb hier komplett und theme-konsistent. */
+QMenuBar {{
+    background-color: {p.bg_secondary};
+    border-bottom: 1px solid {p.border};
+    padding: 2px 6px;
+}}
+
+QMenuBar::item {{
+    background: transparent;
+    color: {p.text_primary};
+    padding: 5px 10px;
+    border-radius: {RADIUS_SM}px;
+}}
+
+QMenuBar::item:selected {{
+    background-color: {p.bg_tertiary};
+}}
+
+QMenuBar::item:pressed {{
+    background-color: {p.accent_subtle};
+    color: {p.accent};
+}}
+
+QMenu {{
+    background-color: {p.bg_elevated};
+    border: 1px solid {p.border};
+    border-radius: {RADIUS_MD}px;
+    padding: 5px;
+}}
+
+QMenu::item {{
+    /* Links Platz fuer das Icon reservieren - sonst kann es beim Hover
+       verschwinden. */
+    padding: 6px 28px 6px 34px;
+    border-radius: {RADIUS_SM}px;
+    color: {p.text_primary};
+}}
+
+QMenu::item:selected {{
+    background-color: {p.accent_subtle};
+    color: {p.accent};
+}}
+
+QMenu::item:disabled {{
+    color: {p.text_tertiary};
+}}
+
+QMenu::separator {{
+    height: 1px;
+    background-color: {p.border};
+    margin: 5px 10px;
+}}
+
+QMenu::icon {{
+    padding-left: 10px;
+}}
+
+QToolBar {{
+    background-color: {p.bg_secondary};
+    border-bottom: 1px solid {p.border};
+    padding: 3px 6px;
+    spacing: 2px;
+}}
+
+QToolBar::separator {{
+    background-color: {p.border};
+    width: 1px;
+    margin: 4px 6px;
+}}
+
+QToolButton {{
+    background: transparent;
+    border: none;
+    border-radius: {RADIUS_SM}px;
+    padding: 5px;
+}}
+
+QToolButton:hover {{
+    background-color: {p.bg_tertiary};
+}}
+
+QToolButton:pressed, QToolButton:checked {{
+    background-color: {p.accent_subtle};
+}}
+
 /* ------------------------------------------------------------------ Kopfzeile */
 #Header {{
     background-color: {p.bg_secondary};
@@ -337,9 +425,17 @@ QSplitter::handle {{
 }}
 
 /* ------------------------------------------------------------ Statuszeile */
-#StatusBar {{
+QStatusBar {{
     background-color: {p.bg_secondary};
     border-top: 1px solid {p.border};
+}}
+
+QStatusBar::item {{
+    border: none;
+}}
+
+#StatusBar {{
+    background: transparent;
     color: {p.text_tertiary};
     font-size: 12px;
 }}

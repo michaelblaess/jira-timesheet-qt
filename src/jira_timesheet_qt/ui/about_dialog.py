@@ -71,6 +71,7 @@ class AboutDialog(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(f"Über {__app_name__}")
+        self.setSizeGripEnabled(True)
         self.setFixedWidth(460)
 
         outer = QVBoxLayout(self)

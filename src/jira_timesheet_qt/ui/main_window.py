@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QStackedWidget,
+    QStatusBar,
     QTableView,
     QTreeView,
     QVBoxLayout,
@@ -181,12 +182,17 @@ class MainWindow(QMainWindow):
         self._summary = SummaryBar()
         outer.addWidget(self._summary)
 
+        self.setCentralWidget(central)
+
+        # Echte QStatusBar - traegt die Statuszeile UND den Groessengriff unten
+        # rechts (setSizeGripEnabled). Das Label behaelt Objektname/Zustandsfarbe.
         self._status = QLabel("Bereit")
         self._status.setObjectName("StatusBar")
-        self._status.setContentsMargins(18, 7, 18, 7)
-        outer.addWidget(self._status)
-
-        self.setCentralWidget(central)
+        self._status.setContentsMargins(18, 5, 12, 5)
+        status_bar = QStatusBar()
+        status_bar.setSizeGripEnabled(True)
+        status_bar.addWidget(self._status, 1)
+        self.setStatusBar(status_bar)
 
         self._log = LogDock(self)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._log)

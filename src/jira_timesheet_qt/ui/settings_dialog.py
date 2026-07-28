@@ -73,6 +73,7 @@ class SettingsDialog(QDialog):
         self._settings = settings
         self.setWindowTitle("Einstellungen")
         self.setMinimumSize(720, 520)
+        self.setSizeGripEnabled(True)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)

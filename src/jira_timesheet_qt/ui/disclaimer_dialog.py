@@ -109,6 +109,7 @@ class DisclaimerDialog(QDialog):
         self.setWindowTitle(TITLE)
         self.setMinimumSize(640, 560)
         self.setModal(True)
+        self.setSizeGripEnabled(True)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(28, 24, 28, 20)

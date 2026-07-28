@@ -49,6 +49,7 @@ class ManualEntryDialog(QDialog):
         self._entry = entry
         self._result: ManualEntry | None = None
         self.setWindowTitle("Manuellen Eintrag bearbeiten" if entry else "Manuelle Zeit erfassen")
+        self.setSizeGripEnabled(True)
         self.setMinimumWidth(480)
 
         outer = QVBoxLayout(self)

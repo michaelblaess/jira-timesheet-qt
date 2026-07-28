@@ -62,6 +62,11 @@ def main() -> int:
     # Anwendung je nach Betriebssystem anders aussehen.
     app.setStyle("Fusion")
 
+    # App-Icon fuer Fenster, Dialoge und Taskleiste - alle Fenster erben es.
+    from jira_timesheet_qt.ui.icons import app_icon
+
+    app.setWindowIcon(app_icon())
+
     settings = Settings.load()
 
     # Sprachpaket laden, BEVOR Fenster und Dienste t() aufrufen - sonst geben
