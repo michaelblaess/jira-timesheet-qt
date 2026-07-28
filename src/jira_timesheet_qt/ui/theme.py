@@ -276,6 +276,25 @@ QToolButton:pressed, QToolButton:checked {{
 }}
 
 /* ---------------------------------------------- Monat und Suche in der Toolbar */
+/* Die Blaetter-Knoepfe sollen immer als Knoepfe erkennbar sein, nicht erst beim
+   Hover - deshalb sichtbarer Rahmen und Flaeche. */
+#MonthNavButton {{
+    background-color: {p.bg_elevated};
+    border: 1px solid {p.border};
+    border-radius: {RADIUS_SM}px;
+    padding: 4px 10px;
+}}
+
+#MonthNavButton:hover {{
+    background-color: {p.bg_tertiary};
+    border-color: {p.text_tertiary};
+}}
+
+#MonthNavButton:pressed {{
+    background-color: {p.accent_subtle};
+    border-color: {p.accent};
+}}
+
 #ToolbarMonth {{
     font-size: 15px;
     font-weight: 700;
@@ -326,6 +345,24 @@ QSplitter::handle {{
     background-color: {p.border};
 }}
 
+/* Trenn-/Griffleiste des Meldungsfensters (QDockWidget). Ohne eigene Regel ist
+   sie im hellen Erscheinungsbild kaum zu sehen. */
+QMainWindow::separator {{
+    background-color: {p.text_tertiary};
+    width: 5px;
+    height: 5px;
+}}
+
+QMainWindow::separator:hover {{
+    background-color: {p.accent};
+}}
+
+/* Listen-/Baumansicht etwas groesser als die Grundschrift - bessere Lesbarkeit
+   in der (gruppierten) Liste. */
+QTreeView, QTableView {{
+    font-size: 14px;
+}}
+
 /* ----------------------------------------------------- Detail-Dialog (modal) */
 #DetailDialogTitle {{
     color: {p.text_primary};
@@ -369,12 +406,12 @@ QSplitter::handle {{
 
 #SummaryStatLabel {{
     color: {p.text_tertiary};
-    font-size: 12px;
+    font-size: 14px;
 }}
 
 #SummaryStatValue {{
     color: {p.text_primary};
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 700;
 }}
 

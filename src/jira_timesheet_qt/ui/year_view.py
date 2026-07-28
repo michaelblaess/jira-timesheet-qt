@@ -59,6 +59,9 @@ class MonthCell:
     hours: float = 0.0
     target: float = 0.0
     entries: int = 0
+    booked_days: int = 0
+    workdays: int = 0
+    manual_hours: float = 0.0
 
     @property
     def ratio(self) -> float:
@@ -133,20 +136,28 @@ class YearView(QWidget):
         entries_by_month: dict[int, int],
         hours_per_day: float = 8.0,
         federal_state: str = "SN",
+        booked_days_by_month: dict[int, int] | None = None,
+        manual_by_month: dict[int, float] | None = None,
     ) -> None:
         """Uebernimmt die Summen eines Jahres."""
         self._year = year
         holidays = HolidayService(federal_state)
+        booked = booked_days_by_month or {}
+        manual = manual_by_month or {}
         self._cells = []
         for month in range(1, 13):
             first = date(year, month, 1)
             last = date(year, month, _days_in_month(year, month))
+            workdays = holidays.count_workdays(first, last)
             self._cells.append(
                 MonthCell(
                     month=month,
                     hours=hours_by_month.get(month, 0.0),
-                    target=holidays.count_workdays(first, last) * hours_per_day,
+                    target=workdays * hours_per_day,
                     entries=entries_by_month.get(month, 0),
+                    booked_days=booked.get(month, 0),
+                    workdays=workdays,
+                    manual_hours=manual.get(month, 0.0),
                 )
             )
         self._summary = compute_year_summary(self._cells, self._elapsed_month())
@@ -278,6 +289,23 @@ class YearView(QWidget):
             int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop),
             f"von {cell.target:.0f} h Soll",
         )
+
+        # Gebuchte Tage von Soll-Arbeitstagen
+        painter.setPen(QColor(p.text_secondary if cell.has_data else p.text_tertiary))
+        painter.drawText(
+            rect.adjusted(14, 80, -14, 0),
+            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop),
+            f"{cell.booked_days} / {cell.workdays} Tage",
+        )
+
+        # Manueller Anteil, nur wenn vorhanden
+        if cell.manual_hours > 0:
+            painter.setPen(QColor(p.orange))
+            painter.drawText(
+                rect.adjusted(14, 98, -14, 0),
+                int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop),
+                f"davon manuell: {cell.manual_hours:.2f} h".replace(".", ","),
+            )
 
         # Auslastungsbalken am unteren Rand
         bar_area = QRectF(rect.x() + 14, rect.bottom() - 20, rect.width() - 28, 6)

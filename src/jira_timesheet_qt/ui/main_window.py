@@ -33,7 +33,6 @@ from PySide6.QtWidgets import (
     QTabBar,
     QTableView,
     QToolBar,
-    QToolButton,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -108,6 +107,9 @@ class MainWindow(QMainWindow):
         # Summen je Monat, gefuellt sobald ein Monat geladen wurde.
         self._year_hours: dict[int, float] = {}
         self._year_entries: dict[int, int] = {}
+        # Gebuchte Tage und manueller Anteil je Monat (fuer die Jahreskacheln).
+        self._year_booked: dict[int, int] = {}
+        self._year_manual: dict[int, float] = {}
         # Fuer welches Jahr die Jahresansicht zuletzt vollstaendig geladen wurde.
         self._year_loaded_for: int | None = None
 
@@ -283,15 +285,14 @@ class MainWindow(QMainWindow):
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         return spacer
 
-    def _nav_button(self, icon: str, tooltip: str, slot: Callable[[], None]) -> QToolButton:
-        """Baut einen rahmenlosen Pfeilknopf fuer die Monatsnavigation."""
-        button = QToolButton()
-        button.setProperty("variant", "ghost")
+    def _nav_button(self, icon: str, tooltip: str, slot: Callable[[], None]) -> QPushButton:
+        """Baut einen Pfeilknopf fuer die Monatsnavigation - als echter Knopf."""
+        button = QPushButton()
+        button.setObjectName("MonthNavButton")
         button.setIcon(load_icon(icon, self._mode))
-        button.setIconSize(QSize(18, 18))
+        button.setIconSize(QSize(16, 16))
         button.setToolTip(tooltip)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.setAutoRaise(True)
         button.clicked.connect(slot)
         return button
 
@@ -828,15 +829,24 @@ class MainWindow(QMainWindow):
         """Aggregiert einen Jahres-Stundenzettel in die zwoelf Monatskacheln."""
         hours: dict[int, float] = {}
         entries: dict[int, int] = {}
+        manual: dict[int, float] = {}
+        days: dict[int, set[date]] = {}
         for entry in timesheet.all_entries:
             month = entry.date.month
             hours[month] = hours.get(month, 0.0) + entry.hours
             entries[month] = entries.get(month, 0) + 1
+            if entry.manual:
+                manual[month] = manual.get(month, 0.0) + entry.hours
+            days.setdefault(month, set()).add(entry.date)
+        booked = {month: len(dates) for month, dates in days.items()}
         self._year_hours = hours
         self._year_entries = entries
+        self._year_booked = booked
+        self._year_manual = manual
         self._year_loaded_for = self._year
         self._year_view.set_year(
-            self._year, hours, entries, self._settings.hours_per_day, self._settings.federal_state
+            self._year, hours, entries, self._settings.hours_per_day, self._settings.federal_state,
+            booked_days_by_month=booked, manual_by_month=manual,
         )
         self._refresh_summary_bar()
         count = sum(entries.values())
@@ -971,12 +981,16 @@ class MainWindow(QMainWindow):
         if timesheet is not None and timesheet.all_entries:
             self._year_hours[self._month] = timesheet.total_hours
             self._year_entries[self._month] = len(timesheet.all_entries)
+            self._year_booked[self._month] = len({e.date for e in timesheet.all_entries})
+            self._year_manual[self._month] = sum(e.hours for e in timesheet.all_entries if e.manual)
         self._year_view.set_year(
             self._year,
             self._year_hours,
             self._year_entries,
             self._settings.hours_per_day,
             self._settings.federal_state,
+            booked_days_by_month=self._year_booked,
+            manual_by_month=self._year_manual,
         )
 
     def _on_day_selected(self, cell: DayCell) -> None:

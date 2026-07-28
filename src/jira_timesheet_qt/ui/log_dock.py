@@ -42,7 +42,7 @@ class LogDock(QDockWidget):
     MAX_LINES = 2000
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__("Meldungen", parent)
+        super().__init__("Log", parent)
         self.setObjectName("LogDock")
         self.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
 

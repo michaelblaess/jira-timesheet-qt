@@ -197,9 +197,9 @@ class SummaryBar(QWidget):
         self._set_ratio(actual, target)
 
     def clear(self) -> None:
-        """Dezenter Platzhalter, solange nichts geladen ist."""
-        self._render([SummarySegment("", "Noch keine Daten")])
-        self._bar.set_value(0.0, "")
+        """Leert die Leiste - ohne Daten bleiben Balken und Text unsichtbar."""
+        self._render([])
+        self._bar.setVisible(False)
 
     def apply_mode(self, mode: Mode) -> None:
         """Uebernimmt ein anderes Erscheinungsbild (faerbt den Balken um)."""
@@ -211,6 +211,7 @@ class SummaryBar(QWidget):
     def _set_ratio(self, actual: float, target: float) -> None:
         """Setzt den Fortschrittsbalken aus Ist und Soll (Prozenttext)."""
         ratio = actual / target if target > 0 else 0.0
+        self._bar.setVisible(True)
         self._bar.set_value(ratio, f"{ratio * 100:.0f} %" if target > 0 else "")
 
     def _render(self, segments: list[SummarySegment]) -> None:

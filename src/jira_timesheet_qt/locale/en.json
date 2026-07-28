@@ -33,7 +33,7 @@
   "cmd.view.detail": "Show details",
   "cmd.view.group": "Group by day",
   "cmd.view.list": "List",
-  "cmd.view.log": "Show messages",
+  "cmd.view.log": "Show log",
   "cmd.view.theme": "Toggle appearance",
   "cmd.view.year": "Year",
   "common.btn_cancel": "Cancel (Esc)",

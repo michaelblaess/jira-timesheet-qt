@@ -74,8 +74,8 @@ class CalendarView(QWidget):
 
     HEADER_HEIGHT = 26
     PADDING = 14
-    # Breite der Wochensummen-Spalte rechts (KW-Nummer + Wochenstunden).
-    SUMMARY_WIDTH = 66
+    # Breite der Wochensummen-Spalte rechts (KW-Nummer + Wochenstunden inkl. "h").
+    SUMMARY_WIDTH = 84
 
     def __init__(self, mode: Mode = Mode.DARK, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -214,7 +214,7 @@ class CalendarView(QWidget):
         painter.drawText(summary_rect, int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter), "Σ h")
 
     def _paint_summary(self, painter: QPainter, rect: QRectF, kw: int, total: float) -> None:
-        """Zeichnet eine Wochensummen-Kachel: KW-Nummer oben, Stunden unten."""
+        """Zeichnet eine Wochensummen-Kachel: KW-Nummer und Stunden oben."""
         p = palette_for(self._mode)
         painter.setBrush(QColor(p.bg_secondary))
         painter.setPen(QColor(p.border))
@@ -231,9 +231,9 @@ class CalendarView(QWidget):
             painter.setFont(scaled_font(self.font(), 1, bold=True))
             painter.setPen(QColor(p.text_secondary))
             painter.drawText(
-                rect.adjusted(0, 0, -8, -6),
-                int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom),
-                f"{total:.2f}".replace(".", ","),
+                rect.adjusted(0, 24, -8, 0),
+                int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop),
+                f"{total:.2f} h".replace(".", ","),
             )
 
     def _paint_cell(self, painter: QPainter, rect: QRectF, cell: DayCell) -> None:
@@ -261,8 +261,8 @@ class CalendarView(QWidget):
         if not cell.in_month:
             return
 
-        # Tageszahl
-        painter.setFont(scaled_font(self.font(), 0, bold=cell.day == today))
+        # Tageszahl - genauso gross wie die Stundenzahl (beide +2), oben ausgerichtet.
+        painter.setFont(scaled_font(self.font(), 2, bold=cell.day == today))
         painter.setPen(QColor(p.accent_hover if cell.day == today else p.text_secondary))
         painter.drawText(
             rect.adjusted(8, 5, -8, 0),
@@ -278,7 +278,7 @@ class CalendarView(QWidget):
             painter.drawText(
                 rect.adjusted(8, 5, -8, 0),
                 int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop),
-                f"{cell.hours:.2f}".replace(".", ","),
+                f"{cell.hours:.2f} h".replace(".", ","),
             )
 
         # Vorgaenge oder Feiertagsname
@@ -287,7 +287,7 @@ class CalendarView(QWidget):
         detail = cell.holiday if cell.holiday else ", ".join(dict.fromkeys(e.ticket for e in cell.entries))
         if detail:
             painter.drawText(
-                rect.adjusted(8, 26, -8, -6),
+                rect.adjusted(8, 30, -8, -6),
                 int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap),
                 detail,
             )
