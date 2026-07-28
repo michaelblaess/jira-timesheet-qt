@@ -5,11 +5,6 @@ Desktop-GUI für Stundenzettel aus Jira-Worklogs, auf PySide6 (Qt 6).
 > **Status:** Benutzbar. Zugang eintragen, Monat wählen, Buchungen holen,
 > als Excel oder PDF ausgeben. Was noch fehlt, steht in [PLAN.md](PLAN.md).
 
-<p align="center">
-  <img src="docs/screenshots/main-dark.png" width="49%" alt="Dunkles Erscheinungsbild">
-  <img src="docs/screenshots/main-light.png" width="49%" alt="Helles Erscheinungsbild">
-</p>
-
 ```bash
 ./run.ps1 --demo     # startet mit Beispieldaten, ohne Jira
 ```

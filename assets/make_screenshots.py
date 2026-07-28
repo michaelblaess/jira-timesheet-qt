@@ -1,9 +1,14 @@
 """Erzeugt die Screenshots in docs/screenshots neu.
 
-Bewusst mit BLANKEN Settings() (keine echten Zugangsdaten im Bild) und den
-Demodaten. Laeuft auf der echten Qt-Plattform - die Offscreen-Plattform kennt
-keine Systemschriften und liefert leere Kaesten. Die Fenster werden mit
-WA_DontShowOnScreen unsichtbar aufgebaut und per grab() abgelichtet.
+WICHTIG: Die Beispieldaten (demo.py) enthalten reale ExampleCorp/ExampleCorp-Ticketnummern
+und -Beschreibungen. Erzeugte Screenshots deshalb NICHT eigenmaechtig committen
+oder pushen - erst nach Absprache und mit anonymisierten Daten (Funktion
+"Daten anonymisieren"). Das gilt auch auf dem noch privaten Repo.
+
+Bewusst mit BLANKEN Settings() (keine echten Zugangsdaten im Bild). Laeuft auf
+der echten Qt-Plattform - die Offscreen-Plattform kennt keine Systemschriften
+und liefert leere Kaesten. Die Fenster werden mit WA_DontShowOnScreen unsichtbar
+aufgebaut und per grab() abgelichtet.
 
 Aufruf:  uv run python assets/make_screenshots.py
 """
