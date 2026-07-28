@@ -8,14 +8,17 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
+from jira_timesheet_qt.models.export_column import default_columns
 from jira_timesheet_qt.models.timesheet import WorklogEntry
 from jira_timesheet_qt.ui.demo import demo_timesheet
-from jira_timesheet_qt.ui.timesheet_model import COLUMNS, TimesheetModel, apply_manual_edit
+from jira_timesheet_qt.ui.grid_columns import build_columns
+from jira_timesheet_qt.ui.timesheet_model import TimesheetModel, apply_manual_edit
 from jira_timesheet_qt.ui.timesheet_tree_model import TimesheetTreeModel
 
-_SUMMARY_COL = next(i for i, c in enumerate(COLUMNS) if c.key == "summary")
-_HOURS_COL = next(i for i, c in enumerate(COLUMNS) if c.key == "hours")
-_DATE_COL = next(i for i, c in enumerate(COLUMNS) if c.key == "date")
+_KEYS = [c.key for c in build_columns(default_columns())]
+_SUMMARY_COL = _KEYS.index("description")
+_HOURS_COL = _KEYS.index("hours")
+_DATE_COL = _KEYS.index("date")
 
 
 def _manual_entry() -> WorklogEntry:
@@ -33,7 +36,7 @@ class TestApplyManualEdit:
 
     def test_summary_is_stripped(self) -> None:
         entry = _manual_entry()
-        assert apply_manual_edit(entry, "summary", "  neuer Text  ") is True
+        assert apply_manual_edit(entry, "description", "  neuer Text  ") is True
         assert entry.summary == "neuer Text"
 
     def test_invalid_hours_rejected(self) -> None:
@@ -45,7 +48,7 @@ class TestApplyManualEdit:
         assert apply_manual_edit(_manual_entry(), "hours", "0") is False
 
     def test_empty_summary_rejected(self) -> None:
-        assert apply_manual_edit(_manual_entry(), "summary", "   ") is False
+        assert apply_manual_edit(_manual_entry(), "description", "   ") is False
 
     def test_unknown_column_rejected(self) -> None:
         assert apply_manual_edit(_manual_entry(), "author", "X") is False

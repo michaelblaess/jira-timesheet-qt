@@ -15,12 +15,18 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QApplication, QTableView
 
+from jira_timesheet_qt.models.export_column import default_columns
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.ui.demo import demo_timesheet
 from jira_timesheet_qt.ui.fonts import load_fonts
+from jira_timesheet_qt.ui.grid_columns import build_columns
 from jira_timesheet_qt.ui.main_window import MainWindow
 from jira_timesheet_qt.ui.theme import DARK, LIGHT, Mode, build_palette, build_qss
-from jira_timesheet_qt.ui.timesheet_model import COLUMNS, ENTRY_ROLE, TimesheetModel
+from jira_timesheet_qt.ui.timesheet_model import ENTRY_ROLE, TimesheetModel
+
+_KEYS = [c.key for c in build_columns(default_columns())]
+_DATE_COL = _KEYS.index("date")
+_HOURS_COL = _KEYS.index("hours")
 
 
 @pytest.fixture
@@ -60,13 +66,13 @@ class TestModel:
         model = TimesheetModel()
         model.set_timesheet(demo_timesheet())
         assert model.rowCount() == 15
-        assert model.columnCount() == len(COLUMNS)
+        assert model.columnCount() == len(_KEYS)
 
     def test_german_number_and_date_format(self) -> None:
         model = TimesheetModel()
         model.set_timesheet(demo_timesheet())
-        first = model.index(0, 0).data(Qt.ItemDataRole.DisplayRole)
-        hours = model.index(0, 5).data(Qt.ItemDataRole.DisplayRole)
+        first = model.index(0, _DATE_COL).data(Qt.ItemDataRole.DisplayRole)
+        hours = model.index(0, _HOURS_COL).data(Qt.ItemDataRole.DisplayRole)
         assert first == "20.07.2026"
         assert hours == "2,50"
 
@@ -87,6 +93,37 @@ class TestModel:
         assert model.rowCount() == 0
         assert model.period is None
 
+    def test_hidden_columns_are_dropped_from_the_grid(self) -> None:
+        """Der Kern des Fixes: Sichtbarkeit aus den Einstellungen steuert das Grid."""
+        columns = default_columns()
+        for column in columns:
+            if column.key in ("customer", "day_hours", "week"):
+                column.visible = False
+        model = TimesheetModel()
+        model.set_columns(columns, "Vertrieb")
+        keys = model.column_keys()
+        assert "customer" not in keys
+        assert "day_hours" not in keys
+        assert "week" not in keys
+        assert keys == ["weekday", "date", "ticket", "description", "hours"]
+
+    def test_all_hidden_falls_back_to_defaults(self) -> None:
+        columns = default_columns()
+        for column in columns:
+            column.visible = False
+        model = TimesheetModel()
+        model.set_columns(columns, "Vertrieb")
+        assert model.columnCount() == len(_KEYS)
+
+    def test_customer_column_falls_back_to_default(self) -> None:
+        model = TimesheetModel()
+        model.set_columns(default_columns(), "Musterkunde")
+        model.set_timesheet(demo_timesheet())
+        customer_col = _KEYS.index("customer")
+        # Jira-Zeilen tragen keinen eigenen Kunden -> Vorgabe aus den Einstellungen.
+        jira_row = next(r for r in range(model.rowCount()) if not model.entry_at(r).manual)  # type: ignore[union-attr]
+        assert model.index(jira_row, customer_col).data(Qt.ItemDataRole.DisplayRole) == "Musterkunde"
+
 
 class TestWindow:
     def test_table_shows_all_rows(self, window: MainWindow) -> None:
@@ -105,11 +142,11 @@ class TestWindow:
     def test_sorting_uses_raw_values_not_display_text(self, window: MainWindow) -> None:
         """Nach Stunden sortiert, nicht nach der Zeichenkette "0,50"."""
         proxy = window._proxy
-        proxy.sort(5, Qt.SortOrder.DescendingOrder)
-        top = proxy.index(0, 5).data(Qt.ItemDataRole.DisplayRole)
+        proxy.sort(_HOURS_COL, Qt.SortOrder.DescendingOrder)
+        top = proxy.index(0, _HOURS_COL).data(Qt.ItemDataRole.DisplayRole)
         assert top == "7,00"
-        proxy.sort(5, Qt.SortOrder.AscendingOrder)
-        assert proxy.index(0, 5).data(Qt.ItemDataRole.DisplayRole) == "0,50"
+        proxy.sort(_HOURS_COL, Qt.SortOrder.AscendingOrder)
+        assert proxy.index(0, _HOURS_COL).data(Qt.ItemDataRole.DisplayRole) == "0,50"
 
     def test_selection_updates_the_detail_panel(self, window: MainWindow) -> None:
         table = window.findChild(QTableView)

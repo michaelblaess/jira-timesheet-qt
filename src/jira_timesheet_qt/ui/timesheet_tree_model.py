@@ -6,8 +6,8 @@ Gruppen auf und zu. Sortieren/Filtern uebernimmt ein vorgeschaltetes
 QSortFilterProxyModel (rekursiv, damit eine Gruppe erhalten bleibt, sobald ein
 Kind den Suchbegriff enthaelt).
 
-Spalten, Sortier-Rolle und Eintrags-Rolle kommen aus timesheet_model, damit
-Tabelle und Baum identisch formatieren.
+Die angezeigten Spalten kommen wie in der flachen Tabelle aus der Nutzer-
+Konfiguration (siehe grid_columns), damit Tabelle und Baum identisch aussehen.
 """
 
 from __future__ import annotations
@@ -26,27 +26,22 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QColor, QFont
 
+from jira_timesheet_qt.models.export_column import ExportColumn, default_columns
 from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
-from jira_timesheet_qt.ui.timesheet_model import (
-    COLUMNS,
-    EDITABLE_KEYS,
-    ENTRY_ROLE,
-    SORT_ROLE,
-    Column,
-    apply_manual_edit,
+from jira_timesheet_qt.ui.grid_columns import (
+    GridColumn,
+    build_columns,
+    display_value,
+    group_display,
+    group_sort,
+    sort_value,
 )
+from jira_timesheet_qt.ui.timesheet_model import ENTRY_ROLE, SORT_ROLE, apply_manual_edit
 
 AnyIndex = QModelIndex | QPersistentModelIndex
 
-_WEEKDAYS = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 
-
-def _fmt_hours(hours: float) -> str:
-    """Stunden mit deutschem Dezimalkomma, zwei Nachkommastellen."""
-    return f"{hours:.2f}".replace(".", ",")
-
-
-def _alignment(column: Column) -> int:
+def _alignment(column: GridColumn) -> int:
     alignment = Qt.AlignmentFlag.AlignRight if column.numeric else Qt.AlignmentFlag.AlignLeft
     return int(alignment | Qt.AlignmentFlag.AlignVCenter)
 
@@ -86,8 +81,31 @@ class TimesheetTreeModel(QAbstractItemModel):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._root = _Node("root", 0, None)
+        self._columns: list[GridColumn] = build_columns(default_columns())
+        self._default_customer = ""
         # Farbe fuer manuell erfasste Zeilen, oder None wenn abgeschaltet.
         self._manual_color: QColor | None = None
+
+    # --- Konfiguration -------------------------------------------------
+
+    def set_columns(self, columns: list[ExportColumn], default_customer: str) -> None:
+        """Setzt die sichtbaren Spalten und den Vorgabe-Kunden neu."""
+        self.beginResetModel()
+        self._columns = build_columns(columns)
+        self._default_customer = default_customer
+        self.endResetModel()
+
+    def column_keys(self) -> list[str]:
+        """Schluessel der aktuell angezeigten Spalten, in Reihenfolge."""
+        return [column.key for column in self._columns]
+
+    def stretch_column(self) -> int:
+        """Index der Spalte, die die Restbreite fuellt (Beschreibung), sonst -1."""
+        return next((i for i, c in enumerate(self._columns) if c.stretch), -1)
+
+    def column_width(self, section: int) -> int:
+        """Vorgabe-Breite einer Spalte."""
+        return self._columns[section].width if 0 <= section < len(self._columns) else 100
 
     def set_manual_color(self, color: QColor | None) -> None:
         """Setzt die Einfaerbung manueller Eintraege (None = keine)."""
@@ -166,7 +184,7 @@ class TimesheetTreeModel(QAbstractItemModel):
         return len(self._node(parent).children)
 
     def columnCount(self, parent: AnyIndex = QModelIndex()) -> int:  # noqa: N802,B008
-        return len(COLUMNS)
+        return len(self._columns)
 
     def headerData(  # noqa: N802
         self,
@@ -174,32 +192,33 @@ class TimesheetTreeModel(QAbstractItemModel):
         orientation: Qt.Orientation,
         role: int = Qt.ItemDataRole.DisplayRole,
     ) -> Any:
-        if orientation is not Qt.Orientation.Horizontal or not 0 <= section < len(COLUMNS):
+        if orientation is not Qt.Orientation.Horizontal or not 0 <= section < len(self._columns):
             return None
         if role == Qt.ItemDataRole.DisplayRole:
-            return COLUMNS[section].title
+            return self._columns[section].title
         if role == Qt.ItemDataRole.TextAlignmentRole:
-            return _alignment(COLUMNS[section])
+            return _alignment(self._columns[section])
         return None
 
     def data(self, index: AnyIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
-        if not index.isValid():
+        if not index.isValid() or not 0 <= index.column() < len(self._columns):
             return None
         node = self._node(index)
-        column = COLUMNS[index.column()]
+        column = self._columns[index.column()]
         if node.kind == "group" and node.group is not None:
             return self._group_data(node.group, column, role)
         if node.kind == "entry" and node.entry is not None:
-            return self._entry_data(node.entry, column, role)
+            day_total = node.parent.group.total if node.parent and node.parent.group else node.entry.hours
+            return self._entry_data(node.entry, column, day_total, role)
         return None
 
     def flags(self, index: AnyIndex) -> Qt.ItemFlag:
         """Nur manuelle Eintragszeilen sind in den editierbaren Spalten aenderbar."""
         flags = super().flags(index)
-        if not index.isValid():
+        if not index.isValid() or not 0 <= index.column() < len(self._columns):
             return flags
         entry = self.entry_at_index(index)
-        if entry is not None and entry.manual and COLUMNS[index.column()].key in EDITABLE_KEYS:
+        if entry is not None and entry.manual and self._columns[index.column()].editable:
             return flags | Qt.ItemFlag.ItemIsEditable
         return flags
 
@@ -210,12 +229,12 @@ class TimesheetTreeModel(QAbstractItemModel):
         role: int = Qt.ItemDataRole.EditRole,
     ) -> bool:
         """Uebernimmt eine Inline-Aenderung an einem manuellen Eintrag."""
-        if role != Qt.ItemDataRole.EditRole or not index.isValid():
+        if role != Qt.ItemDataRole.EditRole or not index.isValid() or not 0 <= index.column() < len(self._columns):
             return False
         entry = self.entry_at_index(index)
         if entry is None or not entry.manual:
             return False
-        if not apply_manual_edit(entry, COLUMNS[index.column()].key, value):
+        if not apply_manual_edit(entry, self._columns[index.column()].key, value):
             return False
         self.dataChanged.emit(index, index)
         self.manual_edited.emit(entry)
@@ -223,24 +242,11 @@ class TimesheetTreeModel(QAbstractItemModel):
 
     # --- Zellinhalte ----------------------------------------------------
 
-    def _group_data(self, group: _Group, column: Column, role: int) -> Any:
+    def _group_data(self, group: _Group, column: GridColumn, role: int) -> Any:
         if role == Qt.ItemDataRole.DisplayRole:
-            if column.key == "date":
-                return group.day.strftime("%d.%m.%Y")
-            if column.key == "weekday":
-                return _WEEKDAYS[group.day.weekday()]
-            if column.key == "summary":
-                count = len(group.entries)
-                return "1 Eintrag" if count == 1 else f"{count} Einträge"
-            if column.key == "hours":
-                return _fmt_hours(group.total)
-            return ""
+            return group_display(column.key, group.day, len(group.entries), group.total)
         if role == SORT_ROLE:
-            if column.key == "date":
-                return group.day
-            if column.key == "hours":
-                return group.total
-            return ""
+            return group_sort(column.key, group.day, group.total)
         if role == Qt.ItemDataRole.FontRole:
             font = QFont()
             font.setBold(True)
@@ -249,26 +255,16 @@ class TimesheetTreeModel(QAbstractItemModel):
             return _alignment(column)
         return None
 
-    def _entry_data(self, entry: WorklogEntry, column: Column, role: int) -> Any:
+    def _entry_data(self, entry: WorklogEntry, column: GridColumn, day_total: float, role: int) -> Any:
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
-            # Datum und Tag stehen schon in der Gruppenzeile darueber.
-            if column.key in ("date", "weekday"):
+            # Datum, Tag und KW stehen schon in der Gruppenzeile darueber.
+            if column.key in ("date", "weekday", "week"):
                 return ""
-            if column.key == "ticket":
-                return entry.ticket
-            if column.key == "summary":
-                return entry.summary
-            if column.key == "author":
-                return entry.author
-            if column.key == "hours":
-                return _fmt_hours(entry.hours)
-            return ""
+            return display_value(entry, column.key, day_total, self._default_customer)
         if role == ENTRY_ROLE:
             return entry
         if role == SORT_ROLE:
-            if column.key == "hours":
-                return entry.hours
-            return self._entry_data(entry, column, Qt.ItemDataRole.DisplayRole).lower()
+            return sort_value(entry, column.key, day_total, self._default_customer)
         if role == Qt.ItemDataRole.TextAlignmentRole:
             return _alignment(column)
         if role == Qt.ItemDataRole.ForegroundRole and entry.manual and self._manual_color is not None:

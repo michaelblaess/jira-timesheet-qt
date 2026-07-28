@@ -52,7 +52,7 @@ from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
 from jira_timesheet_qt.ui.sidebar import Sidebar
 from jira_timesheet_qt.ui.summary_bar import SummaryBar
 from jira_timesheet_qt.ui.theme import Mode, palette_for
-from jira_timesheet_qt.ui.timesheet_model import COLUMNS, ENTRY_ROLE, SORT_ROLE, TimesheetModel
+from jira_timesheet_qt.ui.timesheet_model import ENTRY_ROLE, SORT_ROLE, TimesheetModel
 from jira_timesheet_qt.ui.timesheet_tree_model import TimesheetTreeModel
 from jira_timesheet_qt.ui.year_view import YearView
 
@@ -112,6 +112,12 @@ class MainWindow(QMainWindow):
         # Inline-Aenderungen an manuellen Eintraegen persistieren.
         self._model.manual_edited.connect(self._persist_inline_edit)
         self._tree_model.manual_edited.connect(self._persist_inline_edit)
+
+        # Spalten-Konfiguration aus den Einstellungen in die Modelle uebernehmen,
+        # BEVOR die Ansichten gebaut werden - sonst zeigt der erste Aufbau die
+        # Standard-Spalten statt der konfigurierten.
+        self._model.set_columns(self._settings.export_columns, self._settings.default_customer)
+        self._tree_model.set_columns(self._settings.export_columns, self._settings.default_customer)
 
         # Einfaerbung manueller Eintraege aus den Einstellungen uebernehmen.
         self._apply_manual_color()
@@ -304,9 +310,7 @@ class MainWindow(QMainWindow):
         header = table.horizontalHeader()
         header.setHighlightSections(False)
         header.setSectionsMovable(True)
-        for index, column in enumerate(COLUMNS):
-            table.setColumnWidth(index, column.width)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self._apply_column_layout(table, self._model)
 
         table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         table.customContextMenuRequested.connect(self._on_table_context_menu)
@@ -341,15 +345,40 @@ class MainWindow(QMainWindow):
         header = tree.header()
         header.setHighlightSections(False)
         header.setSectionsMovable(True)
-        for index, column in enumerate(COLUMNS):
-            tree.setColumnWidth(index, column.width)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self._apply_column_layout(tree, self._tree_model)
 
         tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         tree.customContextMenuRequested.connect(self._on_tree_context_menu)
         tree.selectionModel().currentRowChanged.connect(self._on_row_changed)
         self._tree = tree
         return tree
+
+    def _apply_column_layout(self, view: QTableView | QTreeView, model: TimesheetModel | TimesheetTreeModel) -> None:
+        """Setzt Spaltenbreiten und die Streck-Spalte (Beschreibung) einer Ansicht.
+
+        Die Spalten kommen aus dem Modell (Nutzer-Konfiguration). Die
+        Beschreibungs-Spalte fuellt die Restbreite, alle anderen behalten ihre
+        Vorgabe-Breite. Ist keine Beschreibung sichtbar, wird die letzte Spalte
+        gestreckt, damit rechts kein leerer Rand bleibt.
+        """
+        header = view.horizontalHeader() if isinstance(view, QTableView) else view.header()
+        count = model.columnCount()
+        stretch = model.stretch_column()
+        if stretch < 0:
+            stretch = count - 1
+        for section in range(count):
+            if section == stretch:
+                header.setSectionResizeMode(section, QHeaderView.ResizeMode.Stretch)
+            else:
+                header.setSectionResizeMode(section, QHeaderView.ResizeMode.Interactive)
+                view.setColumnWidth(section, model.column_width(section))
+
+    def _apply_column_settings(self) -> None:
+        """Uebernimmt die Spalten-Konfiguration aus den Einstellungen in beide Ansichten."""
+        self._model.set_columns(self._settings.export_columns, self._settings.default_customer)
+        self._tree_model.set_columns(self._settings.export_columns, self._settings.default_customer)
+        self._apply_column_layout(self._table, self._model)
+        self._apply_column_layout(self._tree, self._tree_model)
 
     def _on_search_changed(self, text: str) -> None:
         """Filtert beide Ansichten und hebt den Suchbegriff in den Zellen hervor."""
@@ -762,6 +791,7 @@ class MainWindow(QMainWindow):
             return
         self._settings = dialog.result_settings()
         self._settings.save()
+        self._apply_column_settings()
         self._apply_manual_color()
         self._update_empty_state()
         self._set_status("Einstellungen gespeichert")

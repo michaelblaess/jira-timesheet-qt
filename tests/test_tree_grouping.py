@@ -7,16 +7,19 @@ from datetime import date
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
+from jira_timesheet_qt.models.export_column import default_columns
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.ui.demo import demo_timesheet
+from jira_timesheet_qt.ui.grid_columns import build_columns
 from jira_timesheet_qt.ui.main_window import MainWindow
 from jira_timesheet_qt.ui.theme import Mode
-from jira_timesheet_qt.ui.timesheet_model import COLUMNS, ENTRY_ROLE
+from jira_timesheet_qt.ui.timesheet_model import ENTRY_ROLE
 from jira_timesheet_qt.ui.timesheet_tree_model import TimesheetTreeModel
 
-_HOURS_COL = next(i for i, c in enumerate(COLUMNS) if c.key == "hours")
-_SUMMARY_COL = next(i for i, c in enumerate(COLUMNS) if c.key == "summary")
-_TICKET_COL = next(i for i, c in enumerate(COLUMNS) if c.key == "ticket")
+_KEYS = [c.key for c in build_columns(default_columns())]
+_HOURS_COL = _KEYS.index("hours")
+_SUMMARY_COL = _KEYS.index("description")
+_TICKET_COL = _KEYS.index("ticket")
 
 
 def _model() -> TimesheetTreeModel:

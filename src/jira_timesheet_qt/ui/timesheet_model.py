@@ -4,11 +4,13 @@ Trennt Daten von Darstellung: die View kennt nur dieses Modell, das Modell nur
 die Domaenenobjekte aus models/timesheet.py. Sortieren und Filtern uebernimmt
 ein vorgeschaltetes QSortFilterProxyModel - dafuer liefert das Modell zu jeder
 Zelle einen sortierbaren Rohwert unter SORT_ROLE.
+
+Welche Spalten in welcher Reihenfolge erscheinen, kommt aus der Nutzer-
+Konfiguration (siehe grid_columns) - dieselbe, die auch den Export steuert.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
@@ -22,13 +24,15 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QColor
 
+from jira_timesheet_qt.models.export_column import DESCRIPTION_KEY, ExportColumn, default_columns
 from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
 from jira_timesheet_qt.services.hours_parser import parse_hours
-
-# Spalten, die bei manuellen Eintraegen direkt in der Tabelle editierbar sind.
-# Datum/Kunde bleiben dem vollen Erfassungsdialog vorbehalten (Datum wuerde den
-# Eintrag zwischen Tagen/Gruppen verschieben).
-EDITABLE_KEYS = ("summary", "hours")
+from jira_timesheet_qt.ui.grid_columns import (
+    GridColumn,
+    build_columns,
+    display_value,
+    sort_value,
+)
 
 
 def apply_manual_edit(entry: WorklogEntry, key: str, value: object) -> bool:
@@ -38,7 +42,7 @@ def apply_manual_edit(entry: WorklogEntry, key: str, value: object) -> bool:
         entry:
             Der zu aendernde (manuelle) Eintrag.
         key:
-            Spaltenschluessel - "summary" oder "hours".
+            Spaltenschluessel - "description" oder "hours".
         value:
             Der neue Wert aus dem Editor (Text).
 
@@ -52,7 +56,7 @@ def apply_manual_edit(entry: WorklogEntry, key: str, value: object) -> bool:
             return False
         entry.hours = parsed
         return True
-    if key == "summary":
+    if key == DESCRIPTION_KEY:
         text = str(value).strip()
         if not text:
             return False
@@ -60,36 +64,15 @@ def apply_manual_edit(entry: WorklogEntry, key: str, value: object) -> bool:
         return True
     return False
 
+
 # Rohwert einer Zelle zum Sortieren - die Anzeige ist lokalisiert und taugt
 # dafuer nicht ("23.07.2026" sortiert als Zeichenkette falsch).
 SORT_ROLE = Qt.ItemDataRole.UserRole + 1
 # Der Eintrag hinter einer Zeile, fuer den Detailbereich.
 ENTRY_ROLE = Qt.ItemDataRole.UserRole + 2
 
-
-@dataclass(frozen=True)
-class Column:
-    """Beschreibung einer Tabellenspalte."""
-
-    key: str
-    title: str
-    width: int
-    numeric: bool = False
-
-
 # Qt reicht beide Indexarten durch - die Signatur muss beide annehmen.
 AnyIndex = QModelIndex | QPersistentModelIndex
-
-COLUMNS: tuple[Column, ...] = (
-    Column("date", "Datum", 110),
-    Column("weekday", "Tag", 60),
-    Column("ticket", "Vorgang", 130),
-    Column("summary", "Beschreibung", 420),
-    Column("author", "Autor", 130),
-    Column("hours", "Stunden", 90, numeric=True),
-)
-
-_WEEKDAYS = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 
 
 class TimesheetModel(QAbstractTableModel):
@@ -102,16 +85,43 @@ class TimesheetModel(QAbstractTableModel):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._entries: list[WorklogEntry] = []
+        self._day_totals: dict[date, float] = {}
+        self._columns: list[GridColumn] = build_columns(default_columns())
+        self._default_customer = ""
         # Farbe fuer manuell erfasste Zeilen, oder None wenn die Hervorhebung
         # abgeschaltet ist. Wird vom Hauptfenster aus den Einstellungen gesetzt.
         self._manual_color: QColor | None = None
+
+    # --- Konfiguration -------------------------------------------------
+
+    def set_columns(self, columns: list[ExportColumn], default_customer: str) -> None:
+        """Setzt die sichtbaren Spalten und den Vorgabe-Kunden neu.
+
+        Die Spaltenzahl kann sich aendern, deshalb ein voller Reset.
+        """
+        self.beginResetModel()
+        self._columns = build_columns(columns)
+        self._default_customer = default_customer
+        self.endResetModel()
+
+    def column_keys(self) -> list[str]:
+        """Schluessel der aktuell angezeigten Spalten, in Reihenfolge."""
+        return [column.key for column in self._columns]
+
+    def stretch_column(self) -> int:
+        """Index der Spalte, die die Restbreite fuellt (Beschreibung), sonst -1."""
+        return next((i for i, c in enumerate(self._columns) if c.stretch), -1)
+
+    def column_width(self, section: int) -> int:
+        """Vorgabe-Breite einer Spalte."""
+        return self._columns[section].width if 0 <= section < len(self._columns) else 100
 
     def set_manual_color(self, color: QColor | None) -> None:
         """Setzt die Einfaerbung manueller Eintraege (None = keine)."""
         self._manual_color = color
         if self._entries:
             top = self.index(0, 0)
-            bottom = self.index(len(self._entries) - 1, len(COLUMNS) - 1)
+            bottom = self.index(len(self._entries) - 1, self.columnCount() - 1)
             self.dataChanged.emit(top, bottom, [Qt.ItemDataRole.ForegroundRole])
 
     # --- Befuellen -----------------------------------------------------
@@ -120,6 +130,9 @@ class TimesheetModel(QAbstractTableModel):
         """Ersetzt den Inhalt durch die Eintraege eines Stundenzettels."""
         self.beginResetModel()
         self._entries = list(timesheet.all_entries) if timesheet is not None else []
+        self._day_totals = {}
+        for entry in self._entries:
+            self._day_totals[entry.date] = self._day_totals.get(entry.date, 0.0) + entry.hours
         self.endResetModel()
 
     def entry_at(self, row: int) -> WorklogEntry | None:
@@ -136,7 +149,7 @@ class TimesheetModel(QAbstractTableModel):
     def columnCount(self, parent: AnyIndex | None = None) -> int:  # noqa: N802
         if parent is not None and parent.isValid():
             return 0
-        return len(COLUMNS)
+        return len(self._columns)
 
     def headerData(  # noqa: N802
         self,
@@ -144,26 +157,27 @@ class TimesheetModel(QAbstractTableModel):
         orientation: Qt.Orientation,
         role: int = Qt.ItemDataRole.DisplayRole,
     ) -> Any:
-        if orientation is not Qt.Orientation.Horizontal:
+        if orientation is not Qt.Orientation.Horizontal or not 0 <= section < len(self._columns):
             return None
-        if role == Qt.ItemDataRole.DisplayRole and 0 <= section < len(COLUMNS):
-            return COLUMNS[section].title
-        if role == Qt.ItemDataRole.TextAlignmentRole and 0 <= section < len(COLUMNS):
-            return self._alignment(COLUMNS[section])
+        if role == Qt.ItemDataRole.DisplayRole:
+            return self._columns[section].title
+        if role == Qt.ItemDataRole.TextAlignmentRole:
+            return self._alignment(self._columns[section])
         return None
 
     def data(self, index: AnyIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
         if not index.isValid():
             return None
         entry = self.entry_at(index.row())
-        if entry is None:
+        if entry is None or not 0 <= index.column() < len(self._columns):
             return None
-        column = COLUMNS[index.column()]
+        column = self._columns[index.column()]
+        day_total = self._day_totals.get(entry.date, 0.0)
 
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
-            return self._display(entry, column)
+            return display_value(entry, column.key, day_total, self._default_customer)
         if role == SORT_ROLE:
-            return self._sort_value(entry, column)
+            return sort_value(entry, column.key, day_total, self._default_customer)
         if role == ENTRY_ROLE:
             return entry
         if role == Qt.ItemDataRole.TextAlignmentRole:
@@ -175,10 +189,10 @@ class TimesheetModel(QAbstractTableModel):
     def flags(self, index: AnyIndex) -> Qt.ItemFlag:
         """Manuelle Eintraege sind in den editierbaren Spalten aenderbar."""
         flags = super().flags(index)
-        if not index.isValid():
+        if not index.isValid() or not 0 <= index.column() < len(self._columns):
             return flags
         entry = self.entry_at(index.row())
-        if entry is not None and entry.manual and COLUMNS[index.column()].key in EDITABLE_KEYS:
+        if entry is not None and entry.manual and self._columns[index.column()].editable:
             return flags | Qt.ItemFlag.ItemIsEditable
         return flags
 
@@ -192,10 +206,12 @@ class TimesheetModel(QAbstractTableModel):
         if role != Qt.ItemDataRole.EditRole or not index.isValid():
             return False
         entry = self.entry_at(index.row())
-        if entry is None or not entry.manual:
+        if entry is None or not entry.manual or not 0 <= index.column() < len(self._columns):
             return False
-        if not apply_manual_edit(entry, COLUMNS[index.column()].key, value):
+        if not apply_manual_edit(entry, self._columns[index.column()].key, value):
             return False
+        # Eine geaenderte Stunde verschiebt auch die Tagessumme.
+        self._day_totals[entry.date] = sum(e.hours for e in self._entries if e.date == entry.date)
         self.dataChanged.emit(index, index)
         self.manual_edited.emit(entry)
         return True
@@ -203,36 +219,9 @@ class TimesheetModel(QAbstractTableModel):
     # --- Zellinhalte ----------------------------------------------------
 
     @staticmethod
-    def _alignment(column: Column) -> int:
+    def _alignment(column: GridColumn) -> int:
         alignment = Qt.AlignmentFlag.AlignRight if column.numeric else Qt.AlignmentFlag.AlignLeft
         return int(alignment | Qt.AlignmentFlag.AlignVCenter)
-
-    def _display(self, entry: WorklogEntry, column: Column) -> str:
-        """Formatiert eine Zelle fuer die Anzeige (deutsche Schreibweise)."""
-        if column.key == "date":
-            return entry.date.strftime("%d.%m.%Y")
-        if column.key == "weekday":
-            return _WEEKDAYS[entry.date.weekday()]
-        if column.key == "ticket":
-            return entry.ticket
-        if column.key == "summary":
-            return entry.summary
-        if column.key == "author":
-            return entry.author
-        if column.key == "hours":
-            # Deutsches Dezimalkomma, zwei Nachkommastellen.
-            return f"{entry.hours:.2f}".replace(".", ",")
-        return ""
-
-    def _sort_value(self, entry: WorklogEntry, column: Column) -> object:
-        """Liefert den Rohwert einer Zelle - danach wird sortiert."""
-        if column.key == "date":
-            return entry.date
-        if column.key == "weekday":
-            return entry.date.weekday()
-        if column.key == "hours":
-            return entry.hours
-        return self._display(entry, column).lower()
 
     # --- Kennzahlen -----------------------------------------------------
 
