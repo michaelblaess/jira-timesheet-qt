@@ -26,6 +26,7 @@ from jira_timesheet_qt.i18n import load_locale  # noqa: E402
 from jira_timesheet_qt.models.settings import Settings  # noqa: E402
 from jira_timesheet_qt.ui.about_dialog import AboutDialog  # noqa: E402
 from jira_timesheet_qt.ui.demo import demo_timesheet  # noqa: E402
+from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog  # noqa: E402
 from jira_timesheet_qt.ui.disclaimer_dialog import DisclaimerDialog  # noqa: E402
 from jira_timesheet_qt.ui.fonts import load_fonts  # noqa: E402
 from jira_timesheet_qt.ui.main_window import MainWindow  # noqa: E402
@@ -95,31 +96,28 @@ def main() -> int:
 
         # Hauptfenster - Liste (README-Aufmacher)
         win = _window(mode)
-        win._stack.setCurrentIndex(0)
+        win._tabs.setCurrentIndex(0)
         _grab(win, OUT / f"main-{tag}.png", W, H)
 
         # Kalender
         win = _window(mode)
-        win._stack.setCurrentIndex(1)
+        win._tabs.setCurrentIndex(1)
         _grab(win, OUT / f"calendar-{tag}.png", W, H)
 
         # Jahresansicht
         win = _window(mode)
-        win._stack.setCurrentIndex(2)
+        win._tabs.setCurrentIndex(2)
         _grab(win, OUT / f"year-{tag}.png", W, H)
 
         # Meldungsfenster sichtbar
         win = _window(mode)
-        win._stack.setCurrentIndex(0)
+        win._tabs.setCurrentIndex(0)
         win._log.setVisible(True)
         _grab(win, OUT / f"log-{tag}.png", W, H)
 
-        # Kopfzeile (Ausschnitt)
-        win = _window(mode)
-        win.show()
-        QApplication.processEvents()
-        win._header.grab().save(str(OUT / f"header-{tag}.png"))
-        win.close()
+        # Ticket-Detail-Dialog (modal) - ersetzt den frueheren Detailbereich
+        entry = demo_timesheet().all_entries[0]
+        _grab(TicketDetailDialog(entry, "https://beispiel.atlassian.net"), OUT / f"detail-{tag}.png", 540, 520)
 
         # Einstellungen - Arbeitszeit
         dlg = SettingsDialog(Settings())
