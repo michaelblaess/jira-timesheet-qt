@@ -21,7 +21,7 @@ from jira_timesheet_qt.ui.theme import Mode, palette_for
 
 # Markenfarbe des App-Icons - festes Blau, gut lesbar auf hellen wie dunklen
 # Taskleisten (unabhaengig vom gewaehlten Erscheinungsbild).
-_APP_ICON_BG = "#2563eb"
+_APP_ICON_BG = "#f97316"
 _APP_ICON_GLYPH = "mdi6.calendar-clock"
 
 
