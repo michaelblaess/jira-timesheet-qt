@@ -74,8 +74,10 @@ class TestIcons:
         header = Header(Mode.DARK)
         buttons = header.findChildren(QPushButton)
         # Das Suchfeld bringt eine eigene Loesch-Schaltflaeche mit.
+        # Die Aktionsknoepfe sind in die Menueleiste/Toolbar gewandert; in der
+        # Kopfzeile bleiben nur die beiden Monatsnavigations-Pfeile.
         icon_buttons = [b for b in buttons if b.toolTip()]
-        assert len(icon_buttons) == 9
+        assert len(icon_buttons) == 2
         for button in icon_buttons:
             assert not button.icon().isNull(), button.toolTip()
             assert button.text() == "", "Symbole statt Text-Glyphen"

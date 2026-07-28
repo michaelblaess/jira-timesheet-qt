@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from jira_timesheet_qt import __app_name__, __version__
+from jira_timesheet_qt.i18n import t
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
 from jira_timesheet_qt.services.holiday_service import HolidayService
@@ -217,9 +218,17 @@ class MainWindow(QMainWindow):
         if missing:
             self._log.write(f"Menue verweist auf unbekannte Commands: {sorted(missing)}", Level.ERROR)
 
-        builder = MenuBuilder(self._commands, owner=self, icon_loader=self._menu_icon)
+        builder = MenuBuilder(self._commands, owner=self, tr=t, icon_loader=self._menu_icon)
         self.setMenuBar(builder.build_menubar(definition.menubar, self))
+
+        # Dieselbe Definition, zweite Oberflaeche: die 'toolbar'-Surface.
+        toolbar = builder.build_toolbar(definition.menubar, self)
+        toolbar.setObjectName("MainToolBar")  # fuer saveState/restoreState
+        toolbar.setMovable(False)
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
+
         self._menu_definition = definition
+        self._toolbar = toolbar
 
     def _register_commands(self, registry: CommandRegistry) -> None:
         """Registriert das Verhalten hinter den Command-IDs der Menue-Definition."""
@@ -256,6 +265,14 @@ class MainWindow(QMainWindow):
             if isinstance(icon, QIcon):
                 return icon
         return QIcon()
+
+    def _recolor_menu_icons(self) -> None:
+        """Faerbt die Menue-/Toolbar-Icons nach einem Theme-Wechsel neu ein."""
+        for node in self._menu_definition.menubar.walk():
+            if node.icon and node.command:
+                action = self._commands.get(node.command).action
+                if action is not None:
+                    action.setIcon(self._menu_icon(node.icon))
 
     def _build_table(self) -> QTableView:
         """Baut die Liste der Eintraege."""
@@ -860,6 +877,7 @@ class MainWindow(QMainWindow):
         self._header.apply_mode(self._mode)
         self._calendar.apply_mode(self._mode)
         self._year_view.apply_mode(self._mode)
+        self._recolor_menu_icons()
         self.theme_changed.emit(self._mode.value)
 
     @property

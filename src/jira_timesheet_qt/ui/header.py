@@ -79,25 +79,10 @@ class Header(QWidget):
         self._search.textChanged.connect(self.search_changed.emit)
         layout.addWidget(self._search)
 
-        layout.addWidget(
-            self._button(
-                "group",
-                "Nach Tag gruppieren",
-                self.group_toggled.emit,
-                key="group",
-                checkable=True,
-            )
-        )
-        layout.addWidget(
-            self._button("plus", "Manuelle Zeit erfassen (Strg+N)", self.manual_requested.emit)
-        )
-        layout.addWidget(self._button("refresh", "Neu laden (F5)", self.reload_requested.emit))
-        layout.addWidget(self._button("log", "Log ein-/ausblenden (Strg+L)", self.log_toggled.emit))
-        layout.addWidget(
-            self._button(self._theme_icon(), "Erscheinungsbild wechseln", self.theme_toggled.emit, key="theme")
-        )
-        layout.addWidget(self._button("info", "Über diese Anwendung (F1)", self.about_requested.emit))
-        layout.addWidget(self._button("settings", "Einstellungen (Strg+,)", self.settings_requested.emit))
+        # Die Aktionsknoepfe (Neu laden, Manuell, Log, Theme, Info, Einstellungen,
+        # Gruppieren) sind in die datengetriebene Menueleiste + Toolbar gewandert
+        # (siehe MainWindow._install_menu). Die Kopfzeile traegt nur noch den
+        # kontextabhaengigen Teil: Zeitraum, Monatsnavigation und Suche.
 
     # --- Inhalte --------------------------------------------------------
 

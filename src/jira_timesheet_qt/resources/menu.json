@@ -7,77 +7,194 @@
       {
         "id": "menu.file",
         "type": "menu",
-        "title": "Datei",
+        "title": "menu.file",
         "children": [
-          { "id": "act.reload", "type": "action", "command": "file.reload",
-            "title": "Neu laden", "icon": "mdi6.refresh",
-            "shortcut": "StandardKey.Refresh", "surfaces": ["menu", "toolbar"] },
-          { "id": "act.manual_new", "type": "action", "command": "file.manual_new",
-            "title": "Manuelle Zeit erfassen", "icon": "mdi6.plus",
-            "shortcut": "Ctrl+N", "surfaces": ["menu", "toolbar"] },
-          { "id": "sep.file.1", "type": "separator" },
-          { "id": "act.quit", "type": "action", "command": "file.quit",
-            "title": "Beenden", "shortcut": "StandardKey.Quit" }
+          {
+            "id": "act.reload",
+            "type": "action",
+            "command": "file.reload",
+            "title": "cmd.reload",
+            "icon": "mdi6.refresh",
+            "shortcut": "StandardKey.Refresh",
+            "surfaces": [
+              "menu",
+              "toolbar"
+            ]
+          },
+          {
+            "id": "act.manual_new",
+            "type": "action",
+            "command": "file.manual_new",
+            "title": "cmd.manual_new",
+            "icon": "mdi6.plus",
+            "shortcut": "Ctrl+N",
+            "surfaces": [
+              "menu",
+              "toolbar"
+            ]
+          },
+          {
+            "id": "sep.file.1",
+            "type": "separator"
+          },
+          {
+            "id": "act.quit",
+            "type": "action",
+            "command": "file.quit",
+            "title": "cmd.quit",
+            "shortcut": "StandardKey.Quit"
+          }
         ]
       },
       {
         "id": "menu.view",
         "type": "menu",
-        "title": "Ansicht",
+        "title": "menu.view",
         "children": [
-          { "id": "grp.views", "type": "group", "children": [
-            { "id": "act.view.list", "type": "action", "command": "view.list",
-              "title": "Liste", "checkable": true, "checked": true, "group": "views" },
-            { "id": "act.view.calendar", "type": "action", "command": "view.calendar",
-              "title": "Kalender", "checkable": true, "group": "views" },
-            { "id": "act.view.year", "type": "action", "command": "view.year",
-              "title": "Jahr", "checkable": true, "group": "views" }
-          ] },
-          { "id": "sep.view.1", "type": "separator" },
-          { "id": "act.view.group", "type": "action", "command": "view.group",
-            "title": "Nach Tag gruppieren", "icon": "mdi6.format-list-group",
-            "checkable": true, "surfaces": ["menu", "toolbar"] },
-          { "id": "act.view.log", "type": "action", "command": "view.log",
-            "title": "Meldungen anzeigen", "icon": "mdi6.text-box-outline",
-            "checkable": true, "surfaces": ["menu", "toolbar"] },
-          { "id": "sep.view.2", "type": "separator" },
-          { "id": "act.view.theme", "type": "action", "command": "view.theme",
-            "title": "Erscheinungsbild wechseln", "icon": "mdi6.theme-light-dark",
-            "surfaces": ["menu", "toolbar"] }
+          {
+            "id": "grp.views",
+            "type": "group",
+            "children": [
+              {
+                "id": "act.view.list",
+                "type": "action",
+                "command": "view.list",
+                "title": "cmd.view.list",
+                "checkable": true,
+                "checked": true,
+                "group": "views"
+              },
+              {
+                "id": "act.view.calendar",
+                "type": "action",
+                "command": "view.calendar",
+                "title": "cmd.view.calendar",
+                "checkable": true,
+                "group": "views"
+              },
+              {
+                "id": "act.view.year",
+                "type": "action",
+                "command": "view.year",
+                "title": "cmd.view.year",
+                "checkable": true,
+                "group": "views"
+              }
+            ]
+          },
+          {
+            "id": "sep.view.1",
+            "type": "separator"
+          },
+          {
+            "id": "act.view.group",
+            "type": "action",
+            "command": "view.group",
+            "title": "cmd.view.group",
+            "icon": "mdi6.format-list-group",
+            "checkable": true,
+            "surfaces": [
+              "menu",
+              "toolbar"
+            ]
+          },
+          {
+            "id": "act.view.log",
+            "type": "action",
+            "command": "view.log",
+            "title": "cmd.view.log",
+            "icon": "mdi6.text-box-outline",
+            "checkable": true,
+            "surfaces": [
+              "menu",
+              "toolbar"
+            ]
+          },
+          {
+            "id": "sep.view.2",
+            "type": "separator"
+          },
+          {
+            "id": "act.view.theme",
+            "type": "action",
+            "command": "view.theme",
+            "title": "cmd.view.theme",
+            "icon": "mdi6.theme-light-dark",
+            "surfaces": [
+              "menu",
+              "toolbar"
+            ]
+          }
         ]
       },
       {
         "id": "menu.export",
         "type": "menu",
-        "title": "Export",
+        "title": "menu.export",
         "children": [
-          { "id": "act.export.excel", "type": "action", "command": "export.excel",
-            "title": "Als Excel exportieren", "shortcut": "Ctrl+E" },
-          { "id": "act.export.pdf", "type": "action", "command": "export.pdf",
-            "title": "Als PDF exportieren", "shortcut": "Ctrl+Shift+E" },
-          { "id": "sep.export.1", "type": "separator" },
-          { "id": "act.export.print", "type": "action", "command": "export.print",
-            "title": "Druckvorschau", "shortcut": "StandardKey.Print" }
+          {
+            "id": "act.export.excel",
+            "type": "action",
+            "command": "export.excel",
+            "title": "cmd.export.excel",
+            "shortcut": "Ctrl+E"
+          },
+          {
+            "id": "act.export.pdf",
+            "type": "action",
+            "command": "export.pdf",
+            "title": "cmd.export.pdf",
+            "shortcut": "Ctrl+Shift+E"
+          },
+          {
+            "id": "sep.export.1",
+            "type": "separator"
+          },
+          {
+            "id": "act.export.print",
+            "type": "action",
+            "command": "export.print",
+            "title": "cmd.export.print",
+            "shortcut": "StandardKey.Print"
+          }
         ]
       },
       {
         "id": "menu.extras",
         "type": "menu",
-        "title": "Extras",
+        "title": "menu.extras",
         "children": [
-          { "id": "act.settings", "type": "action", "command": "settings.open",
-            "title": "Einstellungen", "icon": "mdi6.tune-variant",
-            "shortcut": "Ctrl+,", "surfaces": ["menu", "toolbar"] }
+          {
+            "id": "act.settings",
+            "type": "action",
+            "command": "settings.open",
+            "title": "cmd.settings",
+            "icon": "mdi6.tune-variant",
+            "shortcut": "Ctrl+,",
+            "surfaces": [
+              "menu",
+              "toolbar"
+            ]
+          }
         ]
       },
       {
         "id": "menu.help",
         "type": "menu",
-        "title": "Hilfe",
+        "title": "menu.help",
         "children": [
-          { "id": "act.about", "type": "action", "command": "help.about",
-            "title": "Über jira-timesheet-qt", "icon": "mdi6.information-outline",
-            "shortcut": "StandardKey.HelpContents", "surfaces": ["menu", "toolbar"] }
+          {
+            "id": "act.about",
+            "type": "action",
+            "command": "help.about",
+            "title": "cmd.about",
+            "icon": "mdi6.information-outline",
+            "shortcut": "StandardKey.HelpContents",
+            "surfaces": [
+              "menu",
+              "toolbar"
+            ]
+          }
         ]
       }
     ]
