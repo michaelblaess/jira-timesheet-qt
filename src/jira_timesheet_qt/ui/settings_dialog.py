@@ -36,7 +36,7 @@ from jira_timesheet_qt.models.export_column import ExportColumn, default_label
 from jira_timesheet_qt.models.settings import Settings, normalize_color
 from jira_timesheet_qt.services.cache_service import CACHE_DIR
 from jira_timesheet_qt.services.manual_entry_service import DB_FILE
-from jira_timesheet_qt.ui.theme import ACCENT_LABELS
+from jira_timesheet_qt.ui.theme import ACCENT_LABELS, SCALES
 
 # Einheitliche Breite aller Eingabefelder. Ohne das richtet sich jedes Feld
 # nach seinem Inhalt, und die rechte Kante wirkt zerfranst.
@@ -158,13 +158,13 @@ class SettingsDialog(QDialog):
             self._import_button.setVisible(row == 0)
 
     def _import_legacy_access(self) -> None:
-        """Fuellt die Zugangsfelder aus der Einstellungsdatei der Textual-TUI.
+        """Fuellt Zugangs- und Berechnungsfelder aus der Textual-TUI.
 
-        Uebernommen werden nur die Jira-Zugangsdaten und erst in die Felder -
-        gespeichert wird wie ueberall erst beim Klick auf "Speichern".
+        Uebernommen wird erst in die Felder - gespeichert wird wie ueberall
+        erst beim Klick auf "Speichern".
         """
-        access = Settings.legacy_access()
-        if access is None:
+        data = Settings.legacy_access()
+        if data is None:
             QMessageBox.information(
                 self,
                 "Import",
@@ -172,17 +172,28 @@ class SettingsDialog(QDialog):
             )
             return
 
-        self.host.setText(str(access["jira_host"]))
-        self.email.setText(str(access["email"]))
-        self.token.setText(str(access["jira_token"]))
-        self.legacy.setChecked(bool(access["use_legacy_api"]))
-        self.proxy.setText(str(access["proxy_url"]))
-        self.budget_field.setText(str(access["budget_field"]))
+        # Zugang
+        self.host.setText(str(data["jira_host"]))
+        self.email.setText(str(data["email"]))
+        self.token.setText(str(data["jira_token"]))
+        self.legacy.setChecked(bool(data["use_legacy_api"]))
+        self.proxy.setText(str(data["proxy_url"]))
+        self.budget_field.setText(str(data["budget_field"]))
+
+        # Berechnung / Arbeitszeit
+        self.hours_per_day.setValue(float(data["hours_per_day"]))
+        self.max_yearly.setValue(float(data["max_yearly_hours"]))
+        self.hourly_rate.setValue(float(data["hourly_rate"]))
+        self.vat_rate.setValue(float(data["vat_rate"]))
+        state_index = self.state.findData(str(data["federal_state"]))
+        if state_index >= 0:
+            self.state.setCurrentIndex(state_index)
+
         QMessageBox.information(
             self,
             "Import",
-            "Der Jira-Zugang aus jira-timesheet wurde übernommen.\n"
-            "Zum Sichern auf „Speichern“ klicken.",
+            "Zugang und Berechnung (Stundensatz, MwSt, Arbeitszeit) aus "
+            "jira-timesheet wurden übernommen.\nZum Sichern auf „Speichern“ klicken.",
         )
 
     def _page_worktime(self) -> QWidget:
@@ -352,6 +363,14 @@ class SettingsDialog(QDialog):
         self.accent.setCurrentIndex(max(0, accent_index))
         form.addRow(self._label("Akzentfarbe"), self.accent)
 
+        # Oberflaechen-Zoom - skaliert alle Schriftgroessen (auch per Ctrl +/-/0).
+        self.ui_scale = self._combo()
+        for percent in SCALES:
+            self.ui_scale.addItem(f"{percent} %", percent)
+        scale_index = self.ui_scale.findData(self._settings.ui_scale)
+        self.ui_scale.setCurrentIndex(max(0, scale_index))
+        form.addRow(self._label("Zoom"), self.ui_scale)
+
         self.mark_manual = QCheckBox("Manuell erfasste Zeiten hervorheben")
         self.mark_manual.setChecked(self._settings.mark_manual_entries)
         form.addRow(self._label(""), self.mark_manual)
@@ -498,7 +517,7 @@ class SettingsDialog(QDialog):
         # Zugang hinterlassen hat. Sichtbar gesteuert ueber die aktive Seite.
         self._import_button: QPushButton | None = None
         if Settings.legacy_access() is not None:
-            self._import_button = QPushButton("Zugang aus jira-timesheet (TUI) übernehmen")
+            self._import_button = QPushButton("Einstellungen aus jira-timesheet (TUI) übernehmen")
             self._import_button.setProperty("variant", "secondary")
             self._import_button.setCursor(Qt.CursorShape.PointingHandCursor)
             self._import_button.clicked.connect(self._import_legacy_access)
@@ -550,6 +569,7 @@ class SettingsDialog(QDialog):
         ]
         s.theme = str(self.theme.currentData())
         s.accent = str(self.accent.currentData())
+        s.ui_scale = int(self.ui_scale.currentData())
         s.mark_manual_entries = self.mark_manual.isChecked()
         s.manual_entry_color = self._manual_color_value
         return s

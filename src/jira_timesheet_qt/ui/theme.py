@@ -12,6 +12,7 @@ Riesen-QSS, das jede Qt-Vorgabe nachbaut. Details siehe docs/qt-grundlagen.md.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, replace
 from enum import StrEnum
 
@@ -162,6 +163,40 @@ def current_accent() -> str:
     return _current_accent
 
 
+# Verfuegbare Oberflaechen-Zoomstufen (Prozent).
+SCALES: tuple[int, ...] = (80, 90, 100, 110, 125, 150, 175, 200)
+DEFAULT_SCALE = 100
+_current_scale = DEFAULT_SCALE
+
+
+def set_scale(percent: int) -> None:
+    """Setzt den Oberflaechen-Zoom (Prozent, auf gueltige Werte begrenzt)."""
+    global _current_scale
+    _current_scale = min(SCALES[-1], max(SCALES[0], int(percent)))
+
+
+def current_scale() -> int:
+    """Aktive Zoomstufe in Prozent."""
+    return _current_scale
+
+
+def _apply_scale(qss: str) -> str:
+    """Skaliert alle font-size-Angaben (px) im QSS mit dem aktiven Zoom.
+
+    So laesst sich die ganze Oberflaeche vergroessern, ohne jede Groesse einzeln
+    zu pflegen - auch die selbstgezeichneten Ansichten ziehen mit, weil sie ihre
+    Schrift vom (per QSS gesetzten) Widget-Font ableiten.
+    """
+    if _current_scale == 100:
+        return qss
+    factor = _current_scale / 100.0
+    return re.sub(
+        r"font-size:\s*(\d+)px",
+        lambda m: f"font-size: {max(1, round(int(m.group(1)) * factor))}px",
+        qss,
+    )
+
+
 def palette_for(mode: Mode) -> Palette:
     """Liefert die Farbwerte zum Erscheinungsbild - mit der aktiven Akzentfarbe."""
     base = DARK if mode is Mode.DARK else LIGHT
@@ -237,7 +272,7 @@ def build_qss(mode: Mode, font_sans: str, font_mono: str) -> str:
     # Angabe weglassen, damit Qt seine Standardschrift nimmt.
     sans_rule = f'font-family: "{font_sans}";' if font_sans else ""
     mono_rule = f'font-family: "{font_mono}";' if font_mono else ""
-    return f"""
+    return _apply_scale(f"""
 /* ---------------------------------------------------------------- Grundlage */
 QWidget {{
     {sans_rule}
@@ -667,4 +702,4 @@ QStatusBar::item {{
     background-color: {p.bg_secondary};
     border-top: 1px solid {p.border};
 }}
-"""
+""")

@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 import jira_timesheet_qt.models.settings as settings_module
-from jira_timesheet_qt.models.settings import ACCESS_FIELDS, Settings
+from jira_timesheet_qt.models.settings import ACCESS_FIELDS, CALC_FIELDS, Settings
 
 # Ein realistischer Auszug aus einer TUI-Einstellungsdatei. Das Theme ist ein
 # Retro-Slug, das Data-Center-Feld gesetzt - beides muss sauber ankommen.
@@ -29,6 +29,8 @@ _LEGACY = {
     "budget_field": "customfield_99999",
     "hours_per_day": 7.5,
     "federal_state": "BY",
+    "hourly_rate": 95.0,
+    "vat_rate": 19.0,
 }
 
 
@@ -126,19 +128,22 @@ class TestSaveGuard:
 
 
 class TestExplicitAccessImport:
-    def test_access_only(self, _isolated: tuple[Path, Path]) -> None:
-        """Der Knopf liefert genau die Zugangsfelder - nicht mehr."""
+    def test_access_and_calculation(self, _isolated: tuple[Path, Path]) -> None:
+        """Der Knopf liefert Zugang UND Berechnung (Stundensatz, MwSt, Arbeitszeit)."""
         _own, legacy = _isolated
         _write_legacy(legacy)
 
-        access = Settings.legacy_access()
+        data = Settings.legacy_access()
 
-        assert access is not None
-        assert set(access.keys()) == set(ACCESS_FIELDS)
-        assert access["jira_host"] == "https://firma.atlassian.net"
-        assert access["use_legacy_api"] is True
-        # Arbeitszeit gehoert NICHT dazu.
-        assert "hours_per_day" not in access
+        assert data is not None
+        assert set(data.keys()) == set(ACCESS_FIELDS) | set(CALC_FIELDS)
+        assert data["jira_host"] == "https://firma.atlassian.net"
+        assert data["use_legacy_api"] is True
+        # Berechnung kommt jetzt mit - sonst blieben Netto/Brutto leer.
+        assert data["hours_per_day"] == 7.5
+        assert data["hourly_rate"] == 95.0
+        assert data["vat_rate"] == 19.0
+        assert data["federal_state"] == "BY"
 
     def test_none_without_legacy(self, _isolated: tuple[Path, Path]) -> None:
         assert Settings.legacy_access() is None

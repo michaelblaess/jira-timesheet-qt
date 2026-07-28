@@ -51,7 +51,7 @@ def main() -> int:
     _setup_logging(Settings.SETTINGS_DIR)
     from jira_timesheet_qt.ui.fonts import load_fonts
     from jira_timesheet_qt.ui.main_window import MainWindow
-    from jira_timesheet_qt.ui.theme import Mode, build_palette, build_qss, set_accent
+    from jira_timesheet_qt.ui.theme import Mode, build_palette, build_qss, set_accent, set_scale
 
     app = QApplication(sys.argv)
     app.setApplicationName("jira-timesheet-qt")
@@ -88,6 +88,7 @@ def main() -> int:
     mode = _resolve_mode(args.theme or settings.theme, app)
 
     set_accent(settings.accent)
+    set_scale(settings.ui_scale)
 
     def apply_theme(name: str) -> None:
         """Setzt Palette und Stylesheet der Anwendung neu.

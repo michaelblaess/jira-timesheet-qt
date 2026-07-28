@@ -70,6 +70,19 @@ class TestTheme:
         finally:
             set_accent(DEFAULT_ACCENT)  # sonst faerbt es folgende Tests ein
 
+    def test_zoom_scales_the_qss_font_sizes(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.ui.theme import set_scale
+
+        base = build_qss(Mode.DARK, "Segoe UI", "Consolas")
+        assert "font-size: 13px" in base
+        try:
+            set_scale(200)
+            big = build_qss(Mode.DARK, "Segoe UI", "Consolas")
+            assert "font-size: 26px" in big  # 13 px Grundschrift verdoppelt
+            assert "font-size: 13px" not in big
+        finally:
+            set_scale(100)  # sonst zoomt es folgende Tests
+
 
 class TestModel:
     def test_rows_and_columns(self) -> None:

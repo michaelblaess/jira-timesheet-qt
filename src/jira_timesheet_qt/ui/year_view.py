@@ -11,11 +11,11 @@ from dataclasses import dataclass
 from datetime import date
 
 from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPainter, QPaintEvent
+from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPaintEvent
 from PySide6.QtWidgets import QWidget
 
 from jira_timesheet_qt.services.holiday_service import HolidayService
-from jira_timesheet_qt.ui.theme import Mode, Palette, palette_for
+from jira_timesheet_qt.ui.theme import Mode, palette_for
 
 _MONTHS = (
     "Januar",
@@ -117,7 +117,6 @@ class YearView(QWidget):
     COLUMNS = 4
     PADDING = 16
     GAP = 10
-    SUMMARY_H = 46  # Kopfstreifen fuer Ist/Soll/Prognose
 
     def __init__(self, mode: Mode = Mode.DARK, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -200,49 +199,17 @@ class YearView(QWidget):
         p = palette_for(self._mode)
         painter.fillRect(self.rect(), QColor(p.bg_primary))
 
-        self._paint_summary(painter, p)
+        # Kein Kopfstreifen mehr mit Ist/Soll/Prognose - dieselben Summen stehen
+        # in der Summenleiste unten (Doppelung vermieden).
         for index, cell in enumerate(self._cells):
             self._paint_cell(painter, self._rect_for(index), cell)
         painter.end()
-
-    def _paint_summary(self, painter: QPainter, p: Palette) -> None:
-        """Zeichnet den Kopfstreifen mit Jahr, Ist, Soll und Prognose."""
-        top = float(self.PADDING)
-        height = float(self.SUMMARY_H - self.GAP)
-        right = float(self.width() - self.PADDING)
-        x = float(self.PADDING)
-
-        # Jahreszahl in der Akzentfarbe.
-        x = self._draw_text(painter, x, top, height, right, str(self._year),
-                            scaled_font(self.font(), 3, bold=True), p.accent) + 18.0
-
-        summary = self._summary
-        for label, value in (
-            ("Ist", summary.actual),
-            ("Soll", summary.target),
-            ("Prognose", summary.forecast),
-        ):
-            x = self._draw_text(painter, x, top, height, right, label,
-                                scaled_font(self.font(), 0), p.text_tertiary) + 5.0
-            x = self._draw_text(painter, x, top, height, right, f"{value:.2f} h".replace(".", ","),
-                                scaled_font(self.font(), 3, bold=True), p.text_primary) + 20.0
-
-    def _draw_text(
-        self, painter: QPainter, x: float, top: float, height: float, right: float,
-        text: str, font: QFont, color: str,
-    ) -> float:
-        """Zeichnet Text ab x (vertikal zentriert) und liefert das rechte Ende."""
-        painter.setFont(font)
-        painter.setPen(QColor(color))
-        rect = QRectF(x, top, max(0.0, right - x), height)
-        painter.drawText(rect, int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), text)
-        return x + QFontMetrics(font).horizontalAdvance(text)
 
     def _rect_for(self, index: int) -> QRectF:
         """Platz einer Monatskachel."""
         rows = 12 // self.COLUMNS
         area = self.rect().adjusted(
-            self.PADDING, self.PADDING + self.SUMMARY_H, -self.PADDING, -self.PADDING
+            self.PADDING, self.PADDING, -self.PADDING, -self.PADDING
         )
         cell_w = (area.width() - self.GAP * (self.COLUMNS - 1)) / self.COLUMNS
         cell_h = (area.height() - self.GAP * (rows - 1)) / rows

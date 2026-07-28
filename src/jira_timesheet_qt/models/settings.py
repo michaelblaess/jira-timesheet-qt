@@ -77,6 +77,18 @@ ACCESS_FIELDS = (
     "budget_field",
 )
 
+# Berechnungs-/Arbeitszeitfelder der TUI (Reiter "Berechnung"). Werden beim
+# Import aus der TUI mit uebernommen - sonst fehlen Stundensatz/MwSt und Netto/
+# Brutto bleiben leer.
+CALC_FIELDS = (
+    "federal_state",
+    "hours_per_day",
+    "max_yearly_hours",
+    "hourly_rate",
+    "vat_rate",
+    "vacation_days",
+)
+
 # Kernfelder des Zugangs: sind ALLE drei leer, gilt der Zugang als
 # unkonfiguriert. Grundlage fuer den Datenverlust-Schutz beim Speichern.
 _ACCESS_CORE = ("jira_host", "email", "jira_token")
@@ -88,6 +100,8 @@ class Settings:
 
     theme: str = DEFAULT_THEME
     accent: str = "orange"
+    # Oberflaechen-Zoom in Prozent (skaliert alle Schriftgroessen).
+    ui_scale: int = 100
     language: str = "de"
     jira_host: str = ""
     jira_token: str = ""
@@ -130,6 +144,7 @@ class Settings:
     _FIELDS = (
         "theme",
         "accent",
+        "ui_scale",
         "language",
         "jira_host",
         "jira_token",
@@ -219,6 +234,7 @@ class Settings:
             return Settings(
                 theme=Settings._parse_theme(data.get("theme")),
                 accent=str(data.get("accent", "orange")),
+                ui_scale=int(data.get("ui_scale", 100)),
                 language=data.get("language", "de"),
                 jira_host=data.get("jira_host", ""),
                 jira_token=data.get("jira_token", ""),
@@ -259,21 +275,22 @@ class Settings:
         return LEGACY_SETTINGS_FILE.is_file()
 
     @staticmethod
-    def legacy_access() -> dict[str, object] | None:
-        """Liefert nur die Jira-Zugangsfelder aus der Textual-TUI.
+    def legacy_access() -> dict[str, Any] | None:
+        """Liefert Zugangs- UND Berechnungsfelder aus der Textual-TUI.
 
         Bewusst lesend und ohne Seiteneffekt: der Einstellungsdialog fuellt
-        damit seine Felder, uebernommen wird erst beim Speichern. Arbeitszeit
-        und Darstellung bleiben aussen vor.
+        damit seine Felder, uebernommen wird erst beim Speichern. Neben dem
+        Jira-Zugang kommen die Berechnungsfelder mit (Stundensatz, MwSt,
+        Arbeitszeit) - sonst blieben Netto/Brutto leer.
 
         Returns:
-            Ein Dictionary der Zugangsfelder, oder None ohne Legacy-Datei.
+            Ein Dictionary der Felder, oder None ohne Legacy-Datei.
         """
         legacy = Settings._read_json(LEGACY_SETTINGS_FILE)
         if legacy is None:
             return None
         source = Settings._from_dict(legacy)
-        return {name: getattr(source, name) for name in ACCESS_FIELDS}
+        return {name: getattr(source, name) for name in (*ACCESS_FIELDS, *CALC_FIELDS)}
 
     @staticmethod
     def _parse_theme(raw: object) -> str:

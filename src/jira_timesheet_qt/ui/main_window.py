@@ -56,7 +56,7 @@ from jira_timesheet_qt.ui.manual_entry_dialog import ManualEntryDialog
 from jira_timesheet_qt.ui.menu import Command, CommandRegistry, MenuBuilder, MenuDefinition, missing_commands
 from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
 from jira_timesheet_qt.ui.summary_bar import SummaryBar
-from jira_timesheet_qt.ui.theme import Mode, palette_for, set_accent
+from jira_timesheet_qt.ui.theme import SCALES, Mode, palette_for, set_accent, set_scale
 from jira_timesheet_qt.ui.timesheet_model import ENTRY_ROLE, SORT_ROLE, TimesheetModel
 from jira_timesheet_qt.ui.timesheet_tree_model import TimesheetTreeModel
 from jira_timesheet_qt.ui.year_view import YearView
@@ -511,6 +511,11 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence.StandardKey.Print, self, self.print_preview)
         QShortcut(QKeySequence("Ctrl+E"), self, self.export_excel)
         QShortcut(QKeySequence("Ctrl+Shift+E"), self, self.export_pdf)
+        # Zoom wie im Browser: Ctrl++ / Ctrl+- / Ctrl+0.
+        QShortcut(QKeySequence.StandardKey.ZoomIn, self, lambda: self._zoom(1))
+        QShortcut(QKeySequence("Ctrl+="), self, lambda: self._zoom(1))
+        QShortcut(QKeySequence.StandardKey.ZoomOut, self, lambda: self._zoom(-1))
+        QShortcut(QKeySequence("Ctrl+0"), self, self._zoom_reset)
 
     # --- Inhalte --------------------------------------------------------
 
@@ -898,6 +903,7 @@ class MainWindow(QMainWindow):
         # Oberflaeche neu einfaerben - der app-weite Palette-/QSS-Neuaufbau laeuft
         # ueber theme_changed im Einstiegspunkt.
         set_accent(self._settings.accent)
+        set_scale(self._settings.ui_scale)
         if self._settings.theme in ("dark", "light"):
             self._mode = Mode(self._settings.theme)
         self._reapply_theme()
@@ -1056,6 +1062,29 @@ class MainWindow(QMainWindow):
         self._settings.theme = self._mode.value
         self._settings.save()
         self._reapply_theme()
+
+    def _zoom(self, direction: int) -> None:
+        """Schaltet den Oberflaechen-Zoom eine Stufe hoch (1) oder runter (-1)."""
+        try:
+            index = SCALES.index(self._settings.ui_scale)
+        except ValueError:
+            index = SCALES.index(100)
+        new_index = max(0, min(len(SCALES) - 1, index + direction))
+        self._set_zoom(SCALES[new_index])
+
+    def _zoom_reset(self) -> None:
+        """Setzt den Zoom auf 100 %."""
+        self._set_zoom(100)
+
+    def _set_zoom(self, percent: int) -> None:
+        """Uebernimmt eine Zoomstufe, speichert sie und baut das Theme neu auf."""
+        if percent == self._settings.ui_scale:
+            return
+        self._settings.ui_scale = percent
+        self._settings.save()
+        set_scale(percent)
+        self._reapply_theme()
+        self._set_status(f"Zoom {percent} %")
 
     def _reapply_theme(self) -> None:
         """Faerbt alle selbstgezeichneten Flaechen neu und stoesst den app-weiten
