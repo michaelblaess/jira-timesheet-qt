@@ -1,24 +1,27 @@
-"""Summen-/Statistikleiste unter den Ansichten.
+"""Summen-/Statistikleiste unter den Ansichten - dynamisch je Ansicht.
 
-Ersetzt die einzelne "SUMME"-Zahl durch die volle Leiste der TUI:
-Arbeitstage | Ist | (davon manuell) | Soll | Differenz | Durchschnitt |
-(Netto | Brutto). Die Berechnung liegt als reine Funktion daneben, damit sie
-ohne Qt testbar ist.
+Ersetzt die einzelne "SUMME"-Zahl durch die volle Leiste der TUI und passt den
+Inhalt an die aktive Ansicht an:
+- Liste: Arbeitstage | Ist | (manuell) | Soll | Differenz | Ø | (Netto | Brutto)
+- Kalender: gebuchte Tage | Ist | Soll | (Fehlt) - Fortschritt = gebuchte Tage
+- Jahr: Jahr | Ist | Soll | Prognose - Fortschritt = Ist/Soll
 
-Farbliche Hervorhebung (rot bei Unterdeckung o.ae.) kommt bewusst erst mit der
-spaeteren Look-Ueberarbeitung - hier zaehlt zunaechst die Vollstaendigkeit.
+Links sitzt ein schlanker Fortschrittsbalken (RatioBar). Die Berechnung der
+Listen-Abschnitte liegt als reine Funktion daneben, damit sie ohne Qt testbar ist.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QRectF, Qt
+from PySide6.QtGui import QColor, QPainter, QPaintEvent
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from jira_timesheet_qt.i18n import format_eur, format_number
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.models.timesheet import Timesheet
+from jira_timesheet_qt.ui.theme import Mode, palette_for
 
 
 @dataclass(frozen=True)
@@ -78,52 +81,161 @@ def build_summary_segments(
     return segments
 
 
-class SummaryBar(QWidget):
-    """Zeigt die Summenleiste; wird bei jedem Stundenzettel neu befuellt."""
+class RatioBar(QWidget):
+    """Schlanker Fortschrittsbalken mit Prozenttext.
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    Gruen ab dem Sollwert (Anteil >= 1), sonst in der Akzentfarbe. Selbst
+    gezeichnet, damit die Farbe am Wert haengt - ein QProgressBar liesse das
+    ueber QSS nur umstaendlich zu.
+    """
+
+    def __init__(self, mode: Mode = Mode.DARK, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._mode = mode
+        self._ratio = 0.0
+        self._text = ""
+        self.setFixedWidth(160)
+        self.setMinimumHeight(20)
+
+    def set_value(self, ratio: float, text: str) -> None:
+        """Setzt Fuellstand (0..1+, Anzeige bei 1 gekappt) und Beschriftung."""
+        self._ratio = max(0.0, ratio)
+        self._text = text
+        self.update()
+
+    def apply_mode(self, mode: Mode) -> None:
+        """Uebernimmt ein anderes Erscheinungsbild."""
+        self._mode = mode
+        self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p = palette_for(self._mode)
+        rect = QRectF(0, (self.height() - 16) / 2, self.width(), 16)
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(p.bg_tertiary))
+        painter.drawRoundedRect(rect, 8, 8)
+
+        if self._ratio > 0:
+            fill = QRectF(rect)
+            fill.setWidth(rect.width() * min(1.0, self._ratio))
+            painter.setBrush(QColor(p.green if self._ratio >= 1.0 else p.accent))
+            painter.drawRoundedRect(fill, 8, 8)
+
+        if self._text:
+            painter.setPen(QColor(p.text_primary))
+            painter.drawText(rect, int(Qt.AlignmentFlag.AlignCenter), self._text)
+        painter.end()
+
+
+class SummaryBar(QWidget):
+    """Zeigt die ansichtsabhaengige Summenleiste samt Fortschrittsbalken."""
+
+    def __init__(self, mode: Mode = Mode.DARK, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("SummaryBar")
-        self._layout = QHBoxLayout(self)
-        self._layout.setContentsMargins(18, 6, 18, 6)
-        self._layout.setSpacing(8)
-        self._layout.addStretch(1)
-        self._placeholder()
+        self._mode = mode
 
-    def show_timesheet(self, timesheet: Timesheet | None, settings: Settings, target_workdays: int) -> None:
-        """Aktualisiert die Leiste fuer einen Stundenzettel (oder leert sie)."""
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(18, 6, 18, 6)
+        outer.setSpacing(14)
+
+        self._bar = RatioBar(mode)
+        outer.addWidget(self._bar)
+
+        # Eigenes Layout fuer die Abschnitte, damit der Balken beim Neuaufbau
+        # stehen bleibt.
+        self._segments = QHBoxLayout()
+        self._segments.setContentsMargins(0, 0, 0, 0)
+        self._segments.setSpacing(8)
+        outer.addLayout(self._segments, 1)
+
+        self.clear()
+
+    # --- Ansichten ------------------------------------------------------
+
+    def show_list(self, timesheet: Timesheet | None, settings: Settings, target_workdays: int) -> None:
+        """Liste: volle Summenleiste, Fortschritt Ist gegen Soll."""
         if timesheet is None:
-            self._placeholder()
+            self.clear()
             return
         self._render(build_summary_segments(timesheet, settings, target_workdays))
+        target = target_workdays * settings.hours_per_day
+        self._set_ratio(timesheet.total_hours, target)
 
-    def _placeholder(self) -> None:
-        """Setzt einen dezenten Platzhalter, solange nichts geladen ist."""
+    def show_calendar(
+        self,
+        booked_days: int,
+        total_workdays: int,
+        total_hours: float,
+        target_hours: float,
+        missing_days: int,
+    ) -> None:
+        """Kalender: gebuchte Arbeitstage, Ist/Soll; Fortschritt = gebuchte Tage."""
+        segments = [
+            SummarySegment("Gebucht", f"{booked_days}/{total_workdays} Tage"),
+            SummarySegment("Ist", f"{format_number(total_hours)} h"),
+            SummarySegment("Soll", f"{format_number(target_hours)} h"),
+        ]
+        if missing_days > 0:
+            segments.append(SummarySegment("Fehlt", f"{missing_days} Tage"))
+        self._render(segments)
+        self._set_ratio(booked_days, total_workdays)
+
+    def show_year(self, year: int, actual: float, target: float, forecast: float) -> None:
+        """Jahr: Ist/Soll/Prognose; Fortschritt = Ist gegen Soll."""
+        self._render(
+            [
+                SummarySegment("Jahr", str(year)),
+                SummarySegment("Ist", f"{format_number(actual)} h"),
+                SummarySegment("Soll", f"{format_number(target)} h"),
+                SummarySegment("Prognose", f"{format_number(forecast)} h"),
+            ]
+        )
+        self._set_ratio(actual, target)
+
+    def clear(self) -> None:
+        """Dezenter Platzhalter, solange nichts geladen ist."""
         self._render([SummarySegment("", "Noch keine Daten")])
+        self._bar.set_value(0.0, "")
+
+    def apply_mode(self, mode: Mode) -> None:
+        """Uebernimmt ein anderes Erscheinungsbild (faerbt den Balken um)."""
+        self._mode = mode
+        self._bar.apply_mode(mode)
+
+    # --- Aufbau ---------------------------------------------------------
+
+    def _set_ratio(self, actual: float, target: float) -> None:
+        """Setzt den Fortschrittsbalken aus Ist und Soll (Prozenttext)."""
+        ratio = actual / target if target > 0 else 0.0
+        self._bar.set_value(ratio, f"{ratio * 100:.0f} %" if target > 0 else "")
 
     def _render(self, segments: list[SummarySegment]) -> None:
-        """Baut die Leiste aus den Abschnitten neu auf."""
-        self._clear()
+        """Baut die Abschnitte neu auf (der Balken bleibt stehen)."""
+        self._clear_segments()
+        self._segments.addStretch(1)
         for index, segment in enumerate(segments):
             if index > 0:
-                self._layout.addWidget(self._separator())
+                self._segments.addWidget(self._separator())
             if segment.label:
-                self._layout.addWidget(self._label(segment.label, "SummaryStatLabel"))
-            self._layout.addWidget(self._label(segment.value, "SummaryStatValue"))
-        self._layout.addStretch(1)
+                self._segments.addWidget(self._label(segment.label, "SummaryStatLabel"))
+            self._segments.addWidget(self._label(segment.value, "SummaryStatValue"))
+        self._segments.addStretch(1)
 
-    def _clear(self) -> None:
-        """Entfernt alle bisherigen Elemente (auch den End-Stretch)."""
-        while self._layout.count():
-            item = self._layout.takeAt(0)
+    def _clear_segments(self) -> None:
+        """Entfernt die bisherigen Abschnitte (auch die Stretch-Elemente)."""
+        while self._segments.count():
+            item = self._segments.takeAt(0)
             if item is None:
                 continue
             widget = item.widget()
             if widget is not None:
-                # setParent(None) entfernt das Widget SOFORT aus der Anzeige.
-                # deleteLater allein wuerde es bis zum naechsten Event-Loop-Lauf
-                # als Geist an seiner alten Stelle stehen lassen (ueberlappt die
-                # neuen Werte, bis der Platzhalter endlich geloescht ist).
+                # setParent(None) entfernt das Widget SOFORT aus der Anzeige;
+                # deleteLater allein liesse es als Geist stehen (ueberlappt die
+                # neuen Werte bis zum naechsten Event-Loop-Lauf).
                 widget.setParent(None)
                 widget.deleteLater()
 

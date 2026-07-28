@@ -48,8 +48,10 @@ Statuszeile
 - [x] S2: Layout-Restrukturierung: Tabs statt Seitenleiste, Monat+Suche in die
       Toolbar, Kopfzeilen-Widget aufgeloest. (Commit folgt) header.py + sidebar.py
       entfallen.
-- [ ] S3: Unteres Panel dynamisch je Ansicht (Summen fuer Liste, spaeter
-      Progress/Charts fuer Kalender/Jahr). NOCH OFFEN - mit Michael abstimmen.
+- [x] S3: Unteres Panel dynamisch je Ansicht mit Fortschrittsbalken. (Commit
+      folgt) Liste: volle Summenleiste + Ist/Soll-Balken. Kalender: gebuchte
+      Tage/Ist/Soll/Fehlt + Tage-Balken. Jahr: Ist/Soll/Prognose + Ist/Soll-Balken.
+      Charts (Verlauf) bewusst spaeter.
 
 Spaeter (Michaels Feedback-Batch, nicht Teil dieses Umbaus): Summen/Forecast mit
 Charts, Jahresansicht reicher, Orange final justieren.

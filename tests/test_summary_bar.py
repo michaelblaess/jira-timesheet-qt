@@ -10,11 +10,12 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+from PySide6.QtWidgets import QApplication, QLabel
 
 from jira_timesheet_qt.i18n import load_locale
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.models.timesheet import Timesheet, TimesheetDay, WorklogEntry
-from jira_timesheet_qt.ui.summary_bar import build_summary_segments
+from jira_timesheet_qt.ui.summary_bar import RatioBar, SummaryBar, build_summary_segments
 
 
 @pytest.fixture(autouse=True)
@@ -86,3 +87,24 @@ class TestSummarySegments:
         data = _as_dict(ts, Settings(hourly_rate=100.0, vat_rate=19.0), workdays=0)
         assert data["Netto"] == "1.000,00 €"
         assert data["Brutto"] == "1.190,00 €"
+
+
+class TestSummaryBarWidget:
+    def test_calendar_shows_booked_days_and_missing(self, qapp: QApplication) -> None:
+        bar = SummaryBar()
+        bar.show_calendar(8, 23, 54.0, 184.0, 15)
+        texts = [label.text() for label in bar.findChildren(QLabel)]
+        assert "8/23 Tage" in texts
+        assert "15 Tage" in texts
+
+    def test_year_shows_forecast(self, qapp: QApplication) -> None:
+        bar = SummaryBar()
+        bar.show_year(2026, 54.0, 2024.0, 910.0)
+        texts = [label.text() for label in bar.findChildren(QLabel)]
+        assert "2026" in texts
+        assert any("910" in text for text in texts)
+
+    def test_ratio_bar_keeps_value(self, qapp: QApplication) -> None:
+        bar = RatioBar()
+        bar.set_value(1.5, "150 %")
+        assert bar._ratio == pytest.approx(1.5)

@@ -188,7 +188,7 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._year_view)
         outer.addWidget(self._stack, 1)
 
-        self._summary = SummaryBar()
+        self._summary = SummaryBar(self._mode)
         outer.addWidget(self._summary)
 
         self.setCentralWidget(central)
@@ -535,7 +535,7 @@ class MainWindow(QMainWindow):
             self._year, self._month, timesheet, self._settings.federal_state, self._settings.hours_per_day
         )
         self._update_year_view(timesheet)
-        self._update_summary(timesheet)
+        self._refresh_summary_bar()
         self._current_entry = None
 
         has_rows = self._model.rowCount() > 0
@@ -559,15 +559,41 @@ class MainWindow(QMainWindow):
             self._tree.expandAll()
         self._list_stack.setCurrentIndex(self._list_page(self._model.rowCount() > 0))
 
-    def _update_summary(self, timesheet: Timesheet | None) -> None:
-        """Fuellt die Summenleiste; Soll aus den Arbeitstagen des Zeitraums."""
-        if timesheet is None:
-            self._summary.show_timesheet(None, self._settings, 0)
+    def _refresh_summary_bar(self) -> None:
+        """Fuellt die Summenleiste passend zur aktiven Ansicht."""
+        view = self._stack.currentIndex()
+        if view == 1:
+            self._summary_calendar()
+        elif view == 2:
+            self._summary_year()
+        else:
+            self._summary_list()
+
+    def _summary_list(self) -> None:
+        """Liste: volle Summenleiste, Fortschritt Ist gegen Soll des Zeitraums."""
+        if self._timesheet is None:
+            self._summary.clear()
             return
         target_workdays = HolidayService(self._settings.federal_state).count_workdays(
-            timesheet.date_from, timesheet.date_to
+            self._timesheet.date_from, self._timesheet.date_to
         )
-        self._summary.show_timesheet(timesheet, self._settings, target_workdays)
+        self._summary.show_list(self._timesheet, self._settings, target_workdays)
+
+    def _summary_calendar(self) -> None:
+        """Kalender: gebuchte Arbeitstage und Ist/Soll des Monats."""
+        cells = self._calendar.cells
+        workdays = [cell for cell in cells if cell.in_month and cell.is_workday]
+        booked = [cell for cell in workdays if cell.hours > 0]
+        total_hours = sum(cell.hours for cell in cells if cell.in_month)
+        target_hours = len(workdays) * self._settings.hours_per_day
+        self._summary.show_calendar(
+            len(booked), len(workdays), total_hours, target_hours, len(workdays) - len(booked)
+        )
+
+    def _summary_year(self) -> None:
+        """Jahr: Ist/Soll/Prognose der Jahresansicht."""
+        summary = self._year_view.summary
+        self._summary.show_year(self._year, summary.actual, summary.target, summary.forecast)
 
     # --- Manuelle Zeiten -----------------------------------------------
 
@@ -812,6 +838,7 @@ class MainWindow(QMainWindow):
         self._year_view.set_year(
             self._year, hours, entries, self._settings.hours_per_day, self._settings.federal_state
         )
+        self._refresh_summary_bar()
         count = sum(entries.values())
         total = f"{sum(hours.values()):.2f}".replace(".", ",")
         self._set_status(f"Jahr {self._year}: {count} Einträge · {total} h")
@@ -860,6 +887,7 @@ class MainWindow(QMainWindow):
         if self._settings.theme in ("dark", "light"):
             self._mode = Mode(self._settings.theme)
             self._recolor_toolbar_extras()
+            self._summary.apply_mode(self._mode)
             self.theme_changed.emit(self._settings.theme)
 
     # --- Export ---------------------------------------------------------
@@ -928,6 +956,7 @@ class MainWindow(QMainWindow):
 
     def _on_view_changed(self, position: int) -> None:
         self._stack.setCurrentIndex(position)
+        self._refresh_summary_bar()
         # Beim ersten Wechsel in die Jahresansicht (oder nach Jahreswechsel) alle
         # zwoelf Monate in einem Bereichs-Abruf laden.
         if position == 2 and self._settings_complete() and self._year_loaded_for != self._year:
@@ -1014,6 +1043,7 @@ class MainWindow(QMainWindow):
         self._recolor_toolbar_extras()
         self._calendar.apply_mode(self._mode)
         self._year_view.apply_mode(self._mode)
+        self._summary.apply_mode(self._mode)
         self._recolor_menu_icons()
         self.theme_changed.emit(self._mode.value)
 

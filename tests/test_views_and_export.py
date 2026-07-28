@@ -224,3 +224,18 @@ class TestViewsInWindow:
         window._on_month_selected(3)
         assert window._month == 3
         assert window._stack.currentIndex() == 0
+
+    def test_summary_bar_follows_the_active_view(self, qapp: QApplication) -> None:
+        from PySide6.QtWidgets import QLabel
+
+        window = MainWindow(Settings(), Mode.DARK)
+        window._year, window._month = 2026, 7
+        window.set_timesheet(demo_timesheet())
+
+        window._tabs.setCurrentIndex(1)  # Kalender
+        cal_texts = " ".join(label.text() for label in window._summary.findChildren(QLabel))
+        assert "Gebucht" in cal_texts
+
+        window._tabs.setCurrentIndex(2)  # Jahr
+        year_texts = " ".join(label.text() for label in window._summary.findChildren(QLabel))
+        assert "Prognose" in year_texts
