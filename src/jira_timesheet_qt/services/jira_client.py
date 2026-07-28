@@ -451,7 +451,7 @@ class JiraClient:
             client:
                 Der HTTP-Client.
             issue_key:
-                Der Issue-Key (z.B. PROJ-0).
+                Der Issue-Key (z.B. PROJ-1234).
 
         Returns:
             Liste der Worklog-Dicts (leer bei Fehler).

@@ -134,7 +134,7 @@ class TestWindow:
     def test_search_filters_rows(self, window: MainWindow) -> None:
         table = window.findChild(QTableView)
         assert table is not None
-        window._proxy.setFilterFixedString("Usercentrics")
+        window._proxy.setFilterFixedString("Consent")
         assert table.model().rowCount() == 1
         window._proxy.setFilterFixedString("")
         assert table.model().rowCount() == 15

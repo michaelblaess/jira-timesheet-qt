@@ -101,7 +101,7 @@ class TestManualEntryDialog:
             default_customer="Vertrieb",
             default_date=date(2026, 7, 15),
         )
-        dialog.ticket.setText("PROJ-0")
+        dialog.ticket.setText("PROJ-42")
         dialog.summary.setText("Doku")
         dialog.customer.setCurrentText("Corporate")
         dialog.hours.setText("3h 30m")
@@ -110,7 +110,7 @@ class TestManualEntryDialog:
         entry = dialog.result_entry()
         assert entry is not None
         assert entry.entry_date == date(2026, 7, 15)
-        assert entry.ticket == "PROJ-0"
+        assert entry.ticket == "PROJ-42"
         assert entry.customer == "Corporate"
         assert abs(entry.hours - 3.5) < 1e-9
 
@@ -126,10 +126,10 @@ class TestManualEntryDialog:
         from jira_timesheet_qt.ui.manual_entry_dialog import ManualEntryDialog
 
         existing = ManualEntry(
-            entry_date=date(2026, 6, 10), ticket="PROJ-0", summary="x", customer="Corporate", hours=2.0, entry_id=7
+            entry_date=date(2026, 6, 10), ticket="PROJ-1", summary="x", customer="Corporate", hours=2.0, entry_id=7
         )
         dialog = ManualEntryDialog(customers=["Vertrieb", "Corporate"], default_customer="Vertrieb", entry=existing)
-        assert dialog.ticket.text() == "PROJ-0"
+        assert dialog.ticket.text() == "PROJ-1"
         dialog.hours.setText("4,25")
         dialog._on_save()
 

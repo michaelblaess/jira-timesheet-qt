@@ -74,7 +74,7 @@ class ManualEntryDialog(QDialog):
 
         self.ticket = QLineEdit(entry.ticket if entry else "")
         self.ticket.setFixedWidth(FIELD_WIDTH)
-        self.ticket.setPlaceholderText("z.B. PROJ-0 (optional)")
+        self.ticket.setPlaceholderText("z.B. PROJ-1234 (optional)")
         form.addRow(self._label("Ticket"), self.ticket)
 
         self.summary = QLineEdit(entry.summary if entry else "")

@@ -157,7 +157,7 @@ class TestExport:
 
     def test_print_html_contains_the_entries(self, qapp: QApplication) -> None:
         html = ExportService(Settings()).build_print_html(demo_timesheet())
-        assert "PROJ-0" in html
+        assert "PROJ-101" in html
         assert "54,00" in html  # Gesamtsumme mit deutschem Komma
         assert "20.07.2026" in html
 

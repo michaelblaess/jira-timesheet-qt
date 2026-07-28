@@ -183,7 +183,7 @@ class TestStatusBar:
 
 def _jira_entry() -> WorklogEntry:
     return WorklogEntry(
-        date=date(2026, 7, 23), ticket="PROJ-0", summary="Deployment anpassen",
+        date=date(2026, 7, 23), ticket="PROJ-17309", summary="Deployment anpassen",
         author="Mustermann, Max", budget="", hours=4.5, status="IN ARBEIT",
         issuetype="Story", priority="High", assignee="Mustermann, Max",
     )
@@ -194,7 +194,7 @@ class TestTicketDetailDialog:
         dialog = TicketDetailDialog(_jira_entry())
         title = dialog.findChild(QLabel, "DetailDialogTitle")
         assert title is not None
-        assert "PROJ-0" in title.text()
+        assert "PROJ-17309" in title.text()
         assert "Deployment anpassen" in title.text()
 
     def test_values_include_hours_and_status(self, qapp: QApplication) -> None:
@@ -210,7 +210,7 @@ class TestTicketDetailDialog:
         dialog = TicketDetailDialog(_jira_entry(), "https://beispiel.atlassian.net")
         link = dialog.findChild(QLabel, "DetailDialogLink")
         assert link is not None
-        assert "beispiel.atlassian.net/browse/PROJ-0" in link.text()
+        assert "beispiel.atlassian.net/browse/PROJ-17309" in link.text()
 
     def test_no_link_for_manual_entry(self, qapp: QApplication) -> None:
         manual = WorklogEntry(

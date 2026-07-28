@@ -56,7 +56,7 @@ class TestTreeModel:
         # Datum-Spalte des Kindes ist leer - sie steht in der Gruppenzeile.
         assert model.data(model.index(0, 0, group), Qt.ItemDataRole.DisplayRole) == ""
         ticket = model.data(model.index(0, _TICKET_COL, group), Qt.ItemDataRole.DisplayRole)
-        assert ticket == "PROJ-0"
+        assert ticket == "PROJ-101"
 
     def test_entry_role_and_helpers(self, qapp: QApplication) -> None:
         model = _model()

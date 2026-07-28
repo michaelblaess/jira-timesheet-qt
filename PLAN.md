@@ -80,7 +80,7 @@ Beide Themen sind zur Laufzeit umschaltbar, Vorgabe folgt der Systemeinstellung.
 │  ○ ○ ○   Juli 2026                                   ⌄ Suche    ⚙  ◐  │  Kopfzeile
 ├──────────┬────────────────────────────────────────────────────────────┤
 │          │                                                            │
-│  Liste   │   Mo  Di  Mi  Do  Fr        │  PROJ-0                   │
+│  Liste   │   Mo  Di  Mi  Do  Fr        │  PROJ-101                   │
 │  Kalender│   ─────────────────────     │  ─────────────────────────   │
 │  Jahr    │   [Stundenzettel-Inhalt]    │  Sitefinity Security ...     │
 │          │                             │                              │

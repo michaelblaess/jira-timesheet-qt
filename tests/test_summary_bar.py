@@ -26,7 +26,7 @@ def _german() -> None:
 def _entry(hours: float, *, manual: bool = False) -> WorklogEntry:
     return WorklogEntry(
         date=date(2026, 7, 1),
-        ticket="PROJ-0",
+        ticket="PROJ-1",
         summary="x",
         author="a",
         budget="",
