@@ -12,7 +12,7 @@ Riesen-QSS, das jede Qt-Vorgabe nachbaut. Details siehe docs/qt-grundlagen.md.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 
 from PySide6.QtGui import QColor, QPalette
@@ -100,9 +100,78 @@ RADIUS_SM = 4
 RADIUS_MD = 6
 
 
+@dataclass(frozen=True)
+class Accent:
+    """Ein Akzentfarben-Satz (Grundton, Hover, transparente Flaeche)."""
+
+    accent: str
+    accent_hover: str
+    accent_subtle: str
+
+
+# Vordefinierte Akzentfarben, je (dunkel, hell) und auf guten Kontrast in beiden
+# Erscheinungsbildern abgestimmt. Schluessel bleiben stabil (Serialisierung),
+# der Anzeigename steht in ACCENT_LABELS.
+ACCENTS: dict[str, tuple[Accent, Accent]] = {
+    "orange": (
+        Accent("#ff922b", "#ffa94d", "rgba(255, 146, 43, 0.20)"),
+        Accent("#e8590c", "#fd7e14", "rgba(232, 89, 12, 0.14)"),
+    ),
+    "blau": (
+        Accent("#4dabf7", "#74c0fc", "rgba(77, 171, 247, 0.20)"),
+        Accent("#1c7ed6", "#1971c2", "rgba(28, 126, 214, 0.14)"),
+    ),
+    "gruen": (
+        Accent("#51cf66", "#69db7c", "rgba(81, 207, 102, 0.20)"),
+        Accent("#2f9e44", "#37b24d", "rgba(47, 158, 68, 0.14)"),
+    ),
+    "tuerkis": (
+        Accent("#22b8cf", "#3bc9db", "rgba(34, 184, 207, 0.20)"),
+        Accent("#0c8599", "#1098ad", "rgba(12, 133, 153, 0.14)"),
+    ),
+    "violett": (
+        Accent("#b197fc", "#d0bfff", "rgba(177, 151, 252, 0.20)"),
+        Accent("#7048e8", "#7950f2", "rgba(112, 72, 232, 0.14)"),
+    ),
+}
+
+# Anzeigenamen (alphabetisch sortiert vom Aufrufer).
+ACCENT_LABELS: dict[str, str] = {
+    "blau": "Blau",
+    "gruen": "Grün",
+    "orange": "Orange",
+    "tuerkis": "Türkis",
+    "violett": "Violett",
+}
+
+DEFAULT_ACCENT = "orange"
+# Aktive Akzentfarbe - global, weil das Erscheinungsbild app-weit gilt (wie das
+# Stylesheet). set_accent wird beim Start und beim Speichern der Einstellungen
+# aufgerufen, bevor Palette und QSS neu gebaut werden.
+_current_accent = DEFAULT_ACCENT
+
+
+def set_accent(name: str) -> None:
+    """Setzt die aktive Akzentfarbe (faellt bei unbekanntem Namen auf Orange)."""
+    global _current_accent
+    _current_accent = name if name in ACCENTS else DEFAULT_ACCENT
+
+
+def current_accent() -> str:
+    """Name der aktiven Akzentfarbe."""
+    return _current_accent
+
+
 def palette_for(mode: Mode) -> Palette:
-    """Liefert die Farbwerte zum Erscheinungsbild."""
-    return DARK if mode is Mode.DARK else LIGHT
+    """Liefert die Farbwerte zum Erscheinungsbild - mit der aktiven Akzentfarbe."""
+    base = DARK if mode is Mode.DARK else LIGHT
+    variant = ACCENTS.get(_current_accent, ACCENTS[DEFAULT_ACCENT])[0 if mode is Mode.DARK else 1]
+    return replace(
+        base,
+        accent=variant.accent,
+        accent_hover=variant.accent_hover,
+        accent_subtle=variant.accent_subtle,
+    )
 
 
 def build_palette(mode: Mode) -> QPalette:

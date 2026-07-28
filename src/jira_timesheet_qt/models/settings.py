@@ -87,6 +87,7 @@ class Settings:
     """Einstellungen gespeichert in ~/.jira-timesheet-qt/settings.json."""
 
     theme: str = DEFAULT_THEME
+    accent: str = "orange"
     language: str = "de"
     jira_host: str = ""
     jira_token: str = ""
@@ -128,6 +129,7 @@ class Settings:
 
     _FIELDS = (
         "theme",
+        "accent",
         "language",
         "jira_host",
         "jira_token",
@@ -216,6 +218,7 @@ class Settings:
         try:
             return Settings(
                 theme=Settings._parse_theme(data.get("theme")),
+                accent=str(data.get("accent", "orange")),
                 language=data.get("language", "de"),
                 jira_host=data.get("jira_host", ""),
                 jira_token=data.get("jira_token", ""),

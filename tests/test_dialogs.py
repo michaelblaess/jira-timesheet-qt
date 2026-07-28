@@ -118,6 +118,11 @@ class TestSettingsDialog:
         dialog.mark_manual.setChecked(True)
         assert dialog.manual_color.isEnabled() is True
 
+    def test_accent_round_trips(self, qapp: QApplication) -> None:
+        dialog = SettingsDialog(Settings(accent="gruen"))
+        assert dialog.accent.currentData() == "gruen"
+        assert dialog.result_settings().accent == "gruen"
+
     def test_all_pages_are_reachable(self, qapp: QApplication) -> None:
         dialog = SettingsDialog(Settings())
         assert dialog._nav.count() == dialog._pages.count() == 6

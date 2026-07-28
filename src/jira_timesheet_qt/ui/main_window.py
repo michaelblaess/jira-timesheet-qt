@@ -56,7 +56,7 @@ from jira_timesheet_qt.ui.manual_entry_dialog import ManualEntryDialog
 from jira_timesheet_qt.ui.menu import Command, CommandRegistry, MenuBuilder, MenuDefinition, missing_commands
 from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
 from jira_timesheet_qt.ui.summary_bar import SummaryBar
-from jira_timesheet_qt.ui.theme import Mode, palette_for
+from jira_timesheet_qt.ui.theme import Mode, palette_for, set_accent
 from jira_timesheet_qt.ui.timesheet_model import ENTRY_ROLE, SORT_ROLE, TimesheetModel
 from jira_timesheet_qt.ui.timesheet_tree_model import TimesheetTreeModel
 from jira_timesheet_qt.ui.year_view import YearView
@@ -894,11 +894,13 @@ class MainWindow(QMainWindow):
         self._apply_manual_color()
         self._update_empty_state()
         self._set_status("Einstellungen gespeichert")
+        # Akzentfarbe und (bei fester Wahl) Erscheinungsbild uebernehmen und die
+        # Oberflaeche neu einfaerben - der app-weite Palette-/QSS-Neuaufbau laeuft
+        # ueber theme_changed im Einstiegspunkt.
+        set_accent(self._settings.accent)
         if self._settings.theme in ("dark", "light"):
             self._mode = Mode(self._settings.theme)
-            self._recolor_toolbar_extras()
-            self._summary.apply_mode(self._mode)
-            self.theme_changed.emit(self._settings.theme)
+        self._reapply_theme()
 
     # --- Export ---------------------------------------------------------
 
@@ -1053,7 +1055,15 @@ class MainWindow(QMainWindow):
         self._mode = Mode.LIGHT if self._mode is Mode.DARK else Mode.DARK
         self._settings.theme = self._mode.value
         self._settings.save()
-        # Die Symbole liegen je Erscheinungsbild in eigenen Dateien vor.
+        self._reapply_theme()
+
+    def _reapply_theme(self) -> None:
+        """Faerbt alle selbstgezeichneten Flaechen neu und stoesst den app-weiten
+        Palette-/QSS-Neuaufbau an (Erscheinungsbild ODER Akzentfarbe geaendert).
+
+        Die Symbole liegen je Erscheinungsbild in eigenen Dateien vor, die
+        selbstgezeichneten Ansichten lesen die Farben beim naechsten Zeichnen.
+        """
         self._recolor_toolbar_extras()
         self._calendar.apply_mode(self._mode)
         self._year_view.apply_mode(self._mode)

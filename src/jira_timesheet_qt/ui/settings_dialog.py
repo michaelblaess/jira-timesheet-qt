@@ -36,6 +36,7 @@ from jira_timesheet_qt.models.export_column import ExportColumn, default_label
 from jira_timesheet_qt.models.settings import Settings, normalize_color
 from jira_timesheet_qt.services.cache_service import CACHE_DIR
 from jira_timesheet_qt.services.manual_entry_service import DB_FILE
+from jira_timesheet_qt.ui.theme import ACCENT_LABELS
 
 # Einheitliche Breite aller Eingabefelder. Ohne das richtet sich jedes Feld
 # nach seinem Inhalt, und die rechte Kante wirkt zerfranst.
@@ -343,6 +344,14 @@ class SettingsDialog(QDialog):
         self.theme.setCurrentIndex(max(0, index))
         form.addRow(self._label("Erscheinungsbild"), self.theme)
 
+        # Akzentfarbe - vordefinierte Werte mit gutem Kontrast in Hell und Dunkel.
+        self.accent = self._combo()
+        for key in sorted(ACCENT_LABELS, key=lambda k: ACCENT_LABELS[k]):
+            self.accent.addItem(ACCENT_LABELS[key], key)
+        accent_index = self.accent.findData(self._settings.accent)
+        self.accent.setCurrentIndex(max(0, accent_index))
+        form.addRow(self._label("Akzentfarbe"), self.accent)
+
         self.mark_manual = QCheckBox("Manuell erfasste Zeiten hervorheben")
         self.mark_manual.setChecked(self._settings.mark_manual_entries)
         form.addRow(self._label(""), self.mark_manual)
@@ -540,6 +549,7 @@ class SettingsDialog(QDialog):
             for key, visible, enabled, label in self._column_rows
         ]
         s.theme = str(self.theme.currentData())
+        s.accent = str(self.accent.currentData())
         s.mark_manual_entries = self.mark_manual.isChecked()
         s.manual_entry_color = self._manual_color_value
         return s

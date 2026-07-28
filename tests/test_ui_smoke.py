@@ -60,6 +60,16 @@ class TestTheme:
             assert qpal.color(QPalette.ColorRole.Window).name() == palette.bg_primary
             assert qpal.color(QPalette.ColorRole.Highlight).name() == palette.accent
 
+    def test_accent_overrides_the_palette(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.ui.theme import ACCENTS, DEFAULT_ACCENT, palette_for, set_accent
+
+        try:
+            set_accent("blau")
+            assert palette_for(Mode.DARK).accent == ACCENTS["blau"][0].accent
+            assert palette_for(Mode.LIGHT).accent == ACCENTS["blau"][1].accent
+        finally:
+            set_accent(DEFAULT_ACCENT)  # sonst faerbt es folgende Tests ein
+
 
 class TestModel:
     def test_rows_and_columns(self) -> None:
