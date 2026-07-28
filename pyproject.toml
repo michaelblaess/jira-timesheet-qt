@@ -20,6 +20,8 @@ dependencies = [
     # Material Design Icons (Apache 2.0) als zur Laufzeit einfaerbbare QIcons -
     # loest das fehlende currentColor und skaliert auf beliebige Themenfarben.
     "QtAwesome>=1.4",
+    # Validierung der datengetriebenen Menue-Definition (JSON/DB -> typisierter Baum).
+    "pydantic>=2.0",
 ]
 
 [project.optional-dependencies]

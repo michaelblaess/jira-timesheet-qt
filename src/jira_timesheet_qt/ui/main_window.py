@@ -8,11 +8,13 @@ Seitenleiste und ein QStackedWidget, das keine Reiter zeichnet.
 from __future__ import annotations
 
 import calendar
+import contextlib
 import webbrowser
 from datetime import date
 
+import qtawesome as qta
 from PySide6.QtCore import QModelIndex, QPoint, QSettings, QSortFilterProxyModel, Qt, Signal
-from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
+from PySide6.QtGui import QCloseEvent, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
@@ -43,10 +45,11 @@ from jira_timesheet_qt.ui.highlight_delegate import HighlightDelegate
 from jira_timesheet_qt.ui.jira_worker import WorklogWorker
 from jira_timesheet_qt.ui.log_dock import Level, LogDock
 from jira_timesheet_qt.ui.manual_entry_dialog import ManualEntryDialog
+from jira_timesheet_qt.ui.menu import Command, CommandRegistry, MenuBuilder, MenuDefinition, missing_commands
 from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
 from jira_timesheet_qt.ui.sidebar import Sidebar
 from jira_timesheet_qt.ui.summary_bar import SummaryBar
-from jira_timesheet_qt.ui.theme import Mode
+from jira_timesheet_qt.ui.theme import Mode, palette_for
 from jira_timesheet_qt.ui.timesheet_model import COLUMNS, ENTRY_ROLE, SORT_ROLE, TimesheetModel
 from jira_timesheet_qt.ui.timesheet_tree_model import TimesheetTreeModel
 from jira_timesheet_qt.ui.year_view import YearView
@@ -188,6 +191,71 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._log)
         self._log.resize(self._log.width(), 180)
         self._log.write("Bereit")
+
+        self._install_menu()
+
+    # --- Datengetriebenes Menue -----------------------------------------
+
+    def _install_menu(self) -> None:
+        """Baut die Menueleiste aus der JSON-Definition (datengetrieben).
+
+        Struktur kommt aus resources/menu.json, Verhalten aus der Registry -
+        verbunden nur ueber die Command-ID. Dieselbe Definition koennte ueber
+        die 'toolbar'-Surface auch eine QToolBar erzeugen (siehe MenuBuilder).
+        """
+        from importlib import resources
+
+        self._commands = CommandRegistry()
+        self._register_commands(self._commands)
+
+        raw = (resources.files("jira_timesheet_qt") / "resources" / "menu.json").read_text(
+            encoding="utf-8"
+        )
+        definition = MenuDefinition.model_validate_json(raw)
+
+        missing = missing_commands(definition, self._commands.ids())
+        if missing:
+            self._log.write(f"Menue verweist auf unbekannte Commands: {sorted(missing)}", Level.ERROR)
+
+        builder = MenuBuilder(self._commands, owner=self, icon_loader=self._menu_icon)
+        self.setMenuBar(builder.build_menubar(definition.menubar, self))
+        self._menu_definition = definition
+
+    def _register_commands(self, registry: CommandRegistry) -> None:
+        """Registriert das Verhalten hinter den Command-IDs der Menue-Definition."""
+        add = registry.register
+        add(Command("file.reload", run=self.reload_current))
+        add(Command("file.manual_new", run=self.action_new_manual))
+        add(Command("file.quit", run=self.close))
+        add(Command("view.list", run=lambda: self._go_to_view(0),
+                    is_checked=lambda: self._stack.currentIndex() == 0))
+        add(Command("view.calendar", run=lambda: self._go_to_view(1),
+                    is_checked=lambda: self._stack.currentIndex() == 1))
+        add(Command("view.year", run=lambda: self._go_to_view(2),
+                    is_checked=lambda: self._stack.currentIndex() == 2))
+        add(Command("view.group", run=lambda: self._on_group_toggled(not self._grouped),
+                    is_checked=lambda: self._grouped))
+        add(Command("view.log", run=self.toggle_log,
+                    is_checked=lambda: self._log.isVisible()))
+        add(Command("view.theme", run=self._toggle_theme))
+        add(Command("export.excel", run=self.export_excel))
+        add(Command("export.pdf", run=self.export_pdf))
+        add(Command("export.print", run=self.print_preview))
+        add(Command("settings.open", run=self.open_settings))
+        add(Command("help.about", run=self.open_about))
+
+    def _go_to_view(self, position: int) -> None:
+        """Wechselt die Ansicht (Sidebar-Markierung + Stack + Jahres-Load)."""
+        self._sidebar.select_view(position)
+        self._on_view_changed(position)
+
+    def _menu_icon(self, token: str) -> QIcon:
+        """Laedt ein mdi6-Icon fuer das Menue in der Strichfarbe des Themes."""
+        with contextlib.suppress(Exception):
+            icon = qta.icon(token, color=palette_for(self._mode).text_secondary)
+            if isinstance(icon, QIcon):
+                return icon
+        return QIcon()
 
     def _build_table(self) -> QTableView:
         """Baut die Liste der Eintraege."""
