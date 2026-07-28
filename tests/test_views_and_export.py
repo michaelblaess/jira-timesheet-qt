@@ -208,7 +208,7 @@ class TestViewsInWindow:
         window = MainWindow(Settings(), Mode.DARK)
         assert window._stack.count() == 3
         for index in range(3):
-            window._sidebar.view_changed.emit(index)
+            window._tabs.setCurrentIndex(index)
             assert window._stack.currentIndex() == index
 
     def test_data_reaches_calendar_and_year(self, qapp: QApplication) -> None:
@@ -220,7 +220,7 @@ class TestViewsInWindow:
 
     def test_month_click_switches_to_the_list(self, qapp: QApplication) -> None:
         window = MainWindow(Settings(), Mode.DARK)
-        window._sidebar.view_changed.emit(2)
+        window._tabs.setCurrentIndex(2)
         window._on_month_selected(3)
         assert window._month == 3
         assert window._stack.currentIndex() == 0

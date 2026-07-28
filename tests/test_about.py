@@ -65,31 +65,15 @@ class TestIcons:
             for mode in (Mode.DARK, Mode.LIGHT):
                 assert not load_icon(name, mode).isNull(), f"{name} ({mode.value})"
 
-    def test_header_buttons_carry_icons(self, qapp: QApplication) -> None:
-        """Kein Knopf darf leer bleiben - Unicode-Glyphen sind hier verboten."""
-        from PySide6.QtWidgets import QPushButton
+    def test_toolbar_month_buttons_carry_icons(self, qapp: QApplication) -> None:
+        """Die Monatspfeile in der Toolbar tragen Symbole, keine Text-Glyphen."""
+        from jira_timesheet_qt.models.settings import Settings
+        from jira_timesheet_qt.ui.main_window import MainWindow
 
-        from jira_timesheet_qt.ui.header import Header
-
-        header = Header(Mode.DARK)
-        buttons = header.findChildren(QPushButton)
-        # Das Suchfeld bringt eine eigene Loesch-Schaltflaeche mit.
-        # Die Aktionsknoepfe sind in die Menueleiste/Toolbar gewandert; in der
-        # Kopfzeile bleiben nur die beiden Monatsnavigations-Pfeile.
-        icon_buttons = [b for b in buttons if b.toolTip()]
-        assert len(icon_buttons) == 2
-        for button in icon_buttons:
-            assert not button.icon().isNull(), button.toolTip()
+        window = MainWindow(Settings(), Mode.DARK)
+        for button in (window._prev_button, window._next_button):
+            assert not button.icon().isNull()
             assert button.text() == "", "Symbole statt Text-Glyphen"
-
-    def test_theme_switch_swaps_the_icons(self, qapp: QApplication) -> None:
-        """Beim Wechsel muss das Gegenstueck angeboten werden."""
-        from jira_timesheet_qt.ui.header import Header
-
-        header = Header(Mode.DARK)
-        assert header._theme_icon() == "sun"
-        header.apply_mode(Mode.LIGHT)
-        assert header._theme_icon() == "moon"
 
     def test_stylesheet_has_no_dangling_icon_urls(self) -> None:
         """Jede url() im Stylesheet muss auf eine vorhandene Datei zeigen.
@@ -111,4 +95,4 @@ class TestAboutReachable:
     def test_window_can_open_about(self, qapp: QApplication) -> None:
         window = MainWindow(Settings(), Mode.DARK)
         assert hasattr(window, "open_about")
-        assert window._header.about_requested is not None
+        assert "help.about" in window._commands.ids()

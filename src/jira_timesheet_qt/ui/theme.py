@@ -275,71 +275,42 @@ QToolButton:pressed, QToolButton:checked {{
     background-color: {p.accent_subtle};
 }}
 
-/* ------------------------------------------------------------------ Kopfzeile */
-#Header {{
+/* ---------------------------------------------- Monat und Suche in der Toolbar */
+#ToolbarMonth {{
+    font-size: 15px;
+    font-weight: 700;
+    color: {p.text_primary};
+    padding: 0 6px;
+}}
+
+#ToolbarSearch {{
+    min-height: 22px;
+}}
+
+/* --------------------------------------------------- Ansichts-Reiter (wie TUI) */
+#ViewTabs {{
     background-color: {p.bg_secondary};
     border-bottom: 1px solid {p.border};
 }}
 
-#HeaderTitle {{
-    font-size: 19px;
-    font-weight: 700;
-    color: {p.text_primary};
-}}
-
-#HeaderSubtitle {{
-    font-size: 12px;
-    color: {p.text_tertiary};
-}}
-
-/* ---------------------------------------------------------------- Seitenleiste */
-#Sidebar {{
-    background-color: {p.bg_secondary};
-    border-right: 1px solid {p.border};
-}}
-
-#SidebarSection {{
-    color: {p.text_tertiary};
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    padding: 4px 12px;
-}}
-
-/* NavButton ist ein eigenes Widget, kein normaler Knopf - flach als Navi-Eintrag. */
-#Sidebar NavButton {{
-    background-color: transparent;
+#ViewTabs::tab {{
+    background: transparent;
+    color: {p.text_secondary};
+    padding: 8px 18px;
+    margin-right: 2px;
     border: none;
-    border-radius: {RADIUS_SM}px;
-    padding: 9px 12px;
-    text-align: left;
+    border-bottom: 2px solid transparent;
     font-size: 13px;
     font-weight: 600;
-    color: {p.text_secondary};
 }}
 
-#Sidebar NavButton:hover {{
-    background-color: {p.bg_tertiary};
+#ViewTabs::tab:hover {{
     color: {p.text_primary};
 }}
 
-#Sidebar NavButton[active="true"] {{
-    background-color: {p.accent_subtle};
+#ViewTabs::tab:selected {{
     color: {p.accent};
-    font-weight: 700;
-}}
-
-#SidebarTotalLabel {{
-    color: {p.text_tertiary};
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 1px;
-}}
-
-#SidebarTotalValue {{
-    color: {p.text_primary};
-    {mono_rule}
-    font-size: 22px;
+    border-bottom: 2px solid {p.accent};
     font-weight: 700;
 }}
 

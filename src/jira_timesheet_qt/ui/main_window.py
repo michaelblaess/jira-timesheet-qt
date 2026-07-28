@@ -1,8 +1,10 @@
-"""Hauptfenster: verdrahtet Kopfzeile, Seitenleiste, Liste und Detailbereich.
+"""Hauptfenster: verdrahtet Menue, Toolbar, Reiter, Ansichten und Summenleiste.
 
-Aufbau bewusst ohne QMenuBar und ohne QTabWidget - beides verraet auf den
-ersten Blick ein Standard-Toolkit. Der Ansichtswechsel laeuft ueber die
-Seitenleiste und ein QStackedWidget, das keine Reiter zeichnet.
+Aufbau nahe an der TUI: eine Reiterleiste (Liste/Kalender/Jahr) ueber einem
+QStackedWidget, Monatsnavigation und Suche in der Toolbar, darunter die
+Ansicht in voller Breite, unten die Summenleiste. Die Details eines Eintrags
+kommen als modaler Dialog (Doppelklick/Toolbar/Kontextmenue), nicht als fester
+Bereich.
 """
 
 from __future__ import annotations
@@ -10,23 +12,28 @@ from __future__ import annotations
 import calendar
 import contextlib
 import webbrowser
+from collections.abc import Callable
 from datetime import date
 
 import qtawesome as qta
-from PySide6.QtCore import QModelIndex, QPoint, QSettings, QSortFilterProxyModel, Qt, Signal
+from PySide6.QtCore import QModelIndex, QPoint, QSettings, QSize, QSortFilterProxyModel, Qt, Signal
 from PySide6.QtGui import QCloseEvent, QColor, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMenu,
     QMessageBox,
     QPushButton,
-    QSplitter,
+    QSizePolicy,
     QStackedWidget,
     QStatusBar,
+    QTabBar,
     QTableView,
+    QToolBar,
+    QToolButton,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -42,14 +49,13 @@ from jira_timesheet_qt.ui.about_dialog import AboutDialog
 from jira_timesheet_qt.ui.calendar_view import CalendarView, DayCell
 from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
 from jira_timesheet_qt.ui.export_service import ExportService
-from jira_timesheet_qt.ui.header import Header
 from jira_timesheet_qt.ui.highlight_delegate import HighlightDelegate
+from jira_timesheet_qt.ui.icons import load_icon
 from jira_timesheet_qt.ui.jira_worker import WorklogWorker
 from jira_timesheet_qt.ui.log_dock import Level, LogDock
 from jira_timesheet_qt.ui.manual_entry_dialog import ManualEntryDialog
 from jira_timesheet_qt.ui.menu import Command, CommandRegistry, MenuBuilder, MenuDefinition, missing_commands
 from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
-from jira_timesheet_qt.ui.sidebar import Sidebar
 from jira_timesheet_qt.ui.summary_bar import SummaryBar
 from jira_timesheet_qt.ui.theme import Mode, palette_for
 from jira_timesheet_qt.ui.timesheet_model import ENTRY_ROLE, SORT_ROLE, TimesheetModel
@@ -57,6 +63,17 @@ from jira_timesheet_qt.ui.timesheet_tree_model import TimesheetTreeModel
 from jira_timesheet_qt.ui.year_view import YearView
 
 _VIEWS = ("Liste", "Kalender", "Jahr")
+
+_MONTHS = (
+    "Januar", "Februar", "März", "April", "Mai", "Juni",
+    "Juli", "August", "September", "Oktober", "November", "Dezember",
+)
+
+
+def _month_name(month: int) -> str:
+    """Deutscher Monatsname zu einer Monatszahl von 1 bis 12."""
+    return _MONTHS[month - 1] if 1 <= month <= len(_MONTHS) else ""
+
 
 # Zustand der Statuszeile -> Ebene im Meldungsfenster.
 _LEVELS = {"error": Level.ERROR, "busy": Level.INFO, "": Level.SUCCESS}
@@ -126,7 +143,6 @@ class MainWindow(QMainWindow):
         self._apply_manual_color()
 
         self._build_ui()
-        self._header.set_grouped(self._grouped)
         self._install_shortcuts()
         self._restore_geometry()
         self._update_period_labels()
@@ -143,26 +159,16 @@ class MainWindow(QMainWindow):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        self._header = Header(self._mode)
-        self._header.search_changed.connect(self._on_search_changed)
-        self._header.theme_toggled.connect(self._toggle_theme)
-        self._header.settings_requested.connect(self.open_settings)
-        self._header.about_requested.connect(self.open_about)
-        self._header.reload_requested.connect(self.reload_current)
-        self._header.log_toggled.connect(self.toggle_log)
-        self._header.manual_requested.connect(self.action_new_manual)
-        self._header.group_toggled.connect(self._on_group_toggled)
-        self._header.previous_month.connect(lambda: self._shift_month(-1))
-        self._header.next_month.connect(lambda: self._shift_month(1))
-        outer.addWidget(self._header)
-
-        body = QSplitter(Qt.Orientation.Horizontal)
-        body.setHandleWidth(1)
-        body.setChildrenCollapsible(False)
-
-        self._sidebar = Sidebar(_VIEWS)
-        self._sidebar.view_changed.connect(self._on_view_changed)
-        body.addWidget(self._sidebar)
+        # Ansichtswahl als Reiter (wie in der TUI) statt Seitenleiste.
+        self._tabs = QTabBar()
+        self._tabs.setObjectName("ViewTabs")
+        self._tabs.setExpanding(False)
+        self._tabs.setDrawBase(False)
+        self._tabs.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        for name in _VIEWS:
+            self._tabs.addTab(name)
+        self._tabs.currentChanged.connect(self._on_view_changed)
+        outer.addWidget(self._tabs)
 
         self._list_stack = QStackedWidget()
         self._list_stack.addWidget(self._build_empty_state())
@@ -180,13 +186,7 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._list_stack)
         self._stack.addWidget(self._calendar)
         self._stack.addWidget(self._year_view)
-        body.addWidget(self._stack)
-
-        body.setStretchFactor(0, 0)
-        body.setStretchFactor(1, 1)
-        body.setSizes([200, 1080])
-        self._splitter = body
-        outer.addWidget(body, 1)
+        outer.addWidget(self._stack, 1)
 
         self._summary = SummaryBar()
         outer.addWidget(self._summary)
@@ -240,10 +240,70 @@ class MainWindow(QMainWindow):
         toolbar = builder.build_toolbar(definition.menubar, self)
         toolbar.setObjectName("MainToolBar")  # fuer saveState/restoreState
         toolbar.setMovable(False)
+        self._build_toolbar_extras(toolbar)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
 
         self._menu_definition = definition
         self._toolbar = toolbar
+
+    def _build_toolbar_extras(self, toolbar: QToolBar) -> None:
+        """Ergaenzt die Toolbar um Monatsnavigation (mittig) und Suche (rechts).
+
+        Zwei dehnbare Zwischenraeume schieben die Monatsnavigation in die Mitte,
+        das Suchfeld sitzt danach am rechten Rand.
+        """
+        toolbar.addWidget(self._stretch())
+
+        self._prev_button = self._nav_button("chevron-left", "Vorheriger Monat", lambda: self._shift_month(-1))
+        toolbar.addWidget(self._prev_button)
+
+        self._month_label = QLabel("Kein Zeitraum")
+        self._month_label.setObjectName("ToolbarMonth")
+        self._month_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._month_label.setMinimumWidth(150)
+        toolbar.addWidget(self._month_label)
+
+        self._next_button = self._nav_button("chevron-right", "Nächster Monat", lambda: self._shift_month(1))
+        toolbar.addWidget(self._next_button)
+
+        toolbar.addWidget(self._stretch())
+
+        self._search = QLineEdit()
+        self._search.setObjectName("ToolbarSearch")
+        self._search.setPlaceholderText("Suchen ...")
+        self._search.setClearButtonEnabled(True)
+        self._search.setFixedWidth(240)
+        self._search.textChanged.connect(self._on_search_changed)
+        toolbar.addWidget(self._search)
+
+    @staticmethod
+    def _stretch() -> QWidget:
+        """Dehnbarer Zwischenraum fuer die Toolbar."""
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        return spacer
+
+    def _nav_button(self, icon: str, tooltip: str, slot: Callable[[], None]) -> QToolButton:
+        """Baut einen rahmenlosen Pfeilknopf fuer die Monatsnavigation."""
+        button = QToolButton()
+        button.setProperty("variant", "ghost")
+        button.setIcon(load_icon(icon, self._mode))
+        button.setIconSize(QSize(18, 18))
+        button.setToolTip(tooltip)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setAutoRaise(True)
+        button.clicked.connect(slot)
+        return button
+
+    def _focus_search(self) -> None:
+        """Setzt den Eingabefokus ins Suchfeld der Toolbar."""
+        self._search.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        self._search.selectAll()
+
+    def _recolor_toolbar_extras(self) -> None:
+        """Faerbt die Monatspfeile nach einem Themenwechsel neu ein."""
+        self._prev_button.setIcon(load_icon("chevron-left", self._mode))
+        self._next_button.setIcon(load_icon("chevron-right", self._mode))
 
     def _register_commands(self, registry: CommandRegistry) -> None:
         """Registriert das Verhalten hinter den Command-IDs der Menue-Definition."""
@@ -270,9 +330,8 @@ class MainWindow(QMainWindow):
         add(Command("help.about", run=self.open_about))
 
     def _go_to_view(self, position: int) -> None:
-        """Wechselt die Ansicht (Sidebar-Markierung + Stack + Jahres-Load)."""
-        self._sidebar.select_view(position)
-        self._on_view_changed(position)
+        """Wechselt die Ansicht ueber den Reiter (loest _on_view_changed aus)."""
+        self._tabs.setCurrentIndex(position)
 
     def _menu_icon(self, token: str) -> QIcon:
         """Laedt ein mdi6-Icon fuer das Menue in der Strichfarbe des Themes."""
@@ -441,7 +500,7 @@ class MainWindow(QMainWindow):
 
     def _install_shortcuts(self) -> None:
         """Standardtasten statt der Einzelbuchstaben aus der TUI."""
-        QShortcut(QKeySequence.StandardKey.Find, self, self._header.focus_search)
+        QShortcut(QKeySequence.StandardKey.Find, self, self._focus_search)
         QShortcut(QKeySequence.StandardKey.Refresh, self, self.reload_current)
         QShortcut(QKeySequence("Ctrl+,"), self, self.open_settings)
         QShortcut(QKeySequence(QKeySequence.StandardKey.HelpContents), self, self.open_about)
@@ -476,7 +535,6 @@ class MainWindow(QMainWindow):
             self._year, self._month, timesheet, self._settings.federal_state, self._settings.hours_per_day
         )
         self._update_year_view(timesheet)
-        self._sidebar.set_total(self._model.total_hours)
         self._update_summary(timesheet)
         self._current_entry = None
 
@@ -669,15 +727,8 @@ class MainWindow(QMainWindow):
             webbrowser.open(f"{host}/browse/{entry.ticket}")
 
     def _update_period_labels(self) -> None:
-        """Setzt Ueberschrift und Zusatzzeile der Kopfzeile."""
-        title = f"{Header.month_name(self._month)} {self._year}"
-        count = self._model.rowCount()
-        if count == 0:
-            self._header.set_period(title, "Keine Einträge geladen")
-            return
-        entries = "Eintrag" if count == 1 else "Einträge"
-        days = len({self._model.entry_at(row).date for row in range(count)})  # type: ignore[union-attr]
-        self._header.set_period(title, f"{count} {entries} · {days} Arbeitstage")
+        """Setzt den Monatstitel in der Toolbar."""
+        self._month_label.setText(f"{_month_name(self._month)} {self._year}")
 
     def _update_empty_state(self) -> None:
         """Passt den Leerzustand an: fehlt der Zugang oder nur die Daten?"""
@@ -709,7 +760,7 @@ class MainWindow(QMainWindow):
         first = date(self._year, self._month, 1)
         last = date(self._year, self._month, calendar.monthrange(self._year, self._month)[1])
 
-        self._set_status(f"Lade {Header.month_name(self._month)} {self._year} ...", "busy")
+        self._set_status(f"Lade {_month_name(self._month)} {self._year} ...", "busy")
         worker = WorklogWorker(self._settings, first, last, self)
         worker.progress.connect(lambda text: self._set_status(text, "busy"))
         worker.finished_ok.connect(self._on_loaded)
@@ -808,7 +859,7 @@ class MainWindow(QMainWindow):
         self._set_status("Einstellungen gespeichert")
         if self._settings.theme in ("dark", "light"):
             self._mode = Mode(self._settings.theme)
-            self._header.apply_mode(self._mode)
+            self._recolor_toolbar_extras()
             self.theme_changed.emit(self._settings.theme)
 
     # --- Export ---------------------------------------------------------
@@ -918,7 +969,7 @@ class MainWindow(QMainWindow):
         """Klick auf eine Monatskachel wechselt dorthin und laedt."""
         self._month = month
         self._update_period_labels()
-        self._sidebar.select_view(0)
+        self._tabs.setCurrentIndex(0)
         self._stack.setCurrentIndex(0)
         if self._settings_complete():
             self.load_month()
@@ -960,7 +1011,7 @@ class MainWindow(QMainWindow):
         self._settings.theme = self._mode.value
         self._settings.save()
         # Die Symbole liegen je Erscheinungsbild in eigenen Dateien vor.
-        self._header.apply_mode(self._mode)
+        self._recolor_toolbar_extras()
         self._calendar.apply_mode(self._mode)
         self._year_view.apply_mode(self._mode)
         self._recolor_menu_icons()
@@ -974,22 +1025,18 @@ class MainWindow(QMainWindow):
     # --- Fensterzustand -------------------------------------------------
 
     def _restore_geometry(self) -> None:
-        """Stellt Fenstergroesse und Aufteilung der letzten Sitzung her."""
+        """Stellt Fenstergroesse und -zustand der letzten Sitzung her."""
         geometry = self._qsettings.value("window/geometry")
         if geometry is not None:
             self.restoreGeometry(geometry)
-        sizes = self._qsettings.value("window/splitter")
-        if isinstance(sizes, list) and len(sizes) == 3:
-            self._splitter.setSizes([int(value) for value in sizes])
         state = self._qsettings.value("window/state")
         if state is not None:
             # Stellt auch die Sichtbarkeit des Meldungsfensters wieder her.
             self.restoreState(state)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
-        """Merkt Fenstergroesse und Aufteilung, wartet auf den Arbeitsfaden."""
+        """Merkt Fenstergroesse und -zustand, wartet auf den Arbeitsfaden."""
         self._qsettings.setValue("window/geometry", self.saveGeometry())
-        self._qsettings.setValue("window/splitter", self._splitter.sizes())
         self._qsettings.setValue("window/state", self.saveState())
         if self._worker is not None and self._worker.isRunning():
             # Ohne das kann Qt beim Beenden ueber einen laufenden Faden stolpern.

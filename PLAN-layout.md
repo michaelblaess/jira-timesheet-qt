@@ -45,10 +45,11 @@ Statuszeile
 
 - [x] S1: TicketDetailDialog (modal) + Detailbereich entfernen; Doppelklick/
       Toolbar/Kontextmenue verbinden. (Commit folgt)
-- [ ] S2: Layout-Restrukturierung: Tabs statt Seitenleiste, Monat+Suche in die
-      Toolbar, Kopfzeilen-Widget aufloesen.
+- [x] S2: Layout-Restrukturierung: Tabs statt Seitenleiste, Monat+Suche in die
+      Toolbar, Kopfzeilen-Widget aufgeloest. (Commit folgt) header.py + sidebar.py
+      entfallen.
 - [ ] S3: Unteres Panel dynamisch je Ansicht (Summen fuer Liste, spaeter
-      Progress/Charts fuer Kalender/Jahr).
+      Progress/Charts fuer Kalender/Jahr). NOCH OFFEN - mit Michael abstimmen.
 
 Spaeter (Michaels Feedback-Batch, nicht Teil dieses Umbaus): Summen/Forecast mit
 Charts, Jahresansicht reicher, Orange final justieren.

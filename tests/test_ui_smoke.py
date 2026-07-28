@@ -1,8 +1,8 @@
 """Rauchtest der Oberflaeche.
 
 Prueft, dass sich das Fenster wirklich aufbauen laesst, das Stylesheet greift,
-die Tabelle Daten zeigt, Sortieren und Suchen funktionieren und der
-Detailbereich der Auswahl folgt. Laeuft ohne sichtbares Fenster ueber die
+die Tabelle Daten zeigt, Sortieren und Suchen funktionieren und die Auswahl
+den aktuellen Eintrag mitfuehrt. Laeuft ohne sichtbares Fenster ueber die
 Offscreen-Plattform von Qt - siehe conftest.
 """
 
@@ -43,8 +43,8 @@ class TestTheme:
             qss = build_qss(mode, "Segoe UI", "Consolas")
             # Die strukturellen Flaechen werden per QSS gesetzt, die Farben
             # stammen aus der Palette. Die Steuerelemente bleiben nativ (Fusion).
-            assert "#Header" in qss
-            assert "#Sidebar" in qss
+            assert "#ViewTabs" in qss
+            assert "#ToolbarMonth" in qss
             assert "#SummaryBar" in qss
             assert palette.bg_secondary in qss
             assert palette.accent in qss
@@ -52,7 +52,7 @@ class TestTheme:
     def test_stylesheet_applies_to_application(self, qapp: QApplication) -> None:
         fonts = load_fonts()
         qapp.setStyleSheet(build_qss(Mode.DARK, fonts.sans, fonts.mono))
-        assert "#Header" in qapp.styleSheet()
+        assert "#ViewTabs" in qapp.styleSheet()
 
     def test_palette_is_built_for_both_modes(self, qapp: QApplication) -> None:
         for mode, palette in ((Mode.DARK, DARK), (Mode.LIGHT, LIGHT)):
@@ -159,7 +159,7 @@ class TestWindow:
 
     def test_view_switch_changes_the_page(self, window: MainWindow) -> None:
         assert window._stack.currentIndex() == 0
-        window._sidebar.view_changed.emit(1)
+        window._tabs.setCurrentIndex(1)
         assert window._stack.currentIndex() == 1
 
     def test_theme_toggle_reports_the_other_mode(self, window: MainWindow) -> None:
@@ -169,15 +169,13 @@ class TestWindow:
         assert seen == ["light"]
         assert window.mode is Mode.LIGHT
 
-    def test_header_shows_period_and_count(self, window: MainWindow) -> None:
-        assert window._header._title.text() == "Juli 2026"
-        assert "15 Einträge" in window._header._subtitle.text()
+    def test_toolbar_shows_the_month(self, window: MainWindow) -> None:
+        assert window._month_label.text() == "Juli 2026"
 
     def test_empty_state(self, qapp: QApplication) -> None:
-        """Ohne Daten bleibt der Monat sichtbar, die Zusatzzeile erklaert es."""
+        """Ohne Daten bleibt der Monat in der Toolbar sichtbar."""
         win = MainWindow(Settings(), Mode.DARK)
         win._year, win._month = 2026, 3
         win.set_timesheet(None)
-        assert win._header._title.text() == "März 2026"
-        assert win._header._subtitle.text() == "Keine Einträge geladen"
+        assert win._month_label.text() == "März 2026"
         assert win._current_entry is None

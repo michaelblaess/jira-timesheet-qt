@@ -162,7 +162,7 @@ class TestMonthNavigation:
         window = MainWindow(Settings(), Mode.DARK)
         window._year, window._month = 2026, 3
         window._update_period_labels()
-        assert window._header._title.text() == "März 2026"
+        assert window._month_label.text() == "März 2026"
 
 
 class TestStatusBar:
