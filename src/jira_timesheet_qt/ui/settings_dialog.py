@@ -10,9 +10,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
+    QColorDialog,
     QComboBox,
     QDialog,
     QDoubleSpinBox,
@@ -32,7 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from jira_timesheet_qt.models.export_column import ExportColumn, default_label
-from jira_timesheet_qt.models.settings import Settings
+from jira_timesheet_qt.models.settings import Settings, normalize_color
 from jira_timesheet_qt.services.cache_service import CACHE_DIR
 from jira_timesheet_qt.services.manual_entry_service import DB_FILE
 
@@ -346,8 +347,39 @@ class SettingsDialog(QDialog):
         self.mark_manual.setChecked(self._settings.mark_manual_entries)
         form.addRow(self._label(""), self.mark_manual)
 
+        # Farbe, in der manuelle Eintraege in der Liste eingefaerbt werden.
+        self._manual_color_value = normalize_color(self._settings.manual_entry_color)
+        self.manual_color = QPushButton()
+        self.manual_color.setFixedWidth(FIELD_WIDTH)
+        self.manual_color.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.manual_color.clicked.connect(self._pick_manual_color)
+        self._update_manual_color_button()
+        self.mark_manual.toggled.connect(self.manual_color.setEnabled)
+        self.manual_color.setEnabled(self.mark_manual.isChecked())
+        form.addRow(self._label("Markierungsfarbe"), self.manual_color)
+
         form.addRow(self._hint("Ein Wechsel wirkt sofort, ohne Neustart."))
         return page
+
+    def _pick_manual_color(self) -> None:
+        """Oeffnet den Farbwaehler fuer die Markierungsfarbe manueller Eintraege."""
+        chosen = QColorDialog.getColor(
+            QColor(f"#{self._manual_color_value}"), self, "Markierungsfarbe"
+        )
+        if chosen.isValid():
+            self._manual_color_value = normalize_color(chosen.name().lstrip("#"))
+            self._update_manual_color_button()
+
+    def _update_manual_color_button(self) -> None:
+        """Zeigt die aktuelle Farbe als Flaeche samt Hex-Wert auf dem Knopf."""
+        hex_value = self._manual_color_value
+        color = QColor(f"#{hex_value}")
+        text_color = "#000000" if color.lightnessF() > 0.6 else "#ffffff"
+        self.manual_color.setText(f"#{hex_value}")
+        self.manual_color.setStyleSheet(
+            f"background-color: #{hex_value}; color: {text_color}; "
+            f"border: 1px solid {color.darker(130).name()}; border-radius: 4px; padding: 6px;"
+        )
 
     def _page_storage(self) -> QWidget:
         page, form = self._page("Speicherort")
@@ -509,6 +541,7 @@ class SettingsDialog(QDialog):
         ]
         s.theme = str(self.theme.currentData())
         s.mark_manual_entries = self.mark_manual.isChecked()
+        s.manual_entry_color = self._manual_color_value
         return s
 
     def _customers_from_input(self) -> list[str]:

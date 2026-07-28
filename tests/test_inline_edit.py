@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
 from jira_timesheet_qt.models.timesheet import WorklogEntry
@@ -89,6 +90,21 @@ class TestFlatModelEditing:
         row = self._jira_row(model)
         assert model.setData(model.index(row, _SUMMARY_COL), "x", Qt.ItemDataRole.EditRole) is False
 
+    def test_manual_color_applies_only_to_manual_rows(self, qapp: QApplication) -> None:
+        model = self._model()
+        model.set_manual_color(QColor("#ff0000"))
+        manual = model.index(self._manual_row(model), _SUMMARY_COL)
+        jira = model.index(self._jira_row(model), _SUMMARY_COL)
+        assert model.data(manual, Qt.ItemDataRole.ForegroundRole) == QColor("#ff0000")
+        assert model.data(jira, Qt.ItemDataRole.ForegroundRole) is None
+
+    def test_manual_color_none_disables_coloring(self, qapp: QApplication) -> None:
+        model = self._model()
+        model.set_manual_color(QColor("#ff0000"))
+        model.set_manual_color(None)
+        manual = model.index(self._manual_row(model), _SUMMARY_COL)
+        assert model.data(manual, Qt.ItemDataRole.ForegroundRole) is None
+
 
 class TestTreeModelEditing:
     def _model(self) -> TimesheetTreeModel:
@@ -124,3 +140,12 @@ class TestTreeModelEditing:
         assert model.setData(index, "geänderter Text", Qt.ItemDataRole.EditRole) is True
         assert model.entry_at_index(index).summary == "geänderter Text"  # type: ignore[union-attr]
         assert len(captured) == 1
+
+    def test_manual_color_applies_to_manual_child_only(self, qapp: QApplication) -> None:
+        model = self._model()
+        model.set_manual_color(QColor("#ff0000"))
+        manual = self._manual_index(model)
+        group = model.index(0, _SUMMARY_COL)
+        assert model.data(manual, Qt.ItemDataRole.ForegroundRole) == QColor("#ff0000")
+        # Gruppenzeilen bekommen keine Einfaerbung.
+        assert model.data(group, Qt.ItemDataRole.ForegroundRole) is None

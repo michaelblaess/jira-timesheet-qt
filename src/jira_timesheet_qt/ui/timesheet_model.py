@@ -20,6 +20,7 @@ from PySide6.QtCore import (
     Qt,
     Signal,
 )
+from PySide6.QtGui import QColor
 
 from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
 from jira_timesheet_qt.services.hours_parser import parse_hours
@@ -101,6 +102,17 @@ class TimesheetModel(QAbstractTableModel):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._entries: list[WorklogEntry] = []
+        # Farbe fuer manuell erfasste Zeilen, oder None wenn die Hervorhebung
+        # abgeschaltet ist. Wird vom Hauptfenster aus den Einstellungen gesetzt.
+        self._manual_color: QColor | None = None
+
+    def set_manual_color(self, color: QColor | None) -> None:
+        """Setzt die Einfaerbung manueller Eintraege (None = keine)."""
+        self._manual_color = color
+        if self._entries:
+            top = self.index(0, 0)
+            bottom = self.index(len(self._entries) - 1, len(COLUMNS) - 1)
+            self.dataChanged.emit(top, bottom, [Qt.ItemDataRole.ForegroundRole])
 
     # --- Befuellen -----------------------------------------------------
 
@@ -156,6 +168,8 @@ class TimesheetModel(QAbstractTableModel):
             return entry
         if role == Qt.ItemDataRole.TextAlignmentRole:
             return self._alignment(column)
+        if role == Qt.ItemDataRole.ForegroundRole and entry.manual and self._manual_color is not None:
+            return self._manual_color
         return None
 
     def flags(self, index: AnyIndex) -> Qt.ItemFlag:

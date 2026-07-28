@@ -103,6 +103,18 @@ class TestSettingsDialog:
         dialog.budget_field.setText("")
         assert dialog.result_settings().budget_field == "customfield_XXXXX"
 
+    def test_manual_color_round_trips(self, qapp: QApplication) -> None:
+        dialog = SettingsDialog(Settings(manual_entry_color="00FF00"))
+        # Vorbelegter Wert steht auf dem Farbknopf.
+        assert dialog._manual_color_value == "00FF00"
+        assert dialog.result_settings().manual_entry_color == "00FF00"
+
+    def test_color_button_disabled_when_marking_off(self, qapp: QApplication) -> None:
+        dialog = SettingsDialog(Settings(mark_manual_entries=False))
+        assert dialog.manual_color.isEnabled() is False
+        dialog.mark_manual.setChecked(True)
+        assert dialog.manual_color.isEnabled() is True
+
     def test_all_pages_are_reachable(self, qapp: QApplication) -> None:
         dialog = SettingsDialog(Settings())
         assert dialog._nav.count() == dialog._pages.count() == 6

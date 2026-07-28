@@ -14,7 +14,7 @@ from datetime import date
 
 import qtawesome as qta
 from PySide6.QtCore import QModelIndex, QPoint, QSettings, QSortFilterProxyModel, Qt, Signal
-from PySide6.QtGui import QCloseEvent, QIcon, QKeySequence, QShortcut
+from PySide6.QtGui import QCloseEvent, QColor, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
 
 from jira_timesheet_qt import __app_name__, __version__
 from jira_timesheet_qt.i18n import t
-from jira_timesheet_qt.models.settings import Settings
+from jira_timesheet_qt.models.settings import Settings, normalize_color
 from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
 from jira_timesheet_qt.services.holiday_service import HolidayService
 from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
@@ -112,6 +112,9 @@ class MainWindow(QMainWindow):
         # Inline-Aenderungen an manuellen Eintraegen persistieren.
         self._model.manual_edited.connect(self._persist_inline_edit)
         self._tree_model.manual_edited.connect(self._persist_inline_edit)
+
+        # Einfaerbung manueller Eintraege aus den Einstellungen uebernehmen.
+        self._apply_manual_color()
 
         self._build_ui()
         self._header.set_grouped(self._grouped)
@@ -418,6 +421,18 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+Shift+E"), self, self.export_pdf)
 
     # --- Inhalte --------------------------------------------------------
+
+    def _apply_manual_color(self) -> None:
+        """Setzt die Einfaerbung manueller Eintraege in beiden Listenmodellen.
+
+        Die Farbe kommt aus den Einstellungen; ist die Hervorhebung
+        abgeschaltet, faerbt None die Zeilen wieder normal ein.
+        """
+        color: QColor | None = None
+        if self._settings.mark_manual_entries:
+            color = QColor(f"#{normalize_color(self._settings.manual_entry_color)}")
+        self._model.set_manual_color(color)
+        self._tree_model.set_manual_color(color)
 
     def set_timesheet(self, timesheet: Timesheet | None) -> None:
         """Uebernimmt einen Stundenzettel in alle Ansichten."""
@@ -747,6 +762,7 @@ class MainWindow(QMainWindow):
             return
         self._settings = dialog.result_settings()
         self._settings.save()
+        self._apply_manual_color()
         self._update_empty_state()
         self._set_status("Einstellungen gespeichert")
         if self._settings.theme in ("dark", "light"):

@@ -24,7 +24,7 @@ from PySide6.QtCore import (
     Qt,
     Signal,
 )
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QColor, QFont
 
 from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
 from jira_timesheet_qt.ui.timesheet_model import (
@@ -86,6 +86,16 @@ class TimesheetTreeModel(QAbstractItemModel):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._root = _Node("root", 0, None)
+        # Farbe fuer manuell erfasste Zeilen, oder None wenn abgeschaltet.
+        self._manual_color: QColor | None = None
+
+    def set_manual_color(self, color: QColor | None) -> None:
+        """Setzt die Einfaerbung manueller Eintraege (None = keine)."""
+        self._manual_color = color
+        # Voller Reset ist hier am einfachsten - der Baum ist klein, und die
+        # Farbe aendert sich nur beim Speichern der Einstellungen.
+        self.beginResetModel()
+        self.endResetModel()
 
     # --- Befuellen -----------------------------------------------------
 
@@ -261,4 +271,6 @@ class TimesheetTreeModel(QAbstractItemModel):
             return self._entry_data(entry, column, Qt.ItemDataRole.DisplayRole).lower()
         if role == Qt.ItemDataRole.TextAlignmentRole:
             return _alignment(column)
+        if role == Qt.ItemDataRole.ForegroundRole and entry.manual and self._manual_color is not None:
+            return self._manual_color
         return None
