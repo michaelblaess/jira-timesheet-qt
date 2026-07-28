@@ -167,7 +167,8 @@ Fremd-Library.
 ### Entscheidung E1 (27.07.2026): Fusion nativ - Variante A
 
 Zwei Prototypen wurden gebaut und in Hell und Dunkel mit gefuelltem Grid verglichen
-(`docs/screenshots/qt-prototypes/`):
+(die Vergleichs-Screenshots wurden entfernt, weil die Beispieldaten reale Ticketdaten
+zeigten):
 
 - **A - Fusion + QPalette + duennes QSS.** Der `Fusion`-Style ist Qts plattformneutraler, nuechterner
   Business-Look, folgt der `QPalette` und schaltet ab Qt 6.5 automatisch Hell/Dunkel nach
