@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPaintEvent
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QMouseEvent, QPainter, QPaintEvent
 from PySide6.QtWidgets import QWidget
 
 from jira_timesheet_qt.services.holiday_service import HolidayService
@@ -248,30 +248,34 @@ class YearView(QWidget):
             f"{cell.hours:.2f} h".replace(".", ","),
         )
 
-        # Sollwert
-        painter.setFont(scaled_font(self.font(), -2))
-        painter.setPen(QColor(p.text_tertiary))
-        painter.drawText(
-            rect.adjusted(14, 62, -14, 0),
-            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop),
-            f"von {cell.target:.0f} h Soll",
-        )
+        # Detailzeilen (Soll, gebuchte Tage, manueller Anteil) als Block, etwas
+        # groesser als zuvor und vertikal zentriert zwischen Stundenzahl und
+        # Balken - so fuellen sie die hohe Kachel statt oben zu kleben.
+        detail_font = scaled_font(self.font(), -1)
+        painter.setFont(detail_font)
+        line_height = QFontMetricsF(detail_font).height() + 6.0
 
-        # Gebuchte Tage von Soll-Arbeitstagen
-        painter.setPen(QColor(p.text_secondary if cell.has_data else p.text_tertiary))
-        painter.drawText(
-            rect.adjusted(14, 80, -14, 0),
-            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop),
-            f"{cell.booked_days} / {cell.workdays} Tage",
-        )
-
-        # Manueller Anteil, nur wenn vorhanden
+        lines: list[tuple[str, QColor]] = [
+            (f"von {cell.target:.0f} h Soll", QColor(p.text_tertiary)),
+            (
+                f"{cell.booked_days} / {cell.workdays} Tage",
+                QColor(p.text_secondary if cell.has_data else p.text_tertiary),
+            ),
+        ]
         if cell.manual_hours > 0:
-            painter.setPen(QColor(p.orange))
+            manual = f"davon manuell: {cell.manual_hours:.2f} h".replace(".", ",")
+            lines.append((manual, QColor(p.orange)))
+
+        region_top = rect.y() + 66.0
+        region_bottom = rect.bottom() - 26.0
+        block_height = line_height * len(lines)
+        start_y = region_top + max(0.0, (region_bottom - region_top - block_height) / 2.0)
+        for offset, (text, pen) in enumerate(lines):
+            painter.setPen(pen)
             painter.drawText(
-                rect.adjusted(14, 98, -14, 0),
-                int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop),
-                f"davon manuell: {cell.manual_hours:.2f} h".replace(".", ","),
+                QRectF(rect.x() + 14, start_y + offset * line_height, rect.width() - 28, line_height),
+                int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+                text,
             )
 
         # Auslastungsbalken am unteren Rand

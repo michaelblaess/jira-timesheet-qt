@@ -97,20 +97,31 @@ class TestSummaryBarWidget:
         assert "8/23 Tage" in texts
         assert "15 Tage" in texts
 
-    def test_year_shows_forecast(self, qapp: QApplication) -> None:
+    def test_year_shows_forecast_without_year_panel(self, qapp: QApplication) -> None:
+        """Das Jahr selbst ist raus (steht in der Toolbar), Prognose bleibt."""
         bar = SummaryBar()
-        bar.show_year(2026, 54.0, 2024.0, 910.0)
+        bar.show_year(54.0, 2024.0, 910.0)
         texts = [label.text() for label in bar.findChildren(QLabel)]
-        assert "2026" in texts
+        assert "Jahr" not in texts
+        assert "Prognose" in texts
         assert any("910" in text for text in texts)
-        assert "Verbleibend" in texts  # Soll - Ist steht jetzt mit dabei
+        assert "Verbleibend" in texts
+
+    def test_year_places_manual_right_after_ist(self, qapp: QApplication) -> None:
+        """'davon manuell' folgt direkt auf 'Ist'."""
+        bar = SummaryBar()
+        bar.show_year(1000.0, 2000.0, 1800.0, manual=40.0)
+        labels = [
+            label.text()
+            for label in bar.findChildren(QLabel, "SummaryStatLabel")
+        ]
+        assert labels[:2] == ["Ist", "davon manuell"]
 
     def test_year_shows_revenue_with_rate(self, qapp: QApplication) -> None:
         """Mit Stundensatz kommen Ist- und Prognose-Umsatz (Netto/Brutto) dazu."""
         bar = SummaryBar()
-        bar.show_year(2026, 1000.0, 2000.0, 1800.0, manual=40.0, hourly_rate=100.0, vat_rate=19.0)
+        bar.show_year(1000.0, 2000.0, 1800.0, manual=40.0, hourly_rate=100.0, vat_rate=19.0)
         texts = [label.text() for label in bar.findChildren(QLabel)]
-        assert "davon manuell" in texts
         assert "Netto" in texts and "Brutto" in texts
         assert "Prognose Netto" in texts and "Prognose Brutto" in texts
         assert "100.000,00 €" in texts  # Ist Netto = 1000 h x 100 EUR
@@ -118,9 +129,17 @@ class TestSummaryBarWidget:
 
     def test_year_hides_revenue_without_rate(self, qapp: QApplication) -> None:
         bar = SummaryBar()
-        bar.show_year(2026, 1000.0, 2000.0, 1800.0)
+        bar.show_year(1000.0, 2000.0, 1800.0)
         texts = [label.text() for label in bar.findChildren(QLabel)]
         assert "Netto" not in texts
+
+    def test_panels_carry_tooltips(self, qapp: QApplication) -> None:
+        """Jedes Panel erklaert sich per Tooltip (Bedeutung/Berechnung)."""
+        bar = SummaryBar()
+        bar.show_calendar(8, 23, 54.0, 184.0, 15)
+        values = bar.findChildren(QLabel, "SummaryStatValue")
+        assert values
+        assert all(label.toolTip() for label in values)
 
     def test_ratio_bar_keeps_value(self, qapp: QApplication) -> None:
         bar = RatioBar()

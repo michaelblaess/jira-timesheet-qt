@@ -35,6 +35,33 @@ class SummarySegment:
     label: str
     value: str
     color: str | None = None
+    tooltip: str = ""
+
+
+# Erklaerungen je Kennzahl (Tooltip). Sagen, WAS das Feld bedeutet und WIE es
+# gerechnet wird - bewusst als Formel, nicht mit den Live-Zahlen.
+_TOOLTIPS: dict[str, str] = {
+    "Arbeitstage": "Arbeitstage im Zeitraum (Mo-Fr ohne Feiertage des Bundeslandes).",
+    "Ist": "Ist-Stunden: Summe aller tatsaechlich gebuchten Stunden.",
+    "davon manuell": "Anteil der Ist-Stunden, der manuell (ohne Jira) erfasst wurde.",
+    "Soll": "Soll-Stunden: Arbeitstage x Stunden pro Tag aus den Einstellungen.",
+    "Verbleibend": "Noch offen bis zum Soll: Soll minus Ist (nie negativ).",
+    "Prognose": "Hochrechnung aufs Jahresende: Ist der abgelaufenen Monate + Soll der restlichen.",
+    "Ø": "Durchschnittliche Stunden je gebuchtem Arbeitstag.",
+    "Netto": "Ist-Umsatz netto: Ist-Stunden x Stundensatz.",
+    "Brutto": "Ist-Umsatz brutto: Netto zuzueglich Mehrwertsteuer.",
+    "Prognose Netto": "Prognostizierter Jahresumsatz netto: Prognose-Stunden x Stundensatz.",
+    "Prognose Brutto": "Prognostizierter Jahresumsatz brutto: Prognose netto zuzueglich MwSt.",
+    "Gebucht": "Arbeitstage des Monats mit mindestens einer Buchung, von allen Arbeitstagen.",
+    "Fehlt": "Arbeitstage des Monats noch ganz ohne Buchung.",
+}
+# Der Differenz-Abschnitt hat kein Label - sein Tooltip haengt am Sonderschluessel.
+_DIFF_TOOLTIP = "Differenz Ist zu Soll (+ Ueberstunden, - noch fehlend)."
+
+
+def _seg(label: str, value: str) -> SummarySegment:
+    """Baut einen Abschnitt und haengt die passende Erklaerung als Tooltip an."""
+    return SummarySegment(label, value, tooltip=_TOOLTIPS.get(label, ""))
 
 
 def build_summary_segments(
@@ -63,25 +90,25 @@ def build_summary_segments(
     diff = total - target_hours
 
     segments: list[SummarySegment] = [
-        SummarySegment("Arbeitstage", str(timesheet.working_days)),
-        SummarySegment("Ist", f"{format_number(total)} h"),
+        _seg("Arbeitstage", str(timesheet.working_days)),
+        _seg("Ist", f"{format_number(total)} h"),
     ]
 
     if manual > 0:
-        segments.append(SummarySegment("davon manuell", f"{format_number(manual)} h"))
+        segments.append(_seg("davon manuell", f"{format_number(manual)} h"))
 
     if target_hours > 0:
-        segments.append(SummarySegment("Soll", f"{format_number(target_hours)} h"))
+        segments.append(_seg("Soll", f"{format_number(target_hours)} h"))
         sign = "+" if diff >= 0 else "-"
-        segments.append(SummarySegment("", f"{sign}{format_number(abs(diff))} h"))
+        segments.append(SummarySegment("", f"{sign}{format_number(abs(diff))} h", tooltip=_DIFF_TOOLTIP))
 
-    segments.append(SummarySegment("Ø", f"{format_number(timesheet.average_hours)} h/Tag"))
+    segments.append(_seg("Ø", f"{format_number(timesheet.average_hours)} h/Tag"))
 
     if settings.hourly_rate > 0:
         netto = total * settings.hourly_rate
         brutto = netto * (1.0 + settings.vat_rate / 100.0)
-        segments.append(SummarySegment("Netto", format_eur(netto)))
-        segments.append(SummarySegment("Brutto", format_eur(brutto)))
+        segments.append(_seg("Netto", format_eur(netto)))
+        segments.append(_seg("Brutto", format_eur(brutto)))
 
     return segments
 
@@ -101,6 +128,7 @@ class RatioBar(QWidget):
         self._text = ""
         self.setFixedWidth(200)
         self.setMinimumHeight(28)
+        self.setToolTip("Fortschritt: erreichter Anteil in Prozent (gruen ab dem Soll).")
 
     def set_value(self, ratio: float, text: str) -> None:
         """Setzt Fuellstand (0..1+, Anzeige bei 1 gekappt) und Beschriftung."""
@@ -197,18 +225,17 @@ class SummaryBar(QWidget):
     ) -> None:
         """Kalender: gebuchte Arbeitstage, Ist/Soll; Fortschritt = gebuchte Tage."""
         segments = [
-            SummarySegment("Gebucht", f"{booked_days}/{total_workdays} Tage"),
-            SummarySegment("Ist", f"{format_number(total_hours)} h"),
-            SummarySegment("Soll", f"{format_number(target_hours)} h"),
+            _seg("Gebucht", f"{booked_days}/{total_workdays} Tage"),
+            _seg("Ist", f"{format_number(total_hours)} h"),
+            _seg("Soll", f"{format_number(target_hours)} h"),
         ]
         if missing_days > 0:
-            segments.append(SummarySegment("Fehlt", f"{missing_days} Tage"))
+            segments.append(_seg("Fehlt", f"{missing_days} Tage"))
         self._render(self._colour_ist(segments, total_hours, target_hours))
         self._set_ratio(booked_days, total_workdays)
 
     def show_year(
         self,
-        year: int,
         actual: float,
         target: float,
         forecast: float,
@@ -217,29 +244,29 @@ class SummaryBar(QWidget):
         hourly_rate: float = 0.0,
         vat_rate: float = 0.0,
     ) -> None:
-        """Jahr: Ist/Soll/Verbleibend/Prognose, davon manuell und die Umsatz-Summen.
+        """Jahr: Ist, davon manuell, Soll, Verbleibend, Prognose und die Umsatz-Summen.
 
+        Das Jahr selbst steht schon in der Toolbar und ist hier weggelassen.
         Netto/Brutto (Ist und Prognose) nur bei hinterlegtem Stundensatz. Der
         Fortschritt ist Ist gegen Soll.
         """
-        segments = [
-            SummarySegment("Jahr", str(year)),
-            SummarySegment("Ist", f"{format_number(actual)} h"),
-            SummarySegment("Soll", f"{format_number(target)} h"),
-            SummarySegment("Verbleibend", f"{format_number(max(0.0, target - actual))} h"),
-            SummarySegment("Prognose", f"{format_number(forecast)} h"),
-        ]
+        segments = [_seg("Ist", f"{format_number(actual)} h")]
         if manual > 0:
-            segments.append(SummarySegment("davon manuell", f"{format_number(manual)} h"))
+            segments.append(_seg("davon manuell", f"{format_number(manual)} h"))
+        segments += [
+            _seg("Soll", f"{format_number(target)} h"),
+            _seg("Verbleibend", f"{format_number(max(0.0, target - actual))} h"),
+            _seg("Prognose", f"{format_number(forecast)} h"),
+        ]
         if hourly_rate > 0:
             factor = 1.0 + vat_rate / 100.0
             netto = actual * hourly_rate
             forecast_netto = forecast * hourly_rate
             segments += [
-                SummarySegment("Netto", format_eur(netto)),
-                SummarySegment("Brutto", format_eur(netto * factor)),
-                SummarySegment("Prognose Netto", format_eur(forecast_netto)),
-                SummarySegment("Prognose Brutto", format_eur(forecast_netto * factor)),
+                _seg("Netto", format_eur(netto)),
+                _seg("Brutto", format_eur(netto * factor)),
+                _seg("Prognose Netto", format_eur(forecast_netto)),
+                _seg("Prognose Brutto", format_eur(forecast_netto * factor)),
             ]
         self._render(self._colour_ist(segments, actual, target))
         self._set_ratio(actual, target)
@@ -282,19 +309,30 @@ class SummaryBar(QWidget):
         self._segments.addStretch(1)
 
     def _panel(self, segment: SummarySegment) -> QFrame:
-        """Baut ein gerahmtes Statusleisten-Panel aus Beschriftung und Wert."""
+        """Baut ein gerahmtes Statusleisten-Panel aus Beschriftung und Wert.
+
+        Der Tooltip haengt am Panel UND an beiden Labels - Qt zeigt sonst nur
+        den Tooltip des Widgets direkt unter dem Zeiger, nicht den des Elterns.
+        """
         frame = QFrame()
         frame.setObjectName("SummaryPanel")
         row = QHBoxLayout(frame)
         row.setContentsMargins(9, 2, 9, 2)
         row.setSpacing(6)
+        widgets = [frame]
         if segment.label:
-            row.addWidget(self._label(segment.label, "SummaryStatLabel"))
+            caption = self._label(segment.label, "SummaryStatLabel")
+            row.addWidget(caption)
+            widgets.append(caption)
         value = self._label(segment.value, "SummaryStatValue")
         if segment.color:
             # Nur die Farbe ueberschreiben - Groesse/Fettung bleiben aus dem QSS.
             value.setStyleSheet(f"color: #{segment.color};")
         row.addWidget(value)
+        widgets.append(value)
+        if segment.tooltip:
+            for widget in widgets:
+                widget.setToolTip(segment.tooltip)
         return frame
 
     def _clear_segments(self) -> None:

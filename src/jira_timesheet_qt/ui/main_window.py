@@ -750,7 +750,6 @@ class MainWindow(QMainWindow):
         summary = self._year_view.summary
         manual = sum(self._year_manual.values())
         self._summary.show_year(
-            self._year,
             summary.actual,
             summary.target,
             summary.forecast,
