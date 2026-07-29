@@ -16,8 +16,8 @@ import calendar
 from dataclasses import dataclass, field
 from datetime import date
 
-from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPaintEvent
+from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QMouseEvent, QPainter, QPaintEvent
 from PySide6.QtWidgets import QWidget
 
 from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
@@ -71,6 +71,8 @@ class CalendarView(QWidget):
 
     day_selected = Signal(object)
     day_activated = Signal(object)
+    # Klick auf eine Ticketnummer in der Kachel - meldet den Eintrag zur Detailanzeige.
+    ticket_activated = Signal(object)
 
     HEADER_HEIGHT = 26
     PADDING = 14
@@ -86,6 +88,10 @@ class CalendarView(QWidget):
         self._selected: date | None = None
         # Soll-Stunden je Arbeitstag - Grundlage der Farbkodierung der Tage.
         self._target_hours = 8.0
+        # Trefferflaechen der gezeichneten Ticketnummern (fuer Hover/Klick), je
+        # (Rechteck, Eintrag). Wird bei jedem paintEvent neu aufgebaut.
+        self._ticket_hits: list[tuple[QRectF, WorklogEntry]] = []
+        self._hovered_ticket: WorklogEntry | None = None
         self.setMinimumHeight(360)
         self.setMouseTracking(True)
 
@@ -102,6 +108,8 @@ class CalendarView(QWidget):
         """Baut das Raster fuer einen Monat auf."""
         self._year, self._month = year, month
         self._target_hours = hours_per_day if hours_per_day > 0 else 8.0
+        # Der zuletzt ueberfahrene Eintrag gehoert zum alten Monat - verwerfen.
+        self._hovered_ticket = None
         holidays = HolidayService(federal_state)
 
         by_day: dict[date, list[WorklogEntry]] = {}
@@ -165,6 +173,9 @@ class CalendarView(QWidget):
             return
 
         area, cell_w, cell_h, rows = self._geometry()
+
+        # Trefferflaechen der Ticketnummern bei jedem Zeichnen neu aufbauen.
+        self._ticket_hits = []
 
         self._paint_header(painter, area.x(), area.y(), cell_w)
 
@@ -281,16 +292,8 @@ class CalendarView(QWidget):
                 f"{cell.hours:.2f} h".replace(".", ","),
             )
 
-        # Vorgaenge oder Feiertagsname
-        painter.setFont(scaled_font(self.font(), -2))
-        painter.setPen(QColor(p.text_tertiary))
-        detail = cell.holiday if cell.holiday else ", ".join(dict.fromkeys(e.ticket for e in cell.entries))
-        if detail:
-            painter.drawText(
-                rect.adjusted(8, 30, -8, -6),
-                int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap),
-                detail,
-            )
+        # Vorgaenge (klickbar) oder Feiertagsname
+        self._paint_details(painter, rect.adjusted(8, 30, -8, -6), cell, p)
 
     def _hours_color(self, cell: DayCell, p: Palette) -> QColor:
         """Farbe der Tagesstunden: gruen ab Soll, orange darunter, sonst neutral."""
@@ -300,14 +303,95 @@ class CalendarView(QWidget):
             return QColor(p.green)
         return QColor(p.orange)
 
+    def _paint_details(self, painter: QPainter, area: QRectF, cell: DayCell, p: Palette) -> None:
+        """Zeichnet den Feiertagsnamen ODER die Ticketnummern als klickbare Links.
+
+        Feiertage sind reiner Text. Ticketnummern werden EINZELN gezeichnet (mit
+        Umbruch), damit jede ein eigenes Trefferrechteck bekommt - so laesst sich
+        genau die angeklickte Nummer oeffnen, statt immer die erste des Tages. Der
+        ueberfahrene Link wird unterstrichen und in der Akzentfarbe hervorgehoben.
+        """
+        base = scaled_font(self.font(), -2)
+        if cell.holiday:
+            painter.setFont(base)
+            painter.setPen(QColor(p.text_tertiary))
+            flags = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap)
+            painter.drawText(area, flags, cell.holiday)
+            return
+
+        # Eindeutige Tickets in Reihenfolge, jeweils auf den ERSTEN Eintrag gemappt.
+        first_by_ticket: dict[str, WorklogEntry] = {}
+        for entry in cell.entries:
+            if entry.ticket and entry.ticket not in first_by_ticket:
+                first_by_ticket[entry.ticket] = entry
+        if not first_by_ticket:
+            return
+
+        metrics = QFontMetricsF(base)
+        line_height = metrics.height()
+        comma_width = metrics.horizontalAdvance(", ")
+        x, y = area.x(), area.y()
+        items = list(first_by_ticket.items())
+        for index, (ticket, entry) in enumerate(items):
+            width = metrics.horizontalAdvance(ticket)
+            if x > area.x() and x + width > area.right():  # Zeilenumbruch
+                x, y = area.x(), y + line_height
+            if y + line_height > area.bottom() + 2:  # kein Platz mehr in der Kachel
+                break
+
+            hovered = self._hovered_ticket is entry
+            token_font = QFont(base)
+            token_font.setUnderline(hovered)
+            painter.setFont(token_font)
+            painter.setPen(QColor(p.accent if hovered else p.text_tertiary))
+            painter.drawText(QPointF(x, y + metrics.ascent()), ticket)
+            # Etwas hoehere Trefferflaeche macht das Anklicken leichter.
+            self._ticket_hits.append((QRectF(x, y - 1, width, line_height + 2), entry))
+            x += width
+
+            if index < len(items) - 1:
+                painter.setFont(base)
+                painter.setPen(QColor(p.text_tertiary))
+                painter.drawText(QPointF(x, y + metrics.ascent()), ",")
+                x += comma_width
+
     # --- Auswahl --------------------------------------------------------
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        # Klick auf eine Ticketnummer oeffnet genau diesen Eintrag (Link-Verhalten).
+        entry = self._ticket_at(event.position().x(), event.position().y())
+        if entry is not None:
+            self.ticket_activated.emit(entry)
+            return
         cell = self._cell_at(event.position().x(), event.position().y())
         if cell is not None and cell.in_month:
             self._selected = cell.day
             self.update()
             self.day_selected.emit(cell)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        """Hebt eine ueberfahrene Ticketnummer hervor (Hand-Cursor + Unterstrich)."""
+        entry = self._ticket_at(event.position().x(), event.position().y())
+        if entry is not self._hovered_ticket:
+            self._hovered_ticket = entry
+            self.setCursor(Qt.CursorShape.PointingHandCursor if entry is not None else Qt.CursorShape.ArrowCursor)
+            self.update()
+
+    def leaveEvent(self, event: QEvent) -> None:  # noqa: N802
+        """Verlaesst die Maus das Widget, verschwindet die Hervorhebung."""
+        if self._hovered_ticket is not None:
+            self._hovered_ticket = None
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.update()
+        super().leaveEvent(event)
+
+    def _ticket_at(self, x: float, y: float) -> WorklogEntry | None:
+        """Liefert den Eintrag, dessen Ticketnummer unter dem Punkt liegt, sonst None."""
+        point = QPointF(x, y)
+        for rect, entry in self._ticket_hits:
+            if rect.contains(point):
+                return entry
+        return None
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """Doppelklick auf eine Kachel meldet den Tag zur Detailanzeige."""

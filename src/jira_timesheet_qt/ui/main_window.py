@@ -212,6 +212,8 @@ class MainWindow(QMainWindow):
         self._calendar = CalendarView(self._mode)
         self._calendar.day_selected.connect(self._on_day_selected)
         self._calendar.day_activated.connect(self._on_day_activated)
+        # Klick auf eine Ticketnummer in der Kachel oeffnet genau diesen Eintrag.
+        self._calendar.ticket_activated.connect(self._show_detail)
 
         self._year_view = YearView(self._mode)
         self._year_view.month_selected.connect(self._on_month_selected)
