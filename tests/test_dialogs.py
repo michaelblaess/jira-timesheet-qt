@@ -195,12 +195,15 @@ def _jira_entry() -> WorklogEntry:
 
 
 class TestTicketDetailDialog:
-    def test_title_carries_ticket_and_summary(self, qapp: QApplication) -> None:
+    def test_banner_carries_ticket_and_summary(self, qapp: QApplication) -> None:
+        """Der Kopf-Banner traegt das Ticket prominent und die Beschreibung darunter."""
         dialog = TicketDetailDialog(_jira_entry())
-        title = dialog.findChild(QLabel, "DetailDialogTitle")
-        assert title is not None
-        assert "PROJ-17309" in title.text()
-        assert "Deployment anpassen" in title.text()
+        ticket = dialog.findChild(QLabel, "DetailBannerTicket")
+        summary = dialog.findChild(QLabel, "DetailBannerSummary")
+        assert ticket is not None
+        assert "PROJ-17309" in ticket.text()
+        assert summary is not None
+        assert "Deployment anpassen" in summary.text()
 
     def test_values_include_hours_and_status(self, qapp: QApplication) -> None:
         dialog = TicketDetailDialog(_jira_entry())

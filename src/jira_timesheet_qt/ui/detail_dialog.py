@@ -15,7 +15,6 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
-    QFrame,
     QGridLayout,
     QLabel,
     QVBoxLayout,
@@ -48,19 +47,36 @@ class TicketDetailDialog(QDialog):
         self.setSizeGripEnabled(True)
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(24, 24, 24, 20)
-        outer.setSpacing(14)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-        title = QLabel(self._title_text(entry))
-        title.setObjectName("DetailDialogTitle")
-        title.setWordWrap(True)
-        title.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        outer.addWidget(title)
+        # Kopf-Banner wie im Info-Dialog: abgesetzte Flaeche mit Trennlinie
+        # darunter (border-bottom). Ticket prominent, Beschreibung als Untertitel.
+        banner = QWidget()
+        banner.setObjectName("DetailBanner")
+        banner_layout = QVBoxLayout(banner)
+        banner_layout.setContentsMargins(24, 20, 24, 18)
+        banner_layout.setSpacing(3)
 
-        divider = QFrame()
-        divider.setObjectName("Divider")
-        divider.setFrameShape(QFrame.Shape.HLine)
-        outer.addWidget(divider)
+        head_text, subtitle_text = self._header_parts(entry)
+        head = QLabel(head_text)
+        head.setObjectName("DetailBannerTicket")
+        head.setWordWrap(True)
+        head.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        banner_layout.addWidget(head)
+        if subtitle_text:
+            subtitle = QLabel(subtitle_text)
+            subtitle.setObjectName("DetailBannerSummary")
+            subtitle.setWordWrap(True)
+            subtitle.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            banner_layout.addWidget(subtitle)
+        outer.addWidget(banner)
+
+        # Koerper mit eigenem Rand (getrennt vom randlosen Banner).
+        body = QVBoxLayout()
+        body.setContentsMargins(24, 18, 24, 16)
+        body.setSpacing(12)
+        outer.addLayout(body)
 
         grid = QGridLayout()
         grid.setHorizontalSpacing(18)
@@ -76,14 +92,14 @@ class TicketDetailDialog(QDialog):
             content.setWordWrap(True)
             content.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             grid.addWidget(content, row, 1)
-        outer.addLayout(grid)
+        body.addLayout(grid)
 
         link = self._link_label(entry, jira_host)
         if link is not None:
-            outer.addSpacing(2)
-            outer.addWidget(link)
+            body.addSpacing(2)
+            body.addWidget(link)
 
-        outer.addStretch(1)
+        body.addStretch(1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         close = buttons.button(QDialogButtonBox.StandardButton.Close)
@@ -91,14 +107,18 @@ class TicketDetailDialog(QDialog):
             close.setText("Schließen")
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.reject)
-        outer.addWidget(buttons)
+        body.addWidget(buttons)
 
     @staticmethod
-    def _title_text(entry: WorklogEntry) -> str:
-        """Titelzeile: Ticket und Beschreibung, oder nur die Beschreibung."""
+    def _header_parts(entry: WorklogEntry) -> tuple[str, str]:
+        """Kopfzeile und Untertitel: Ticket prominent, Beschreibung darunter.
+
+        Ohne Ticket (manuelle Eintraege) traegt die Beschreibung den Kopf, der
+        Untertitel bleibt leer.
+        """
         if entry.ticket and entry.summary:
-            return f"{entry.ticket} - {entry.summary}"
-        return entry.ticket or entry.summary or "Ohne Vorgang"
+            return entry.ticket, entry.summary
+        return entry.ticket or entry.summary or "Ohne Vorgang", ""
 
     @staticmethod
     def _rows(entry: WorklogEntry) -> list[tuple[str, str]]:

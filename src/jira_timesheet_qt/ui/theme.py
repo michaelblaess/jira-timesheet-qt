@@ -468,10 +468,21 @@ QTreeView, QTableView {{
 }}
 
 /* ----------------------------------------------------- Detail-Dialog (modal) */
-#DetailDialogTitle {{
+/* Kopf-Banner wie im Info-Dialog: abgesetzte Flaeche, border-bottom als Trennlinie. */
+#DetailBanner {{
+    background-color: {p.bg_secondary};
+    border-bottom: 1px solid {p.border};
+}}
+
+#DetailBannerTicket {{
     color: {p.text_primary};
-    font-size: 15px;
-    font-weight: 700;
+    font-size: 16px;
+    font-weight: 800;
+}}
+
+#DetailBannerSummary {{
+    color: {p.text_secondary};
+    font-size: 13px;
 }}
 
 #DetailDialogLabel {{
