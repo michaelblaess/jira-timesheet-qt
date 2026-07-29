@@ -206,14 +206,41 @@ class SummaryBar(QWidget):
         self._render(self._colour_ist(segments, total_hours, target_hours))
         self._set_ratio(booked_days, total_workdays)
 
-    def show_year(self, year: int, actual: float, target: float, forecast: float) -> None:
-        """Jahr: Ist/Soll/Prognose; Fortschritt = Ist gegen Soll."""
+    def show_year(
+        self,
+        year: int,
+        actual: float,
+        target: float,
+        forecast: float,
+        *,
+        manual: float = 0.0,
+        hourly_rate: float = 0.0,
+        vat_rate: float = 0.0,
+    ) -> None:
+        """Jahr: Ist/Soll/Verbleibend/Prognose, davon manuell und die Umsatz-Summen.
+
+        Netto/Brutto (Ist und Prognose) nur bei hinterlegtem Stundensatz. Der
+        Fortschritt ist Ist gegen Soll.
+        """
         segments = [
             SummarySegment("Jahr", str(year)),
             SummarySegment("Ist", f"{format_number(actual)} h"),
             SummarySegment("Soll", f"{format_number(target)} h"),
+            SummarySegment("Verbleibend", f"{format_number(max(0.0, target - actual))} h"),
             SummarySegment("Prognose", f"{format_number(forecast)} h"),
         ]
+        if manual > 0:
+            segments.append(SummarySegment("davon manuell", f"{format_number(manual)} h"))
+        if hourly_rate > 0:
+            factor = 1.0 + vat_rate / 100.0
+            netto = actual * hourly_rate
+            forecast_netto = forecast * hourly_rate
+            segments += [
+                SummarySegment("Netto", format_eur(netto)),
+                SummarySegment("Brutto", format_eur(netto * factor)),
+                SummarySegment("Prognose Netto", format_eur(forecast_netto)),
+                SummarySegment("Prognose Brutto", format_eur(forecast_netto * factor)),
+            ]
         self._render(self._colour_ist(segments, actual, target))
         self._set_ratio(actual, target)
 

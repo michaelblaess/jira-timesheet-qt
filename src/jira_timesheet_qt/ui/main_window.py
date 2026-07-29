@@ -746,9 +746,18 @@ class MainWindow(QMainWindow):
         )
 
     def _summary_year(self) -> None:
-        """Jahr: Ist/Soll/Prognose der Jahresansicht."""
+        """Jahr: Ist/Soll/Verbleibend/Prognose, manueller Anteil und Umsatz-Summen."""
         summary = self._year_view.summary
-        self._summary.show_year(self._year, summary.actual, summary.target, summary.forecast)
+        manual = sum(self._year_manual.values())
+        self._summary.show_year(
+            self._year,
+            summary.actual,
+            summary.target,
+            summary.forecast,
+            manual=manual,
+            hourly_rate=self._settings.hourly_rate,
+            vat_rate=self._settings.vat_rate,
+        )
 
     # --- Manuelle Zeiten -----------------------------------------------
 

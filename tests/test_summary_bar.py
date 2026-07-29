@@ -103,6 +103,24 @@ class TestSummaryBarWidget:
         texts = [label.text() for label in bar.findChildren(QLabel)]
         assert "2026" in texts
         assert any("910" in text for text in texts)
+        assert "Verbleibend" in texts  # Soll - Ist steht jetzt mit dabei
+
+    def test_year_shows_revenue_with_rate(self, qapp: QApplication) -> None:
+        """Mit Stundensatz kommen Ist- und Prognose-Umsatz (Netto/Brutto) dazu."""
+        bar = SummaryBar()
+        bar.show_year(2026, 1000.0, 2000.0, 1800.0, manual=40.0, hourly_rate=100.0, vat_rate=19.0)
+        texts = [label.text() for label in bar.findChildren(QLabel)]
+        assert "davon manuell" in texts
+        assert "Netto" in texts and "Brutto" in texts
+        assert "Prognose Netto" in texts and "Prognose Brutto" in texts
+        assert "100.000,00 €" in texts  # Ist Netto = 1000 h x 100 EUR
+        assert "180.000,00 €" in texts  # Prognose Netto = 1800 h x 100 EUR
+
+    def test_year_hides_revenue_without_rate(self, qapp: QApplication) -> None:
+        bar = SummaryBar()
+        bar.show_year(2026, 1000.0, 2000.0, 1800.0)
+        texts = [label.text() for label in bar.findChildren(QLabel)]
+        assert "Netto" not in texts
 
     def test_ratio_bar_keeps_value(self, qapp: QApplication) -> None:
         bar = RatioBar()
