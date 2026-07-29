@@ -108,3 +108,29 @@ class TestSummaryBarWidget:
         bar = RatioBar()
         bar.set_value(1.5, "150 %")
         assert bar._ratio == pytest.approx(1.5)
+
+
+class TestIstAmpel:
+    """Der Ist-Wert traegt dieselbe Soll-Ist-Ampel wie die Tagessummen."""
+
+    def test_ist_color_logic(self, qapp: QApplication) -> None:
+        bar = SummaryBar()
+        assert bar._ist_color(5.0, 8.0) is None  # ohne gesetzte Farben nichts
+        bar.set_day_colors("2f9e44", "c92a2a")
+        assert bar._ist_color(8.0, 8.0) == "2f9e44"  # erreicht -> gruen
+        assert bar._ist_color(5.0, 8.0) == "c92a2a"  # darunter -> rot
+        assert bar._ist_color(5.0, 0.0) is None  # ohne Soll keine Aussage
+
+    def test_ist_panel_is_coloured(self, qapp: QApplication) -> None:
+        from PySide6.QtWidgets import QFrame
+
+        bar = SummaryBar()
+        bar.set_day_colors("2f9e44", "c92a2a")
+        bar.show_calendar(1, 5, 6.0, 40.0, 4)  # 6 h Ist < 40 h Soll -> rot
+        ist_value = None
+        for frame in bar.findChildren(QFrame):
+            labels = frame.findChildren(QLabel)
+            if len(labels) == 2 and labels[0].text() == "Ist":
+                ist_value = labels[1]
+        assert ist_value is not None
+        assert "c92a2a" in ist_value.styleSheet()

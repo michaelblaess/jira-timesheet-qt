@@ -27,6 +27,11 @@ from jira_timesheet_qt.models.timesheet import WorklogEntry
 # Eintrag zwischen Tagen/Gruppen verschieben).
 EDITABLE_KEYS = (DESCRIPTION_KEY, "hours")
 
+# Zahlenspalten mit Stunden. Sie tragen ihre eigene Bedeutung (Aufwand bzw. die
+# Soll-Ist-Ampel der Tagessumme) und werden NICHT von der Markierungsfarbe
+# manueller Eintraege eingefaerbt - sonst kollidiert Rot mit der gruenen Summe.
+HOUR_KEYS = ("hours", "day_hours")
+
 _WEEKDAYS = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 
 
@@ -92,6 +97,26 @@ def _to_grid(column: ExportColumn) -> GridColumn:
         editable=column.key in EDITABLE_KEYS,
         stretch=column.key == DESCRIPTION_KEY,
     )
+
+
+def is_day_total_cell(key: str, is_group: bool) -> bool:
+    """Zeigt die Zelle eine Tagessumme (fuer die Soll-Ist-Ampel)?
+
+    Args:
+        key:
+            Spaltenschluessel der Zelle.
+        is_group:
+            True fuer eine Tages-Gruppenzeile des Baums, False fuer eine
+            Eintragszeile (auch in der flachen Tabelle).
+
+    Returns:
+        True, wenn die Zelle die Tagessumme traegt - in Gruppenzeilen die
+        Stunden- und die Tagessummen-Spalte, in Eintragszeilen nur die
+        Tagessummen-Spalte (die Stunden-Spalte zeigt dort den Einzelwert).
+    """
+    if is_group:
+        return key in ("hours", "day_hours")
+    return key == "day_hours"
 
 
 def _fmt_hours(hours: float) -> str:

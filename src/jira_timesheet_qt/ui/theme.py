@@ -491,36 +491,52 @@ QTreeView, QTableView {{
 }}
 
 /* -------------------------------------------------------------- Leerzustand */
+/* Lesbare Karte ueber dem formatfuellenden Hintergrundbild. */
+#EmptyCard {{
+    background-color: {p.bg_secondary};
+    border: 1px solid {p.border};
+    border-radius: 12px;
+}}
+
 #EmptyTitle {{
     color: {p.text_primary};
     font-size: 17px;
     font-weight: 700;
+    background: transparent;
 }}
 
 #EmptyText {{
     color: {p.text_tertiary};
     font-size: 13px;
+    background: transparent;
 }}
 
 /* --------------------------------------------------------- Summenleiste */
+/* Sitzt in der QStatusBar - deren Rahmen genuegt, kein eigener border-top. */
 #SummaryBar {{
     background-color: {p.bg_secondary};
-    border-top: 1px solid {p.border};
+}}
+
+/* Gerahmtes Panel je Kennzahl - leicht eingesenkt gegen die Leiste. */
+#SummaryPanel {{
+    background-color: {p.bg_tertiary};
+    border: 1px solid {p.border};
+    border-radius: {RADIUS_SM}px;
 }}
 
 #SummaryStatLabel {{
     color: {p.text_tertiary};
     font-size: 14px;
+    background: transparent;
+    border: none;
 }}
 
 #SummaryStatValue {{
     color: {p.text_primary};
     font-size: 14px;
     font-weight: 700;
-}}
-
-#SummarySep {{
-    color: {p.border};
+    background: transparent;
+    border: none;
 }}
 
 /* ------------------------------------------------------------ Statuszeile */
@@ -545,6 +561,26 @@ QStatusBar::item {{
 
 #StatusBar[state="busy"] {{
     color: {p.accent_hover};
+}}
+
+/* ------------------------------------------------------------------ Toast */
+#Toast {{
+    background-color: {p.bg_elevated};
+    border: 1px solid {p.border_hover};
+    border-radius: {RADIUS_MD}px;
+}}
+
+#ToastText {{
+    color: {p.text_primary};
+    font-size: 15px;
+    font-weight: 600;
+    background: transparent;
+    border: none;
+}}
+
+#ToastIcon {{
+    background: transparent;
+    border: none;
 }}
 
 /* ------------------------------------------------------------------ Dialoge */

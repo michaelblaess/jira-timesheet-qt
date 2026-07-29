@@ -14,12 +14,25 @@ import contextlib
 import webbrowser
 from collections.abc import Callable
 from datetime import date
+from pathlib import Path
 
 import qtawesome as qta
-from PySide6.QtCore import QModelIndex, QPoint, QSettings, QSize, QSortFilterProxyModel, Qt, Signal
-from PySide6.QtGui import QCloseEvent, QColor, QIcon, QKeySequence, QShortcut
+from PySide6.QtCore import (
+    QEvent,
+    QModelIndex,
+    QObject,
+    QPoint,
+    QSettings,
+    QSize,
+    QSortFilterProxyModel,
+    Qt,
+    QTimer,
+    Signal,
+)
+from PySide6.QtGui import QCloseEvent, QColor, QIcon, QKeySequence, QShortcut, QWheelEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QFrame,
     QHeaderView,
     QLabel,
     QLineEdit,
@@ -40,7 +53,7 @@ from PySide6.QtWidgets import (
 
 from jira_timesheet_qt import __app_name__, __version__
 from jira_timesheet_qt.i18n import t
-from jira_timesheet_qt.models.settings import Settings, normalize_color
+from jira_timesheet_qt.models.settings import ACCESS_FIELDS, Settings, normalize_color
 from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
 from jira_timesheet_qt.services.holiday_service import HolidayService
 from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
@@ -48,8 +61,9 @@ from jira_timesheet_qt.ui.about_dialog import AboutDialog
 from jira_timesheet_qt.ui.calendar_view import CalendarView, DayCell
 from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
 from jira_timesheet_qt.ui.export_service import ExportService
+from jira_timesheet_qt.ui.hero_background import HeroBackground
 from jira_timesheet_qt.ui.highlight_delegate import HighlightDelegate
-from jira_timesheet_qt.ui.icons import load_icon
+from jira_timesheet_qt.ui.icons import app_icon, load_icon
 from jira_timesheet_qt.ui.jira_worker import WorklogWorker
 from jira_timesheet_qt.ui.log_dock import Level, LogDock
 from jira_timesheet_qt.ui.manual_entry_dialog import ManualEntryDialog
@@ -59,6 +73,7 @@ from jira_timesheet_qt.ui.summary_bar import SummaryBar
 from jira_timesheet_qt.ui.theme import SCALES, Mode, palette_for, set_accent, set_scale
 from jira_timesheet_qt.ui.timesheet_model import ENTRY_ROLE, SORT_ROLE, TimesheetModel
 from jira_timesheet_qt.ui.timesheet_tree_model import TimesheetTreeModel
+from jira_timesheet_qt.ui.toast import Toast
 from jira_timesheet_qt.ui.year_view import YearView
 
 _VIEWS = ("Liste", "Kalender", "Jahr")
@@ -112,6 +127,10 @@ class MainWindow(QMainWindow):
         self._year_manual: dict[int, float] = {}
         # Fuer welches Jahr die Jahresansicht zuletzt vollstaendig geladen wurde.
         self._year_loaded_for: int | None = None
+        # True, waehrend Spaltenbreiten programmatisch gesetzt werden - verhindert,
+        # dass die eigene sectionResized-Reaktion sie faelschlich als Nutzerbreite
+        # speichert.
+        self._adjusting_columns = False
 
         self._model = TimesheetModel(self)
         self._proxy = QSortFilterProxyModel(self)
@@ -130,6 +149,9 @@ class MainWindow(QMainWindow):
         self._tree_proxy.setFilterKeyColumn(-1)
         self._tree_proxy.setRecursiveFilteringEnabled(True)
         self._grouped = bool(self._qsettings.value("grouped", False, type=bool))
+        # Gemerkter Auf-/Zuklapp-Zustand der gruppierten Ansicht - ueberlebt
+        # Monatswechsel und das Speichern der Einstellungen (Modell-Reset).
+        self._groups_collapsed = bool(self._qsettings.value("groups_collapsed", False, type=bool))
 
         # Inline-Aenderungen an manuellen Eintraegen persistieren.
         self._model.manual_edited.connect(self._persist_inline_edit)
@@ -141,10 +163,15 @@ class MainWindow(QMainWindow):
         self._model.set_columns(self._settings.export_columns, self._settings.default_customer)
         self._tree_model.set_columns(self._settings.export_columns, self._settings.default_customer)
 
-        # Einfaerbung manueller Eintraege aus den Einstellungen uebernehmen.
+        # Einfaerbung manueller Eintraege und die Soll-Ist-Ampel der Tagessummen
+        # aus den Einstellungen uebernehmen.
         self._apply_manual_color()
+        self._apply_day_total_colors()
 
         self._build_ui()
+        # Erneut, jetzt existiert die Summenleiste - damit auch ihr Ist-Wert die
+        # Soll-Ist-Ampel bekommt (der Aufruf vor dem Bau konnte sie nicht setzen).
+        self._apply_day_total_colors()
         self._install_shortcuts()
         self._restore_geometry()
         self._update_period_labels()
@@ -152,6 +179,11 @@ class MainWindow(QMainWindow):
         # des Fensters haelt nicht, sobald danach noch etwas ins Fenster
         # geschrieben wird - der Bildlauf hebt das Verstecken wieder auf.
         self._log.setVisible(self._settings.log_visible)
+
+        # Fehlt der Zugang, aber eine Sicherung hat ihn: nach dem Anzeigen des
+        # Fensters ANBIETEN (nicht still heilen) - deferred, damit der modale
+        # Dialog erst nach dem ersten Zeichnen kommt.
+        QTimer.singleShot(0, self._maybe_offer_restore)
 
     # --- Aufbau ---------------------------------------------------------
 
@@ -191,19 +223,23 @@ class MainWindow(QMainWindow):
         outer.addWidget(self._stack, 1)
 
         self._summary = SummaryBar(self._mode)
-        outer.addWidget(self._summary)
 
         self.setCentralWidget(central)
 
-        # Echte QStatusBar - traegt die Statuszeile UND den Groessengriff unten
-        # rechts (setSizeGripEnabled). Das Label behaelt Objektname/Zustandsfarbe.
+        # Echte QStatusBar mit Panels: links die ansichtsabhaengige Summenleiste
+        # (Fortschritt + Kennzahlen) ueber die volle Breite, rechts als dauerhaftes
+        # Panel der Eintrags-/Stunden-Zaehler, ganz rechts der Groessengriff.
         self._status = QLabel("Bereit")
         self._status.setObjectName("StatusBar")
-        self._status.setContentsMargins(18, 5, 12, 5)
+        self._status.setContentsMargins(12, 5, 12, 5)
         status_bar = QStatusBar()
         status_bar.setSizeGripEnabled(True)
-        status_bar.addWidget(self._status, 1)
+        status_bar.addWidget(self._summary, 1)
+        status_bar.addPermanentWidget(self._status)
         self.setStatusBar(status_bar)
+
+        # Schwebende Kurzmeldung (Toast) ueber den Ansichten, unten rechts.
+        self._toast = Toast(central)
 
         self._log = LogDock(self)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._log)
@@ -372,6 +408,11 @@ class MainWindow(QMainWindow):
         header.setHighlightSections(False)
         header.setSectionsMovable(True)
         self._apply_column_layout(table, self._model)
+        header.sectionResized.connect(
+            lambda index, _old, new: self._on_section_resized(self._model, index, new)
+        )
+        # Auf Viewport-Groessenaenderung reagieren, um die Beschreibung zu fuellen.
+        table.viewport().installEventFilter(self)
 
         table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         table.customContextMenuRequested.connect(self._on_table_context_menu)
@@ -408,6 +449,10 @@ class MainWindow(QMainWindow):
         header.setHighlightSections(False)
         header.setSectionsMovable(True)
         self._apply_column_layout(tree, self._tree_model)
+        header.sectionResized.connect(
+            lambda index, _old, new: self._on_section_resized(self._tree_model, index, new)
+        )
+        tree.viewport().installEventFilter(self)
 
         tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         tree.customContextMenuRequested.connect(self._on_tree_context_menu)
@@ -416,25 +461,65 @@ class MainWindow(QMainWindow):
         self._tree = tree
         return tree
 
-    def _apply_column_layout(self, view: QTableView | QTreeView, model: TimesheetModel | TimesheetTreeModel) -> None:
-        """Setzt Spaltenbreiten und die Streck-Spalte (Beschreibung) einer Ansicht.
+    @staticmethod
+    def _header_of(view: QTableView | QTreeView) -> QHeaderView:
+        """Liefert den horizontalen Kopf einer Tabelle bzw. eines Baums."""
+        return view.horizontalHeader() if isinstance(view, QTableView) else view.header()
 
-        Die Spalten kommen aus dem Modell (Nutzer-Konfiguration). Die
-        Beschreibungs-Spalte fuellt die Restbreite, alle anderen behalten ihre
-        Vorgabe-Breite. Ist keine Beschreibung sichtbar, wird die letzte Spalte
-        gestreckt, damit rechts kein leerer Rand bleibt.
+    def _apply_column_layout(self, view: QTableView | QTreeView, model: TimesheetModel | TimesheetTreeModel) -> None:
+        """Macht alle Spalten frei ziehbar und setzt ihre Breiten.
+
+        Jede Spalte ist Interactive - also vom Nutzer ziehbar, auch die
+        Beschreibung. Die letzte Spalte wird nicht zwangsgestreckt (das haette
+        sie fixiert). Gespeicherte Nutzerbreiten (nach Spaltenschluessel) gehen
+        den Vorgaben vor. Anschliessend fuellt die Beschreibungs-Spalte die freie
+        Restbreite, bleibt dabei aber ziehbar.
         """
-        header = view.horizontalHeader() if isinstance(view, QTableView) else view.header()
-        count = model.columnCount()
+        header = self._header_of(view)
+        header.setStretchLastSection(False)
+        keys = model.column_keys()
+        self._adjusting_columns = True
+        try:
+            for section in range(model.columnCount()):
+                header.setSectionResizeMode(section, QHeaderView.ResizeMode.Interactive)
+                saved = self._settings.column_widths.get(keys[section]) if section < len(keys) else None
+                view.setColumnWidth(section, saved if saved and saved > 0 else model.column_width(section))
+        finally:
+            self._adjusting_columns = False
+        self._fill_description(view, model)
+
+    def _fill_description(self, view: QTableView | QTreeView, model: TimesheetModel | TimesheetTreeModel) -> None:
+        """Gibt der Beschreibungs-Spalte die freie Restbreite der Ansicht.
+
+        Nur solange der Nutzer die Beschreibung nicht selbst gezogen hat - eine
+        gespeicherte Breite bleibt unangetastet. So sieht die Liste ohne leeren
+        rechten Rand aus, ist aber trotzdem ueberall frei ziehbar.
+        """
         stretch = model.stretch_column()
         if stretch < 0:
-            stretch = count - 1
-        for section in range(count):
-            if section == stretch:
-                header.setSectionResizeMode(section, QHeaderView.ResizeMode.Stretch)
-            else:
-                header.setSectionResizeMode(section, QHeaderView.ResizeMode.Interactive)
-                view.setColumnWidth(section, model.column_width(section))
+            return
+        keys = model.column_keys()
+        if stretch < len(keys) and self._settings.column_widths.get(keys[stretch]):
+            return
+        used = sum(view.columnWidth(s) for s in range(model.columnCount()) if s != stretch)
+        available = view.viewport().width() - used
+        if available <= model.column_width(stretch):
+            return
+        self._adjusting_columns = True
+        try:
+            view.setColumnWidth(stretch, available)
+        finally:
+            self._adjusting_columns = False
+
+    def _on_section_resized(
+        self, model: TimesheetModel | TimesheetTreeModel, index: int, width: int
+    ) -> None:
+        """Merkt eine vom Nutzer gezogene Spaltenbreite (nach Spaltenschluessel)."""
+        if self._adjusting_columns or width <= 0:
+            return
+        keys = model.column_keys()
+        if 0 <= index < len(keys):
+            self._settings.column_widths[keys[index]] = width
 
     def _apply_column_settings(self) -> None:
         """Uebernimmt die Spalten-Konfiguration aus den Einstellungen in beide Ansichten."""
@@ -456,11 +541,37 @@ class MainWindow(QMainWindow):
             self._tree.expandAll()
 
     def _build_empty_state(self) -> QWidget:
-        """Zustand ohne Daten - erklaert, was als Naechstes zu tun ist."""
-        page = QWidget()
-        layout = QVBoxLayout(page)
+        """Zustand ohne Daten - formatfuellendes Hintergrundbild, Inhalt in einer Karte.
+
+        Das Bild fuellt die gesamte Flaeche (cover, nie verzerrt), der erklaerende
+        Text steht in einer lesbaren Karte darueber. Ist kein Bild hinterlegt,
+        bleibt der Theme-Hintergrund und die Karte traegt das App-Icon.
+        """
+        images_dir = Path(__file__).resolve().parent.parent / "resources" / "images"
+        hero_path = next(
+            (images_dir / name for name in ("hero.jpg", "hero.png", "hero.jpeg") if (images_dir / name).is_file()),
+            None,
+        )
+        page = HeroBackground(hero_path)
+
+        outer = QVBoxLayout(page)
+        outer.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        card = QFrame()
+        card.setObjectName("EmptyCard")
+        layout = QVBoxLayout(card)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setContentsMargins(44, 34, 44, 34)
         layout.setSpacing(10)
+
+        # App-Icon nur ohne Hintergrundbild - das Bild traegt die Marke sonst selbst.
+        if not page.has_image():
+            icon = app_icon()
+            if not icon.isNull():
+                icon_label = QLabel()
+                icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                icon_label.setPixmap(icon.pixmap(72, 72))
+                layout.addWidget(icon_label)
 
         self._empty_title = QLabel("Noch keine Daten")
         self._empty_title.setObjectName("EmptyTitle")
@@ -479,6 +590,8 @@ class MainWindow(QMainWindow):
         self._empty_button.setFixedWidth(200)
         self._empty_button.clicked.connect(self._on_empty_button)
         layout.addWidget(self._empty_button, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        outer.addWidget(card, 0, Qt.AlignmentFlag.AlignCenter)
         return page
 
     def _placeholder(self, title: str, text: str) -> QWidget:
@@ -531,12 +644,33 @@ class MainWindow(QMainWindow):
         self._model.set_manual_color(color)
         self._tree_model.set_manual_color(color)
 
+    def _apply_day_total_colors(self) -> None:
+        """Setzt die Soll-Ist-Ampel der Tagessummen in beiden Listenmodellen.
+
+        Ueber der Soll-Stundenzahl gruen, darunter rot. Ist die Faerbung
+        abgeschaltet, faerbt None die Summen wieder normal ein.
+        """
+        over_hex = under_hex = None
+        over: QColor | None = None
+        under: QColor | None = None
+        if self._settings.color_day_totals:
+            over_hex = normalize_color(self._settings.day_over_color)
+            under_hex = normalize_color(self._settings.day_under_color)
+            over = QColor(f"#{over_hex}")
+            under = QColor(f"#{under_hex}")
+        target = self._settings.hours_per_day
+        self._model.set_day_total_colors(over, under, target)
+        self._tree_model.set_day_total_colors(over, under, target)
+        # Dieselbe Ampel faerbt den Ist-Wert in der Summenleiste (Ist vs. Soll).
+        if hasattr(self, "_summary"):
+            self._summary.set_day_colors(over_hex, under_hex)
+
     def set_timesheet(self, timesheet: Timesheet | None) -> None:
         """Uebernimmt einen Stundenzettel in alle Ansichten."""
         self._timesheet = timesheet
         self._model.set_timesheet(timesheet)
         self._tree_model.set_timesheet(timesheet)
-        self._tree.expandAll()
+        self._apply_group_state()
         self._calendar.set_month(
             self._year, self._month, timesheet, self._settings.federal_state, self._settings.hours_per_day
         )
@@ -562,8 +696,21 @@ class MainWindow(QMainWindow):
         self._grouped = grouped
         self._qsettings.setValue("grouped", grouped)
         if grouped:
-            self._tree.expandAll()
+            self._apply_group_state()
         self._list_stack.setCurrentIndex(self._list_page(self._model.rowCount() > 0))
+
+    def _apply_group_state(self) -> None:
+        """Klappt die gruppierte Ansicht gemaess gemerktem Zustand auf oder zu."""
+        if self._groups_collapsed:
+            self._tree.collapseAll()
+        else:
+            self._tree.expandAll()
+
+    def _toggle_group_state(self) -> None:
+        """Kippt zwischen Alle-aufklappen und Alle-zuklappen und merkt sich das."""
+        self._groups_collapsed = not self._groups_collapsed
+        self._qsettings.setValue("groups_collapsed", self._groups_collapsed)
+        self._apply_group_state()
 
     def _refresh_summary_bar(self) -> None:
         """Fuellt die Summenleiste passend zur aktiven Ansicht."""
@@ -640,7 +787,11 @@ class MainWindow(QMainWindow):
         source = self._tree_proxy.mapToSource(self._tree.indexAt(pos))
         entry = self._tree_model.entry_at_index(source)
         day = self._tree_model.day_at_index(source)
-        self._entry_menu(entry, day).exec(self._tree.viewport().mapToGlobal(pos))
+        menu = self._entry_menu(entry, day)
+        menu.addSeparator()
+        toggle = menu.addAction("Alle aufklappen" if self._groups_collapsed else "Alle zuklappen")
+        toggle.triggered.connect(lambda _checked=False: self._toggle_group_state())
+        menu.exec(self._tree.viewport().mapToGlobal(pos))
 
     def _entry_at_pos(self, pos: QPoint) -> WorklogEntry | None:
         """Liefert den Eintrag unter der Mausposition (oder None)."""
@@ -778,6 +929,34 @@ class MainWindow(QMainWindow):
         s = self._settings
         return bool(s.jira_host and s.jira_token and s.email)
 
+    def _maybe_offer_restore(self) -> None:
+        """Bietet an, einen verlorenen Zugang aus einer Sicherung zu holen.
+
+        Nur wenn der Zugang tatsaechlich fehlt UND eine Sicherung ihn hat -
+        beim echten Erststart (keine Sicherung) passiert nichts. Bewusst mit
+        Rueckfrage statt stiller Wiederherstellung.
+        """
+        if self._settings_complete():
+            return
+        backup = Settings.latest_access_backup()
+        if backup is None:
+            return
+        label, data = backup
+        reply = QMessageBox.question(
+            self,
+            "Jira-Zugang wiederherstellen",
+            f"Der gespeicherte Jira-Zugang fehlt. Aus der Sicherung ({label}) wiederherstellen?",
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        for name in ACCESS_FIELDS:
+            if name in data:
+                setattr(self._settings, name, data[name])
+        self._settings.save()
+        self._update_empty_state()
+        self.show_toast("Jira-Zugang wiederhergestellt")
+        self._set_status(f"Zugang wiederhergestellt (Sicherung {label})")
+
     # --- Abruf ----------------------------------------------------------
 
     def load_month(self) -> None:
@@ -803,12 +982,21 @@ class MainWindow(QMainWindow):
 
     def _on_loaded(self, timesheet: Timesheet) -> None:
         self.set_timesheet(timesheet)
-        hours = self._model.total_hours
-        self._set_status(f"{self._model.rowCount()} Einträge · {hours:.2f} h".replace(".", ","))
+        # Rechts in der Statusleiste steht der Verbindungszustand, nicht die
+        # Summe - die Stunden zeigt schon die Kennzahlen-Leiste in der Mitte.
+        self._set_status(f"Verbunden mit {self._host_label()}")
 
     def _on_failed(self, message: str) -> None:
         self.set_timesheet(None)
         self._set_status(message, "error")
+
+    def _host_label(self) -> str:
+        """Der Jira-Host ohne Schema und Schraegstrich, fuer die Statusmeldung."""
+        host = self._settings.jira_host.strip()
+        for prefix in ("https://", "http://"):
+            if host.startswith(prefix):
+                host = host[len(prefix) :]
+        return host.rstrip("/") or "Jira"
 
     def _on_worker_done(self) -> None:
         self._worker = None
@@ -854,9 +1042,7 @@ class MainWindow(QMainWindow):
             booked_days_by_month=booked, manual_by_month=manual,
         )
         self._refresh_summary_bar()
-        count = sum(entries.values())
-        total = f"{sum(hours.values()):.2f}".replace(".", ",")
-        self._set_status(f"Jahr {self._year}: {count} Einträge · {total} h")
+        self._set_status(f"Verbunden mit {self._host_label()}")
 
     def reload_current(self) -> None:
         """Laedt neu - je nach aktiver Ansicht den Monat oder das ganze Jahr."""
@@ -879,6 +1065,11 @@ class MainWindow(QMainWindow):
         style.unpolish(self._status)
         style.polish(self._status)
 
+    def show_toast(self, text: str) -> None:
+        """Zeigt eine kurze, selbst verschwindende Benachrichtigung unten rechts."""
+        icon = qta.icon("mdi6.check-circle", color=palette_for(self._mode).green).pixmap(24, 24)
+        self._toast.show_message(text, icon)
+
     # --- Ereignisse -----------------------------------------------------
 
     def _on_empty_button(self) -> None:
@@ -897,8 +1088,13 @@ class MainWindow(QMainWindow):
         self._settings.save()
         self._apply_column_settings()
         self._apply_manual_color()
+        self._apply_day_total_colors()
+        # Der Modell-Reset beim Anwenden klappt den Baum zu - gemerkten Zustand
+        # wiederherstellen, sonst steht die gruppierte Liste voellig eingeklappt.
+        self._apply_group_state()
         self._update_empty_state()
         self._set_status("Einstellungen gespeichert")
+        self.show_toast("Einstellungen gespeichert")
         # Akzentfarbe und (bei fester Wahl) Erscheinungsbild uebernehmen und die
         # Oberflaeche neu einfaerben - der app-weite Palette-/QSS-Neuaufbau laeuft
         # ueber theme_changed im Einstiegspunkt.
@@ -1117,10 +1313,46 @@ class MainWindow(QMainWindow):
             # Stellt auch die Sichtbarkeit des Meldungsfensters wieder her.
             self.restoreState(state)
 
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802
+        """Laesst die Beschreibungs-Spalte mitwachsen, wenn ein Viewport waechst.
+
+        Der Viewport-Resize (nicht der Fenster-Resize) traegt die tatsaechliche
+        neue Breite - im Fenster-resizeEvent haette die View sie noch nicht. Beide
+        Ansichten werden gefuellt: sie teilen sich die Geometrie, und ein
+        Identitaetsvergleich mit viewport() ist unter PySide unzuverlaessig (jeder
+        Aufruf liefert einen neuen Wrapper um dasselbe C++-Objekt).
+        """
+        if event.type() == QEvent.Type.Resize and hasattr(self, "_table"):
+            self._fill_description(self._table, self._model)
+            self._fill_description(self._tree, self._tree_model)
+        # Ctrl+Mausrad zoomt wie im Browser - die Tabelle wuerde den Wheel sonst
+        # zum Scrollen verbrauchen, deshalb hier abfangen und verschlucken.
+        if self._wheel_zoom(event):
+            return True
+        return super().eventFilter(obj, event)
+
+    def _wheel_zoom(self, event: QEvent) -> bool:
+        """Zoomt bei Ctrl+Mausrad; True, wenn das Ereignis verbraucht wurde."""
+        if not isinstance(event, QWheelEvent):
+            return False
+        if not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            return False
+        self._zoom(1 if event.angleDelta().y() > 0 else -1)
+        return True
+
+    def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
+        """Ctrl+Mausrad zoomt auch ueber Bereichen ohne eigenen Bildlauf."""
+        if self._wheel_zoom(event):
+            event.accept()
+            return
+        super().wheelEvent(event)
+
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
-        """Merkt Fenstergroesse und -zustand, wartet auf den Arbeitsfaden."""
+        """Merkt Fenstergroesse, -zustand und Spaltenbreiten, wartet auf den Faden."""
         self._qsettings.setValue("window/geometry", self.saveGeometry())
         self._qsettings.setValue("window/state", self.saveState())
+        # Vom Nutzer gezogene Spaltenbreiten dauerhaft sichern.
+        self._settings.save()
         if self._worker is not None and self._worker.isRunning():
             # Ohne das kann Qt beim Beenden ueber einen laufenden Faden stolpern.
             self._worker.wait(3000)

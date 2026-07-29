@@ -39,6 +39,8 @@ def _isolated_qsettings(
     persistierte Zustaende beeinflussen (ein Test, der die Gruppierung
     einschaltet, darf den naechsten nicht erben).
     """
+    from jira_timesheet_qt.models import settings as settings_module
+    from jira_timesheet_qt.models.settings import Settings
     from jira_timesheet_qt.ui import main_window
 
     directory = tmp_path_factory.mktemp("qsettings")
@@ -48,4 +50,16 @@ def _isolated_qsettings(
         return QSettings(ini_path, QSettings.Format.IniFormat)
 
     monkeypatch.setattr(main_window, "QSettings", _isolated)
+
+    # Auch die JSON-Einstellungsdatei pro Test verlegen. Ohne das schreibt jeder
+    # Test, der ein Fenster schliesst (closeEvent -> save) oder Settings.save()
+    # aufruft, in die ECHTE ~/.jira-timesheet-qt/settings.json - und kann dort
+    # sogar den Jira-Zugang ueberschreiben. Ein Host-only-Fenster hat so einmal
+    # E-Mail und Token in der echten Datei geleert.
+    config_dir = directory / "config"
+    config_dir.mkdir()
+    monkeypatch.setattr(Settings, "SETTINGS_DIR", config_dir)
+    monkeypatch.setattr(Settings, "SETTINGS_FILE", config_dir / "settings.json")
+    # Legacy-TUI-Datei ins Leere zeigen lassen, sonst liest ein Test echte Werte.
+    monkeypatch.setattr(settings_module, "LEGACY_SETTINGS_FILE", config_dir / "legacy-absent.json")
     return directory

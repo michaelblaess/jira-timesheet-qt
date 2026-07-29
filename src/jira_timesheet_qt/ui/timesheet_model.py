@@ -28,9 +28,11 @@ from jira_timesheet_qt.models.export_column import DESCRIPTION_KEY, ExportColumn
 from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
 from jira_timesheet_qt.services.hours_parser import parse_hours
 from jira_timesheet_qt.ui.grid_columns import (
+    HOUR_KEYS,
     GridColumn,
     build_columns,
     display_value,
+    is_day_total_cell,
     sort_value,
 )
 
@@ -91,6 +93,10 @@ class TimesheetModel(QAbstractTableModel):
         # Farbe fuer manuell erfasste Zeilen, oder None wenn die Hervorhebung
         # abgeschaltet ist. Wird vom Hauptfenster aus den Einstellungen gesetzt.
         self._manual_color: QColor | None = None
+        # Ampel-Farben der Tagessummen (ueber/unter Soll), None = abgeschaltet.
+        self._day_over: QColor | None = None
+        self._day_under: QColor | None = None
+        self._day_target = 0.0
 
     # --- Konfiguration -------------------------------------------------
 
@@ -119,6 +125,17 @@ class TimesheetModel(QAbstractTableModel):
     def set_manual_color(self, color: QColor | None) -> None:
         """Setzt die Einfaerbung manueller Eintraege (None = keine)."""
         self._manual_color = color
+        self._emit_colors_changed()
+
+    def set_day_total_colors(self, over: QColor | None, under: QColor | None, target: float) -> None:
+        """Setzt die Ampel-Farben der Tagessummen (None = keine Faerbung)."""
+        self._day_over = over
+        self._day_under = under
+        self._day_target = target
+        self._emit_colors_changed()
+
+    def _emit_colors_changed(self) -> None:
+        """Meldet, dass sich die Vordergrundfarben aller Zeilen geaendert haben."""
         if self._entries:
             top = self.index(0, 0)
             bottom = self.index(len(self._entries) - 1, self.columnCount() - 1)
@@ -182,8 +199,13 @@ class TimesheetModel(QAbstractTableModel):
             return entry
         if role == Qt.ItemDataRole.TextAlignmentRole:
             return self._alignment(column)
-        if role == Qt.ItemDataRole.ForegroundRole and entry.manual and self._manual_color is not None:
-            return self._manual_color
+        if role == Qt.ItemDataRole.ForegroundRole:
+            # Die Tagessumme traegt die Soll-Ist-Ampel und geht der Markierung vor.
+            if self._day_over is not None and is_day_total_cell(column.key, False):
+                return self._day_over if day_total >= self._day_target else self._day_under
+            # Die Markierung manueller Eintraege bleibt den Zahlenspalten fern.
+            if entry.manual and self._manual_color is not None and column.key not in HOUR_KEYS:
+                return self._manual_color
         return None
 
     def flags(self, index: AnyIndex) -> Qt.ItemFlag:

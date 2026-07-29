@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import shutil
 import traceback
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +19,10 @@ logger = logging.getLogger(__name__)
 
 # Markierungsfarbe manueller Eintraege als RRGGBB (ohne fuehrendes #).
 DEFAULT_MANUAL_COLOR = "FF0000"
+
+# Ampel-Farben der Tagessummen (RRGGBB): ueber Soll gruen, unter Soll rot.
+DEFAULT_DAY_OVER_COLOR = "2F9E44"
+DEFAULT_DAY_UNDER_COLOR = "C92A2A"
 
 # Vorbelegte Kundenliste - der Benutzer pflegt sie in den Einstellungen.
 DEFAULT_CUSTOMERS = ("Vertrieb", "Corporate")
@@ -93,6 +100,9 @@ CALC_FIELDS = (
 # unkonfiguriert. Grundlage fuer den Datenverlust-Schutz beim Speichern.
 _ACCESS_CORE = ("jira_host", "email", "jira_token")
 
+# Wie viele rollierende Sicherungen der Einstellungsdatei aufgehoben werden.
+MAX_BACKUPS = 3
+
 
 @dataclass
 class Settings:
@@ -132,6 +142,10 @@ class Settings:
     export_columns: list[ExportColumn] = field(default_factory=default_columns)
     mark_manual_entries: bool = True
     manual_entry_color: str = DEFAULT_MANUAL_COLOR
+    # Tagessummen nach Soll-Ist einfaerben (ueber Soll gruen, unter Soll rot).
+    color_day_totals: bool = True
+    day_over_color: str = DEFAULT_DAY_OVER_COLOR
+    day_under_color: str = DEFAULT_DAY_UNDER_COLOR
     default_customer: str = "Vertrieb"
     # Zuletzt im Speichern-Dialog gewaehltes Verzeichnis.
     last_export_dir: str = ""
@@ -171,6 +185,9 @@ class Settings:
         "export_columns",
         "mark_manual_entries",
         "manual_entry_color",
+        "color_day_totals",
+        "day_over_color",
+        "day_under_color",
         "default_customer",
         "customers",
         "last_export_dir",
@@ -261,6 +278,13 @@ class Settings:
                 export_columns=parse_columns(data.get("export_columns")),
                 mark_manual_entries=bool(data.get("mark_manual_entries", True)),
                 manual_entry_color=normalize_color(str(data.get("manual_entry_color", DEFAULT_MANUAL_COLOR))),
+                color_day_totals=bool(data.get("color_day_totals", True)),
+                day_over_color=normalize_color(
+                    str(data.get("day_over_color", DEFAULT_DAY_OVER_COLOR)), DEFAULT_DAY_OVER_COLOR
+                ),
+                day_under_color=normalize_color(
+                    str(data.get("day_under_color", DEFAULT_DAY_UNDER_COLOR)), DEFAULT_DAY_UNDER_COLOR
+                ),
                 default_customer=str(data.get("default_customer", "Vertrieb")),
                 customers=Settings._parse_customers(data.get("customers")),
                 last_export_dir=str(data.get("last_export_dir", "")),
@@ -318,52 +342,153 @@ class Settings:
         return {str(key): int(value) for key, value in raw.items() if isinstance(value, int) and value > 0}
 
     def save(self) -> None:
-        """Speichert die Einstellungen in die JSON-Datei.
+        """Speichert die Einstellungen in die JSON-Datei - abgesichert.
 
-        Vor dem Schreiben greift ein Datenverlust-Schutz: Wuerde dieser Vorgang
-        einen zuvor gesetzten Jira-Zugang leeren, wird das als Fehler geloggt
-        (mit Aufrufpfad) und die vorhandenen Werte werden bewahrt.
+        Mehrschichtiger Schutz gegen Datenverlust:
+        1. Der Datenverlust-Schutz bewahrt jedes zuvor gesetzte Zugangs-Kernfeld
+           (siehe _guard_access_loss).
+        2. Vor dem Ueberschreiben wird die bisherige Datei rollierend gesichert
+           (die letzten MAX_BACKUPS Staende).
+        3. Geschrieben wird atomar (Temp-Datei + os.replace) - ein Abbruch
+           mittendrin kann so keine halbe/leere Datei hinterlassen.
+        4. Bei vollstaendigem Zugang wird zusaetzlich eine goldene Kopie
+           (settings.lastgood.json) aktualisiert.
         """
         try:
             Settings.SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
             data = self.to_dict()
             Settings._guard_access_loss(data)
-            Settings.SETTINGS_FILE.write_text(
-                json.dumps(data, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
+            payload = json.dumps(data, indent=2, ensure_ascii=False)
+            Settings._rotate_backup()
+            Settings._atomic_write(Settings.SETTINGS_FILE, payload)
+            Settings._update_lastgood(data)
         except Exception as exc:
             logger.warning("Settings konnten nicht gespeichert werden: %s", exc)
 
+    # --- Sicherung / Wiederherstellung ---------------------------------
+
+    @staticmethod
+    def _backup_dir() -> Path:
+        """Verzeichnis der rollierenden Sicherungen (unter dem Settings-Ordner)."""
+        return Settings.SETTINGS_DIR / "backups"
+
+    @staticmethod
+    def _lastgood_file() -> Path:
+        """Die goldene Kopie mit dem letzten vollstaendigen Zugang."""
+        return Settings.SETTINGS_DIR / "settings.lastgood.json"
+
+    @staticmethod
+    def _atomic_write(path: Path, payload: str) -> None:
+        """Schreibt payload atomar: erst in eine Temp-Datei, dann os.replace."""
+        tmp = path.with_name(f"{path.name}.tmp")
+        with open(tmp, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+
+    @staticmethod
+    def _backups() -> list[Path]:
+        """Vorhandene Sicherungen, neueste zuerst (Dateiname traegt den Zeitstempel)."""
+        backup_dir = Settings._backup_dir()
+        if not backup_dir.is_dir():
+            return []
+        files = [p for p in backup_dir.glob("settings-*.json") if p.is_file()]
+        return sorted(files, key=lambda p: p.name, reverse=True)
+
+    @staticmethod
+    def _rotate_backup() -> None:
+        """Sichert die aktuelle Datei, bevor sie ueberschrieben wird (dedupliziert).
+
+        Ist der Inhalt identisch zur neuesten Sicherung, wird nichts angelegt -
+        sonst wuerden haeufige No-Op-Speicherungen (z.B. beim Schliessen) die
+        wenigen Slots mit gleichen Staenden fuellen und echte Historie verdraengen.
+        """
+        src = Settings.SETTINGS_FILE
+        if not src.is_file():
+            return
+        try:
+            content = src.read_text(encoding="utf-8")
+            newest = Settings._backups()
+            if newest and newest[0].read_text(encoding="utf-8") == content:
+                return
+            backup_dir = Settings._backup_dir()
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+            shutil.copy2(src, backup_dir / f"settings-{stamp}.json")
+            for old in Settings._backups()[MAX_BACKUPS:]:
+                old.unlink(missing_ok=True)
+        except Exception as exc:
+            logger.warning("Settings-Sicherung fehlgeschlagen: %s", exc)
+
+    @staticmethod
+    def _update_lastgood(data: dict[str, Any]) -> None:
+        """Aktualisiert die goldene Kopie nur bei vollstaendigem Zugang."""
+        if not all(str(data.get(name, "")).strip() for name in _ACCESS_CORE):
+            return
+        try:
+            Settings._atomic_write(
+                Settings._lastgood_file(), json.dumps(data, indent=2, ensure_ascii=False)
+            )
+        except Exception as exc:
+            logger.warning("Golden-Copy fehlgeschlagen: %s", exc)
+
+    @staticmethod
+    def latest_access_backup() -> tuple[str, dict[str, Any]] | None:
+        """Neueste Sicherung mit vollstaendigem Zugang: (Beschreibung, Daten) oder None.
+
+        Zuerst die goldene Kopie, dann die rollierenden Sicherungen (neueste
+        zuerst). Grundlage fuer das Wiederherstellungs-Angebot beim Start.
+        """
+        candidates: list[tuple[str, Path]] = [("letzter guter Stand", Settings._lastgood_file())]
+        candidates += [(Settings._backup_label(p), p) for p in Settings._backups()]
+        for label, path in candidates:
+            data = Settings._read_json(path)
+            if data and all(str(data.get(name, "")).strip() for name in _ACCESS_CORE):
+                return label, data
+        return None
+
+    @staticmethod
+    def _backup_label(path: Path) -> str:
+        """Macht aus 'settings-20260729-121500-123456.json' ein lesbares Datum."""
+        try:
+            stamp = path.stem.split("settings-", 1)[1]
+            moment = datetime.strptime(stamp[:15], "%Y%m%d-%H%M%S")
+            return moment.strftime("%d.%m.%Y %H:%M")
+        except (IndexError, ValueError):
+            return path.name
+
     @staticmethod
     def _guard_access_loss(data: dict[str, Any]) -> None:
-        """Bewahrt einen vorhandenen Jira-Zugang vor dem Leerschreiben.
+        """Bewahrt vorhandene Zugangs-Kernfelder vor dem Leerschreiben.
 
-        Sind Host, E-Mail UND Token im zu schreibenden Datensatz leer, die
-        bereits gespeicherte Datei hatte sie aber, gilt das als Fehler: WARNUNG
-        samt Aufrufpfad (Stacktrace) ins Log, und die vorhandenen Zugangsfelder
-        werden aus der alten Datei uebernommen. So verliert niemand seine
-        muehsam eingegebenen Werte, und der Ausloeser bleibt im Log auffindbar.
+        Wuerde dieser Schreibvorgang eines der Kernfelder (Host, E-Mail, Token)
+        leeren, das die bereits gespeicherte Datei aber gesetzt hatte, gilt das
+        als Fehler: der alte Wert wird bewahrt und der Vorgang mit vollem
+        Aufrufpfad geloggt. Bewusst JE FELD EINZELN - ein gesetzter Host darf
+        nicht laenger die stille Loeschung von E-Mail und Token decken (genau
+        das hat einmal Token und E-Mail verloren, waehrend der Host blieb).
 
         Args:
             data:
                 Der zu schreibende Datensatz; wird bei Bedarf in-place ergaenzt.
         """
-        writing_empty = not any(str(data.get(field_name, "")).strip() for field_name in _ACCESS_CORE)
-        if not writing_empty:
-            return
         previous = Settings._read_json(Settings.SETTINGS_FILE)
         if previous is None:
             return
-        had_access = any(str(previous.get(field_name, "")).strip() for field_name in _ACCESS_CORE)
-        if not had_access:
+        preserved: list[str] = []
+        for name in _ACCESS_CORE:
+            writes_empty = not str(data.get(name, "")).strip()
+            had_value = bool(str(previous.get(name, "")).strip())
+            if writes_empty and had_value:
+                data[name] = previous[name]
+                preserved.append(name)
+        if not preserved:
             return
 
         logger.warning(
-            "DATENVERLUST VERHINDERT: Speichern haette den Jira-Zugang geleert. "
+            "DATENVERLUST VERHINDERT: Speichern haette %s geleert. "
             "Vorhandene Werte wurden bewahrt. Aufrufpfad:\n%s",
+            ", ".join(preserved),
             "".join(traceback.format_stack()),
         )
-        for name in ACCESS_FIELDS:
-            if name in previous:
-                data[name] = previous[name]

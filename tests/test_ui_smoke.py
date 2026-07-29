@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QModelIndex, Qt
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QApplication, QTableView
 
@@ -194,6 +194,126 @@ class TestWindow:
 
     def test_toolbar_shows_the_month(self, window: MainWindow) -> None:
         assert window._month_label.text() == "Juli 2026"
+
+    def test_all_columns_are_resizable(self, window: MainWindow) -> None:
+        """Jede Spalte ist frei ziehbar - keine fixe oder zwangsgestreckte Spalte."""
+        from PySide6.QtWidgets import QHeaderView
+
+        header = window._table.horizontalHeader()
+        assert header.stretchLastSection() is False
+        modes = {header.sectionResizeMode(i) for i in range(window._model.columnCount())}
+        assert modes == {QHeaderView.ResizeMode.Interactive}
+
+    def test_user_column_width_is_remembered(self, window: MainWindow) -> None:
+        """Eine gezogene Spaltenbreite landet nach Spaltenschluessel in den Einstellungen."""
+        keys = window._model.column_keys()
+        window._on_section_resized(window._model, keys.index("ticket"), 222)
+        assert window._settings.column_widths["ticket"] == 222
+
+    def test_description_fills_available_width(self, window: MainWindow) -> None:
+        """Die Beschreibung waechst in den freien Platz, statt abgeschnitten zu bleiben."""
+        window._table.resize(1600, 400)
+        QApplication.processEvents()  # Viewport uebernimmt die neue Breite erst im Event-Loop
+        di = window._model.column_keys().index("description")
+        window._fill_description(window._table, window._model)
+        assert window._table.columnWidth(di) > window._model.column_width(di)
+
+    def test_user_description_width_survives_fill(self, window: MainWindow) -> None:
+        """Eine selbst gezogene Beschreibungsbreite bleibt von der Fuellung unangetastet."""
+        window._settings.column_widths["description"] = 300
+        window._table.resize(1600, 400)
+        window._apply_column_layout(window._table, window._model)
+        di = window._model.column_keys().index("description")
+        assert window._table.columnWidth(di) == 300
+
+    def test_group_toggle_collapses_and_persists(self, window: MainWindow) -> None:
+        """Der Kontextmenue-Toggle klappt die gruppierte Liste zu und merkt sich das."""
+        group0 = window._tree_proxy.index(0, 0, QModelIndex())
+        assert window._tree.isExpanded(group0)
+        window._toggle_group_state()
+        assert window._groups_collapsed is True
+        assert not window._tree.isExpanded(group0)
+
+    def test_group_state_survives_model_reset(self, window: MainWindow) -> None:
+        """Ein Modell-Reset (wie beim Speichern der Settings) klappt nicht ungewollt zu."""
+        window._tree_model.set_columns(window._settings.export_columns, window._settings.default_customer)
+        window._apply_group_state()
+        assert window._tree.isExpanded(window._tree_proxy.index(0, 0, QModelIndex()))
+
+    def test_summary_lives_in_status_bar(self, window: MainWindow) -> None:
+        """Die Summenleiste sitzt jetzt als Panel in der echten QStatusBar."""
+        from jira_timesheet_qt.ui.summary_bar import SummaryBar
+
+        assert window.statusBar().findChild(SummaryBar) is not None
+
+    def test_toast_shows_message_with_icon(self, window: MainWindow) -> None:
+        """Die Toast-Benachrichtigung nimmt Text UND ein Icon an, ohne zu stuerzen."""
+        from jira_timesheet_qt.ui.toast import Toast
+
+        window.show_toast("Einstellungen gespeichert")
+        toast = window.findChild(Toast)
+        assert toast is not None
+        assert toast._label.text() == "Einstellungen gespeichert"
+        assert not toast._icon.pixmap().isNull()  # Haekchen-Icon gesetzt
+
+    def test_host_label_strips_scheme(self, qapp: QApplication) -> None:
+        """Die Verbindungsmeldung zeigt den Host ohne Schema und Schraegstrich."""
+        win = MainWindow(Settings(jira_host="https://firma.atlassian.net/"), Mode.DARK)
+        assert win._host_label() == "firma.atlassian.net"
+
+    def test_restore_offer_recovers_access(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Fehlt der Zugang und eine Sicherung hat ihn, stellt der Prompt ihn wieder her."""
+        from PySide6.QtWidgets import QMessageBox
+
+        # Goldene Kopie mit vollem Zugang anlegen (Ordner via conftest isoliert).
+        Settings(jira_host="https://h", email="e@x.de", jira_token="TOK").save()
+        monkeypatch.setattr(
+            QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
+        )
+        win = MainWindow(Settings(jira_host="https://h"), Mode.DARK)  # Zugang unvollstaendig
+        assert not win._settings_complete()
+        win._maybe_offer_restore()
+        assert win._settings_complete()
+
+    def test_hero_releases_image_when_hidden(self, window: MainWindow) -> None:
+        """Das Hintergrundbild wird geladen wenn sichtbar und beim Verbergen freigegeben."""
+        from PySide6.QtGui import QHideEvent, QShowEvent
+
+        from jira_timesheet_qt.ui.hero_background import HeroBackground
+
+        hero = window.findChild(HeroBackground)
+        assert hero is not None
+        assert hero.has_image()
+        hero.showEvent(QShowEvent())
+        assert not hero._pixmap.isNull()  # sichtbar -> geladen
+        hero.hideEvent(QHideEvent())
+        assert hero._pixmap.isNull()  # verborgen -> Speicher frei
+
+    def test_ctrl_wheel_zooms(self, window: MainWindow) -> None:
+        """Ctrl+Mausrad vergroessert die Oberflaeche (wie im Browser)."""
+        from PySide6.QtCore import QPoint
+        from PySide6.QtGui import QWheelEvent
+
+        from jira_timesheet_qt.ui.theme import current_scale, set_scale
+
+        try:
+            before = current_scale()
+            event = QWheelEvent(
+                QPoint(10, 10),
+                QPoint(10, 10),
+                QPoint(0, 0),
+                QPoint(0, 120),
+                Qt.MouseButton.NoButton,
+                Qt.KeyboardModifier.ControlModifier,
+                Qt.ScrollPhase.NoScrollPhase,
+                False,
+            )
+            window.wheelEvent(event)
+            assert current_scale() > before
+        finally:
+            set_scale(100)  # sonst zoomt es folgende Tests
 
     def test_empty_state(self, qapp: QApplication) -> None:
         """Ohne Daten bleibt der Monat in der Toolbar sichtbar."""

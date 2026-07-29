@@ -29,11 +29,13 @@ from PySide6.QtGui import QColor, QFont
 from jira_timesheet_qt.models.export_column import ExportColumn, default_columns
 from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
 from jira_timesheet_qt.ui.grid_columns import (
+    HOUR_KEYS,
     GridColumn,
     build_columns,
     display_value,
     group_display,
     group_sort,
+    is_day_total_cell,
     sort_value,
 )
 from jira_timesheet_qt.ui.timesheet_model import ENTRY_ROLE, SORT_ROLE, apply_manual_edit
@@ -85,6 +87,10 @@ class TimesheetTreeModel(QAbstractItemModel):
         self._default_customer = ""
         # Farbe fuer manuell erfasste Zeilen, oder None wenn abgeschaltet.
         self._manual_color: QColor | None = None
+        # Ampel-Farben der Tagessummen (ueber/unter Soll), None = abgeschaltet.
+        self._day_over: QColor | None = None
+        self._day_under: QColor | None = None
+        self._day_target = 0.0
 
     # --- Konfiguration -------------------------------------------------
 
@@ -112,6 +118,14 @@ class TimesheetTreeModel(QAbstractItemModel):
         self._manual_color = color
         # Voller Reset ist hier am einfachsten - der Baum ist klein, und die
         # Farbe aendert sich nur beim Speichern der Einstellungen.
+        self.beginResetModel()
+        self.endResetModel()
+
+    def set_day_total_colors(self, over: QColor | None, under: QColor | None, target: float) -> None:
+        """Setzt die Ampel-Farben der Tagessummen (None = keine Faerbung)."""
+        self._day_over = over
+        self._day_under = under
+        self._day_target = target
         self.beginResetModel()
         self.endResetModel()
 
@@ -253,6 +267,10 @@ class TimesheetTreeModel(QAbstractItemModel):
             return font
         if role == Qt.ItemDataRole.TextAlignmentRole:
             return _alignment(column)
+        if role == Qt.ItemDataRole.ForegroundRole and self._day_over is not None and is_day_total_cell(
+            column.key, True
+        ):
+            return self._day_over if group.total >= self._day_target else self._day_under
         return None
 
     def _entry_data(self, entry: WorklogEntry, column: GridColumn, day_total: float, role: int) -> Any:
@@ -267,6 +285,11 @@ class TimesheetTreeModel(QAbstractItemModel):
             return sort_value(entry, column.key, day_total, self._default_customer)
         if role == Qt.ItemDataRole.TextAlignmentRole:
             return _alignment(column)
-        if role == Qt.ItemDataRole.ForegroundRole and entry.manual and self._manual_color is not None:
-            return self._manual_color
+        if role == Qt.ItemDataRole.ForegroundRole:
+            # Die Tagessumme traegt die Soll-Ist-Ampel und geht der Markierung vor.
+            if self._day_over is not None and is_day_total_cell(column.key, False):
+                return self._day_over if day_total >= self._day_target else self._day_under
+            # Die Markierung manueller Eintraege bleibt den Zahlenspalten fern.
+            if entry.manual and self._manual_color is not None and column.key not in HOUR_KEYS:
+                return self._manual_color
         return None

@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 import jira_timesheet_qt.models.settings as settings_module
-from jira_timesheet_qt.models.settings import ACCESS_FIELDS, CALC_FIELDS, Settings
+from jira_timesheet_qt.models.settings import ACCESS_FIELDS, CALC_FIELDS, MAX_BACKUPS, Settings
 
 # Ein realistischer Auszug aus einer TUI-Einstellungsdatei. Das Theme ist ein
 # Retro-Slug, das Data-Center-Feld gesetzt - beides muss sauber ankommen.
@@ -125,6 +125,76 @@ class TestSaveGuard:
         s = Settings.load()
         assert s.jira_host == "https://b"
         assert s.federal_state == "BE"
+
+    def test_partial_blanking_preserves_other_core_fields(self, _isolated: tuple[Path, Path]) -> None:
+        """Nur-Host-Speichern darf E-Mail/Token nicht leeren (der echte Datenverlust).
+
+        Frueher deckte ein gesetzter Host das stille Loeschen von E-Mail und
+        Token - genau so gingen sie einmal in der echten Datei verloren.
+        """
+        Settings(jira_host="https://h", email="e@x.de", jira_token="TOK").save()
+        Settings(jira_host="https://h2").save()  # nur Host, Rest leer
+        s = Settings.load()
+        assert s.jira_host == "https://h2"  # geaenderter Host kommt durch
+        assert s.email == "e@x.de"  # bewahrt
+        assert s.jira_token == "TOK"  # bewahrt
+
+    def test_blanking_single_core_field_is_logged(
+        self, _isolated: tuple[Path, Path], caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Auch das Leeren eines EINZELNEN Kernfelds landet als Warnung im Log."""
+        Settings(jira_host="https://h", email="e@x.de", jira_token="TOK").save()
+        with caplog.at_level("WARNING"):
+            Settings(jira_host="https://h", email="e@x.de").save()  # Token leer
+        assert any("DATENVERLUST VERHINDERT" in r.message for r in caplog.records)
+
+
+class TestBackup:
+    """Sicherung, atomares Schreiben und goldene Kopie beim Speichern."""
+
+    def _full(self, **extra: object) -> Settings:
+        return Settings(jira_host="https://h", email="e@x.de", jira_token="TOK", **extra)
+
+    def test_keeps_only_max_backups(self, _isolated: tuple[Path, Path]) -> None:
+        """Es werden hoechstens MAX_BACKUPS Sicherungen aufgehoben."""
+        for i in range(MAX_BACKUPS + 3):
+            self._full(budget_field=f"cf_{i}").save()  # jeweils anderer Inhalt
+        assert len(Settings._backups()) == MAX_BACKUPS
+
+    def test_identical_saves_dedupe(self, _isolated: tuple[Path, Path]) -> None:
+        """Unveraenderte Speicherungen legen keine weiteren gleichen Sicherungen an."""
+        self._full().save()
+        self._full().save()
+        self._full().save()
+        assert len(Settings._backups()) == 1
+
+    def test_atomic_write_leaves_no_tmp(self, _isolated: tuple[Path, Path]) -> None:
+        self._full().save()
+        tmp = Settings.SETTINGS_FILE.with_name(f"{Settings.SETTINGS_FILE.name}.tmp")
+        assert not tmp.exists()
+
+    def test_lastgood_only_with_full_access(self, _isolated: tuple[Path, Path]) -> None:
+        Settings(jira_host="https://h").save()  # Zugang unvollstaendig
+        assert not Settings._lastgood_file().is_file()
+        self._full().save()
+        assert Settings._lastgood_file().is_file()
+
+    def test_recovers_access_from_backup(self, _isolated: tuple[Path, Path]) -> None:
+        """Nach einem geleerten Zugang findet die Wiederherstellung ihn in der Sicherung."""
+        self._full().save()  # schreibt goldene Kopie
+        # Hauptdatei von aussen leeren (Korruption/Fehledit simulieren).
+        Settings.SETTINGS_FILE.write_text(json.dumps({"jira_host": "https://h"}), encoding="utf-8")
+        loaded = Settings.load()
+        assert not (loaded.email and loaded.jira_token)  # Zugang tatsaechlich weg
+
+        recovered = Settings.latest_access_backup()
+        assert recovered is not None
+        _label, data = recovered
+        assert data["jira_token"] == "TOK"
+        assert data["email"] == "e@x.de"
+
+    def test_no_backup_without_access(self, _isolated: tuple[Path, Path]) -> None:
+        assert Settings.latest_access_backup() is None
 
 
 class TestExplicitAccessImport:

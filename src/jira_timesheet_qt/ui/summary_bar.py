@@ -12,11 +12,11 @@ Listen-Abschnitte liegt als reine Funktion daneben, damit sie ohne Qt testbar is
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QPainter, QPaintEvent
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QWidget
 
 from jira_timesheet_qt.i18n import format_eur, format_number
 from jira_timesheet_qt.models.settings import Settings
@@ -26,10 +26,15 @@ from jira_timesheet_qt.ui.theme import Mode, palette_for
 
 @dataclass(frozen=True)
 class SummarySegment:
-    """Ein Abschnitt der Leiste: Beschriftung (optional) und Wert."""
+    """Ein Abschnitt der Leiste: Beschriftung (optional), Wert und Farbe.
+
+    color ist ein Hex-Wert ohne fuehrendes # (z.B. die Soll-Ist-Ampel des
+    Ist-Werts) oder None fuer die normale Textfarbe.
+    """
 
     label: str
     value: str
+    color: str | None = None
 
 
 def build_summary_segments(
@@ -94,8 +99,8 @@ class RatioBar(QWidget):
         self._mode = mode
         self._ratio = 0.0
         self._text = ""
-        self.setFixedWidth(160)
-        self.setMinimumHeight(20)
+        self.setFixedWidth(200)
+        self.setMinimumHeight(28)
 
     def set_value(self, ratio: float, text: str) -> None:
         """Setzt Fuellstand (0..1+, Anzeige bei 1 gekappt) und Beschriftung."""
@@ -112,17 +117,18 @@ class RatioBar(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         p = palette_for(self._mode)
-        rect = QRectF(0, (self.height() - 16) / 2, self.width(), 16)
+        bar_height = 22
+        rect = QRectF(0, (self.height() - bar_height) / 2, self.width(), bar_height)
 
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(p.bg_tertiary))
-        painter.drawRoundedRect(rect, 8, 8)
+        painter.drawRect(rect)
 
         if self._ratio > 0:
             fill = QRectF(rect)
             fill.setWidth(rect.width() * min(1.0, self._ratio))
             painter.setBrush(QColor(p.green if self._ratio >= 1.0 else p.accent))
-            painter.drawRoundedRect(fill, 8, 8)
+            painter.drawRect(fill)
 
         if self._text:
             painter.setPen(QColor(p.text_primary))
@@ -152,7 +158,22 @@ class SummaryBar(QWidget):
         self._segments.setSpacing(8)
         outer.addLayout(self._segments, 1)
 
+        # Ampel-Farben fuer den Ist-Wert (Hex ohne #), None = keine Faerbung.
+        self._over_color: str | None = None
+        self._under_color: str | None = None
+
         self.clear()
+
+    def set_day_colors(self, over: str | None, under: str | None) -> None:
+        """Setzt die Ampel-Farben (Hex ohne #) fuer den Ist-Wert; None = keine."""
+        self._over_color = over
+        self._under_color = under
+
+    def _ist_color(self, actual: float, target: float) -> str | None:
+        """Ampel-Farbe des Ist-Werts: ueber Soll gruen, darunter rot (sonst None)."""
+        if self._over_color is None or self._under_color is None or target <= 0:
+            return None
+        return self._over_color if actual >= target else self._under_color
 
     # --- Ansichten ------------------------------------------------------
 
@@ -161,8 +182,9 @@ class SummaryBar(QWidget):
         if timesheet is None:
             self.clear()
             return
-        self._render(build_summary_segments(timesheet, settings, target_workdays))
         target = target_workdays * settings.hours_per_day
+        segments = build_summary_segments(timesheet, settings, target_workdays)
+        self._render(self._colour_ist(segments, timesheet.total_hours, target))
         self._set_ratio(timesheet.total_hours, target)
 
     def show_calendar(
@@ -181,20 +203,26 @@ class SummaryBar(QWidget):
         ]
         if missing_days > 0:
             segments.append(SummarySegment("Fehlt", f"{missing_days} Tage"))
-        self._render(segments)
+        self._render(self._colour_ist(segments, total_hours, target_hours))
         self._set_ratio(booked_days, total_workdays)
 
     def show_year(self, year: int, actual: float, target: float, forecast: float) -> None:
         """Jahr: Ist/Soll/Prognose; Fortschritt = Ist gegen Soll."""
-        self._render(
-            [
-                SummarySegment("Jahr", str(year)),
-                SummarySegment("Ist", f"{format_number(actual)} h"),
-                SummarySegment("Soll", f"{format_number(target)} h"),
-                SummarySegment("Prognose", f"{format_number(forecast)} h"),
-            ]
-        )
+        segments = [
+            SummarySegment("Jahr", str(year)),
+            SummarySegment("Ist", f"{format_number(actual)} h"),
+            SummarySegment("Soll", f"{format_number(target)} h"),
+            SummarySegment("Prognose", f"{format_number(forecast)} h"),
+        ]
+        self._render(self._colour_ist(segments, actual, target))
         self._set_ratio(actual, target)
+
+    def _colour_ist(self, segments: list[SummarySegment], actual: float, target: float) -> list[SummarySegment]:
+        """Faerbt den Ist-Abschnitt nach der Soll-Ist-Ampel (gruen/rot)."""
+        color = self._ist_color(actual, target)
+        if color is None:
+            return segments
+        return [replace(s, color=color) if s.label == "Ist" else s for s in segments]
 
     def clear(self) -> None:
         """Leert die Leiste - ohne Daten bleiben Balken und Text unsichtbar."""
@@ -215,16 +243,32 @@ class SummaryBar(QWidget):
         self._bar.set_value(ratio, f"{ratio * 100:.0f} %" if target > 0 else "")
 
     def _render(self, segments: list[SummarySegment]) -> None:
-        """Baut die Abschnitte neu auf (der Balken bleibt stehen)."""
+        """Baut die Abschnitte neu auf (der Balken bleibt stehen).
+
+        Jede Kennzahl sitzt in einem eigenen gerahmten Panel (wie die
+        Statusleisten von DevExpress/Infragistics), getrennt statt mit "|".
+        """
         self._clear_segments()
         self._segments.addStretch(1)
-        for index, segment in enumerate(segments):
-            if index > 0:
-                self._segments.addWidget(self._separator())
-            if segment.label:
-                self._segments.addWidget(self._label(segment.label, "SummaryStatLabel"))
-            self._segments.addWidget(self._label(segment.value, "SummaryStatValue"))
+        for segment in segments:
+            self._segments.addWidget(self._panel(segment))
         self._segments.addStretch(1)
+
+    def _panel(self, segment: SummarySegment) -> QFrame:
+        """Baut ein gerahmtes Statusleisten-Panel aus Beschriftung und Wert."""
+        frame = QFrame()
+        frame.setObjectName("SummaryPanel")
+        row = QHBoxLayout(frame)
+        row.setContentsMargins(9, 2, 9, 2)
+        row.setSpacing(6)
+        if segment.label:
+            row.addWidget(self._label(segment.label, "SummaryStatLabel"))
+        value = self._label(segment.value, "SummaryStatValue")
+        if segment.color:
+            # Nur die Farbe ueberschreiben - Groesse/Fettung bleiben aus dem QSS.
+            value.setStyleSheet(f"color: #{segment.color};")
+        row.addWidget(value)
+        return frame
 
     def _clear_segments(self) -> None:
         """Entfernt die bisherigen Abschnitte (auch die Stretch-Elemente)."""
@@ -245,10 +289,3 @@ class SummaryBar(QWidget):
         label = QLabel(text)
         label.setObjectName(object_name)
         return label
-
-    @staticmethod
-    def _separator() -> QLabel:
-        sep = QLabel("|")
-        sep.setObjectName("SummarySep")
-        sep.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        return sep

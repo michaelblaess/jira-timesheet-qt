@@ -33,7 +33,12 @@ from PySide6.QtWidgets import (
 )
 
 from jira_timesheet_qt.models.export_column import ExportColumn, default_label
-from jira_timesheet_qt.models.settings import Settings, normalize_color
+from jira_timesheet_qt.models.settings import (
+    DEFAULT_DAY_OVER_COLOR,
+    DEFAULT_DAY_UNDER_COLOR,
+    Settings,
+    normalize_color,
+)
 from jira_timesheet_qt.services.cache_service import CACHE_DIR
 from jira_timesheet_qt.services.manual_entry_service import DB_FILE
 from jira_timesheet_qt.ui.theme import ACCENT_LABELS, SCALES
@@ -386,6 +391,31 @@ class SettingsDialog(QDialog):
         self.manual_color.setEnabled(self.mark_manual.isChecked())
         form.addRow(self._label("Markierungsfarbe"), self.manual_color)
 
+        # Soll-Ist-Ampel der Tagessummen: ueber Soll gruen, unter Soll rot.
+        self.color_day_totals = QCheckBox("Tagessummen nach Soll-Ist einfärben")
+        self.color_day_totals.setChecked(self._settings.color_day_totals)
+        form.addRow(self._label(""), self.color_day_totals)
+
+        self._day_over_value = normalize_color(self._settings.day_over_color, DEFAULT_DAY_OVER_COLOR)
+        self.day_over_color = QPushButton()
+        self.day_over_color.setFixedWidth(FIELD_WIDTH)
+        self.day_over_color.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.day_over_color.clicked.connect(self._pick_day_over_color)
+        self._style_color_button(self.day_over_color, self._day_over_value)
+        form.addRow(self._label("Farbe über Soll"), self.day_over_color)
+
+        self._day_under_value = normalize_color(self._settings.day_under_color, DEFAULT_DAY_UNDER_COLOR)
+        self.day_under_color = QPushButton()
+        self.day_under_color.setFixedWidth(FIELD_WIDTH)
+        self.day_under_color.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.day_under_color.clicked.connect(self._pick_day_under_color)
+        self._style_color_button(self.day_under_color, self._day_under_value)
+        form.addRow(self._label("Farbe unter Soll"), self.day_under_color)
+
+        for widget in (self.day_over_color, self.day_under_color):
+            self.color_day_totals.toggled.connect(widget.setEnabled)
+            widget.setEnabled(self.color_day_totals.isChecked())
+
         form.addRow(self._hint("Ein Wechsel wirkt sofort, ohne Neustart."))
         return page
 
@@ -399,15 +429,33 @@ class SettingsDialog(QDialog):
             self._update_manual_color_button()
 
     def _update_manual_color_button(self) -> None:
-        """Zeigt die aktuelle Farbe als Flaeche samt Hex-Wert auf dem Knopf."""
-        hex_value = self._manual_color_value
+        """Zeigt die aktuelle Markierungsfarbe als Flaeche samt Hex-Wert."""
+        self._style_color_button(self.manual_color, self._manual_color_value)
+
+    @staticmethod
+    def _style_color_button(button: QPushButton, hex_value: str) -> None:
+        """Malt eine Farbflaeche samt Hex-Wert auf einen Farbwaehler-Knopf."""
         color = QColor(f"#{hex_value}")
         text_color = "#000000" if color.lightnessF() > 0.6 else "#ffffff"
-        self.manual_color.setText(f"#{hex_value}")
-        self.manual_color.setStyleSheet(
+        button.setText(f"#{hex_value}")
+        button.setStyleSheet(
             f"background-color: #{hex_value}; color: {text_color}; "
             f"border: 1px solid {color.darker(130).name()}; border-radius: 4px; padding: 6px;"
         )
+
+    def _pick_day_over_color(self) -> None:
+        """Farbwaehler fuer Tagessummen ueber Soll (gruen)."""
+        chosen = QColorDialog.getColor(QColor(f"#{self._day_over_value}"), self, "Farbe ueber Soll")
+        if chosen.isValid():
+            self._day_over_value = normalize_color(chosen.name().lstrip("#"))
+            self._style_color_button(self.day_over_color, self._day_over_value)
+
+    def _pick_day_under_color(self) -> None:
+        """Farbwaehler fuer Tagessummen unter Soll (rot)."""
+        chosen = QColorDialog.getColor(QColor(f"#{self._day_under_value}"), self, "Farbe unter Soll")
+        if chosen.isValid():
+            self._day_under_value = normalize_color(chosen.name().lstrip("#"))
+            self._style_color_button(self.day_under_color, self._day_under_value)
 
     def _page_storage(self) -> QWidget:
         page, form = self._page("Speicherort")
@@ -572,6 +620,9 @@ class SettingsDialog(QDialog):
         s.ui_scale = int(self.ui_scale.currentData())
         s.mark_manual_entries = self.mark_manual.isChecked()
         s.manual_entry_color = self._manual_color_value
+        s.color_day_totals = self.color_day_totals.isChecked()
+        s.day_over_color = self._day_over_value
+        s.day_under_color = self._day_under_value
         return s
 
     def _customers_from_input(self) -> list[str]:
