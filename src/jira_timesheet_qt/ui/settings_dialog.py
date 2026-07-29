@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -263,7 +264,17 @@ class SettingsDialog(QDialog):
         self.logo_path = QLineEdit(self._settings.logo_path)
         self.logo_path.setObjectName("ExpandingField")
         self.logo_path.setPlaceholderText("Pfad zu einer Logo-Grafik (PNG/JPG) fuer Excel und PDF")
-        form.addRow(self._label("Logo-Pfad"), self.logo_path)
+        logo_row = QWidget()
+        logo_layout = QHBoxLayout(logo_row)
+        logo_layout.setContentsMargins(0, 0, 0, 0)
+        logo_layout.setSpacing(8)
+        logo_layout.addWidget(self.logo_path, 1)
+        browse = QPushButton("Durchsuchen ...")
+        browse.setProperty("variant", "secondary")
+        browse.setCursor(Qt.CursorShape.PointingHandCursor)
+        browse.clicked.connect(self._browse_logo)
+        logo_layout.addWidget(browse)
+        form.addRow(self._label("Logo-Pfad"), logo_row)
 
         self.show_target = QCheckBox("Soll-Stunden im Excel-/PDF-Export anzeigen")
         self.show_target.setChecked(self._settings.show_target_hours_in_export)
@@ -283,6 +294,19 @@ class SettingsDialog(QDialog):
         form.addRow(self._label("Kunden-Auswahl"), self.customers)
         form.addRow(self._hint("Ein Kunde pro Zeile. Das ist die Auswahlliste im Dialog fuer manuelle Zeiten."))
         return page
+
+    def _browse_logo(self) -> None:
+        """Oeffnet einen Datei-Dialog fuer die Logo-Grafik und uebernimmt die Wahl."""
+        current = self.logo_path.text().strip()
+        start = current or str(Path.home())
+        chosen, _selected_filter = QFileDialog.getOpenFileName(
+            self,
+            "Logo-Grafik wählen",
+            start,
+            "Bilder (*.png *.jpg *.jpeg *.bmp);;Alle Dateien (*)",
+        )
+        if chosen:
+            self.logo_path.setText(chosen)
 
     def _page_columns(self) -> QWidget:
         page, form = self._page("Spalten")

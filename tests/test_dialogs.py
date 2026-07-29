@@ -220,6 +220,18 @@ class TestTicketDetailDialog:
         assert link is not None
         assert "beispiel.atlassian.net/browse/PROJ-17309" in link.text()
 
+    def test_logo_browse_sets_the_path(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Der Datei-Dialog uebernimmt die gewaehlte Grafik in das Logo-Feld."""
+        from PySide6.QtWidgets import QFileDialog
+
+        from jira_timesheet_qt.models.settings import Settings
+        from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
+
+        monkeypatch.setattr(QFileDialog, "getOpenFileName", lambda *a, **k: ("C:/logos/firma.png", ""))
+        dialog = SettingsDialog(Settings())
+        dialog._browse_logo()
+        assert dialog.logo_path.text() == "C:/logos/firma.png"
+
     def test_no_link_for_manual_entry(self, qapp: QApplication) -> None:
         manual = WorklogEntry(
             date=date(2026, 7, 1), ticket="", summary="Besprechung", author="Ich",

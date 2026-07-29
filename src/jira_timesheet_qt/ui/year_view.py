@@ -7,7 +7,7 @@ die Auswahl eines Monats fuehrt direkt in die Liste.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 from PySide6.QtCore import QRectF, Qt, Signal
@@ -62,6 +62,9 @@ class MonthCell:
     booked_days: int = 0
     workdays: int = 0
     manual_hours: float = 0.0
+    # Die Tickets mit den meisten Stunden im Monat (Nummer, Stunden), fuellen die
+    # Kachel unten auf. Absteigend sortiert, hoechstens drei.
+    top_tickets: list[tuple[str, float]] = field(default_factory=list)
 
     @property
     def ratio(self) -> float:
@@ -137,12 +140,14 @@ class YearView(QWidget):
         federal_state: str = "SN",
         booked_days_by_month: dict[int, int] | None = None,
         manual_by_month: dict[int, float] | None = None,
+        top_tickets_by_month: dict[int, list[tuple[str, float]]] | None = None,
     ) -> None:
         """Uebernimmt die Summen eines Jahres."""
         self._year = year
         holidays = HolidayService(federal_state)
         booked = booked_days_by_month or {}
         manual = manual_by_month or {}
+        top_tickets = top_tickets_by_month or {}
         self._cells = []
         for month in range(1, 13):
             first = date(year, month, 1)
@@ -157,6 +162,7 @@ class YearView(QWidget):
                     booked_days=booked.get(month, 0),
                     workdays=workdays,
                     manual_hours=manual.get(month, 0.0),
+                    top_tickets=top_tickets.get(month, []),
                 )
             )
         self._summary = compute_year_summary(self._cells, self._elapsed_month())
@@ -248,14 +254,18 @@ class YearView(QWidget):
             f"{cell.hours:.2f} h".replace(".", ","),
         )
 
-        # Detailzeilen (Soll, gebuchte Tage, manueller Anteil) als Block, etwas
-        # groesser als zuvor und vertikal zentriert zwischen Stundenzahl und
-        # Balken - so fuellen sie die hohe Kachel statt oben zu kleben.
+        # Kernwerte (Soll, gebuchte Tage, manueller Anteil) etwas groesser oben,
+        # dann fuellen die Top-Tickets die restliche Kachelhoehe bis zum Balken -
+        # so bleibt kein grosser Leerraum. Alles wird bei Bedarf am Balken gekappt.
         detail_font = scaled_font(self.font(), -1)
-        painter.setFont(detail_font)
-        line_height = QFontMetricsF(detail_font).height() + 6.0
+        line_height = QFontMetricsF(detail_font).height() + 5.0
+        x_left = rect.x() + 14
+        x_right = rect.right() - 14
+        bar_top = rect.bottom() - 26.0
+        y = rect.y() + 64.0
 
-        lines: list[tuple[str, QColor]] = [
+        painter.setFont(detail_font)
+        core: list[tuple[str, QColor]] = [
             (f"von {cell.target:.0f} h Soll", QColor(p.text_tertiary)),
             (
                 f"{cell.booked_days} / {cell.workdays} Tage",
@@ -263,20 +273,49 @@ class YearView(QWidget):
             ),
         ]
         if cell.manual_hours > 0:
-            manual = f"davon manuell: {cell.manual_hours:.2f} h".replace(".", ",")
-            lines.append((manual, QColor(p.orange)))
-
-        region_top = rect.y() + 66.0
-        region_bottom = rect.bottom() - 26.0
-        block_height = line_height * len(lines)
-        start_y = region_top + max(0.0, (region_bottom - region_top - block_height) / 2.0)
-        for offset, (text, pen) in enumerate(lines):
+            core.append((f"davon manuell: {cell.manual_hours:.2f} h".replace(".", ","), QColor(p.orange)))
+        for text, pen in core:
+            if y + line_height > bar_top:
+                break
             painter.setPen(pen)
             painter.drawText(
-                QRectF(rect.x() + 14, start_y + offset * line_height, rect.width() - 28, line_height),
+                QRectF(x_left, y, x_right - x_left, line_height),
                 int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
                 text,
             )
+            y += line_height
+
+        # Top-Tickets als Fueller (Ticket links, Stunden rechtsbuendig).
+        if cell.top_tickets and y + line_height * 1.6 <= bar_top:
+            y += 6.0
+            painter.setFont(scaled_font(self.font(), -2, bold=True))
+            painter.setPen(QColor(p.text_tertiary))
+            painter.drawText(
+                QRectF(x_left, y, x_right - x_left, line_height),
+                int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+                "Top-Tickets",
+            )
+            y += line_height
+            painter.setFont(detail_font)
+            metrics = QFontMetricsF(detail_font)
+            for ticket, hours in cell.top_tickets:
+                if y + line_height > bar_top:
+                    break
+                hours_text = _format_ticket_hours(hours)
+                hours_width = metrics.horizontalAdvance(hours_text) + 6.0
+                painter.setPen(QColor(p.text_secondary))
+                painter.drawText(
+                    QRectF(x_left, y, x_right - x_left - hours_width, line_height),
+                    int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+                    ticket,
+                )
+                painter.setPen(QColor(p.text_tertiary))
+                painter.drawText(
+                    QRectF(x_right - hours_width, y, hours_width, line_height),
+                    int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter),
+                    hours_text,
+                )
+                y += line_height
 
         # Auslastungsbalken am unteren Rand
         bar_area = QRectF(rect.x() + 14, rect.bottom() - 20, rect.width() - 28, 6)
@@ -296,6 +335,12 @@ class YearView(QWidget):
             if self._rect_for(index).contains(event.position()):
                 self.month_selected.emit(index + 1)
                 return
+
+
+def _format_ticket_hours(hours: float) -> str:
+    """Kompakte Stundenangabe fuer die Top-Tickets: '25 h', '4,5 h'."""
+    text = f"{hours:.1f}".rstrip("0").rstrip(".")
+    return f"{text.replace('.', ',')} h"
 
 
 def _days_in_month(year: int, month: int) -> int:

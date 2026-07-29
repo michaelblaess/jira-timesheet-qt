@@ -89,6 +89,15 @@ def _month_name(month: int) -> str:
     return _MONTHS[month - 1] if 1 <= month <= len(_MONTHS) else ""
 
 
+def _top_tickets(entries: list[WorklogEntry], limit: int = 3) -> list[tuple[str, float]]:
+    """Die Tickets mit den meisten Stunden, absteigend (fuer die Jahreskacheln)."""
+    hours: dict[str, float] = {}
+    for entry in entries:
+        if entry.ticket:
+            hours[entry.ticket] = hours.get(entry.ticket, 0.0) + entry.hours
+    return sorted(hours.items(), key=lambda item: item[1], reverse=True)[:limit]
+
+
 # Zustand der Statuszeile -> Ebene im Meldungsfenster.
 _LEVELS = {"error": Level.ERROR, "busy": Level.INFO, "": Level.SUCCESS}
 
@@ -125,6 +134,8 @@ class MainWindow(QMainWindow):
         # Gebuchte Tage und manueller Anteil je Monat (fuer die Jahreskacheln).
         self._year_booked: dict[int, int] = {}
         self._year_manual: dict[int, float] = {}
+        # Top-Tickets je Monat (Nummer, Stunden) - fuellen die Jahreskacheln unten.
+        self._year_top: dict[int, list[tuple[str, float]]] = {}
         # Fuer welches Jahr die Jahresansicht zuletzt vollstaendig geladen wurde.
         self._year_loaded_for: int | None = None
         # True, waehrend Spaltenbreiten programmatisch gesetzt werden - verhindert,
@@ -1042,14 +1053,19 @@ class MainWindow(QMainWindow):
                 manual[month] = manual.get(month, 0.0) + entry.hours
             days.setdefault(month, set()).add(entry.date)
         booked = {month: len(dates) for month, dates in days.items()}
+        by_month: dict[int, list[WorklogEntry]] = {}
+        for entry in timesheet.all_entries:
+            by_month.setdefault(entry.date.month, []).append(entry)
+        top = {month: _top_tickets(es) for month, es in by_month.items()}
         self._year_hours = hours
         self._year_entries = entries
         self._year_booked = booked
         self._year_manual = manual
+        self._year_top = top
         self._year_loaded_for = self._year
         self._year_view.set_year(
             self._year, hours, entries, self._settings.hours_per_day, self._settings.federal_state,
-            booked_days_by_month=booked, manual_by_month=manual,
+            booked_days_by_month=booked, manual_by_month=manual, top_tickets_by_month=top,
         )
         self._refresh_summary_bar()
         self._set_status(f"Verbunden mit {self._host_label()}")
@@ -1197,6 +1213,7 @@ class MainWindow(QMainWindow):
             self._year_entries[self._month] = len(timesheet.all_entries)
             self._year_booked[self._month] = len({e.date for e in timesheet.all_entries})
             self._year_manual[self._month] = sum(e.hours for e in timesheet.all_entries if e.manual)
+            self._year_top[self._month] = _top_tickets(timesheet.all_entries)
         self._year_view.set_year(
             self._year,
             self._year_hours,
@@ -1205,6 +1222,7 @@ class MainWindow(QMainWindow):
             self._settings.federal_state,
             booked_days_by_month=self._year_booked,
             manual_by_month=self._year_manual,
+            top_tickets_by_month=self._year_top,
         )
 
     def _on_day_selected(self, cell: DayCell) -> None:
@@ -1361,7 +1379,10 @@ class MainWindow(QMainWindow):
         """Merkt Fenstergroesse, -zustand und Spaltenbreiten, wartet auf den Faden."""
         self._qsettings.setValue("window/geometry", self.saveGeometry())
         self._qsettings.setValue("window/state", self.saveState())
-        # Vom Nutzer gezogene Spaltenbreiten dauerhaft sichern.
+        # Sichtbarkeit des Log-Docks festhalten - auch wenn es ueber sein eigenes
+        # X geschlossen wurde (das laeuft nicht ueber toggle_log).
+        self._settings.log_visible = self._log.isVisible()
+        # Vom Nutzer gezogene Spaltenbreiten und den Log-Zustand dauerhaft sichern.
         self._settings.save()
         if self._worker is not None and self._worker.isRunning():
             # Ohne das kann Qt beim Beenden ueber einen laufenden Faden stolpern.

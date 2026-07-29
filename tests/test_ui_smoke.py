@@ -277,6 +277,36 @@ class TestWindow:
         win._maybe_offer_restore()
         assert win._settings_complete()
 
+    def test_log_visibility_persists_on_close(self, window: MainWindow) -> None:
+        """Das ueber sein X geschlossene Log-Dock bleibt beim naechsten Start zu."""
+        from PySide6.QtGui import QCloseEvent
+
+        window._log.setVisible(False)
+        window.closeEvent(QCloseEvent())
+        assert window._settings.log_visible is False
+        assert Settings.load().log_visible is False  # in isolierter Datei (conftest)
+
+    def test_top_tickets_aggregate_and_rank(self, qapp: QApplication) -> None:
+        """_top_tickets summiert je Ticket und liefert die groessten absteigend."""
+        from jira_timesheet_qt.models.timesheet import WorklogEntry
+        from jira_timesheet_qt.ui.main_window import _top_tickets
+
+        def entry(ticket: str, hours: float) -> WorklogEntry:
+            return WorklogEntry(
+                date=date(2026, 1, 5), ticket=ticket, summary="x", author="a", budget="", hours=hours
+            )
+
+        top = _top_tickets([entry("A", 5.0), entry("B", 12.0), entry("A", 20.0), entry("C", 3.0)])
+        assert top == [("A", 25.0), ("B", 12.0), ("C", 3.0)]
+
+    def test_year_cells_carry_top_tickets(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.ui.theme import Mode as _Mode
+        from jira_timesheet_qt.ui.year_view import YearView
+
+        year = YearView(_Mode.DARK)
+        year.set_year(2026, {1: 100.0}, {1: 5}, 8.0, "SN", top_tickets_by_month={1: [("PROJ-0", 25.0)]})
+        assert year.cells[0].top_tickets == [("PROJ-0", 25.0)]
+
     def test_hero_releases_image_when_hidden(self, window: MainWindow) -> None:
         """Das Hintergrundbild wird geladen wenn sichtbar und beim Verbergen freigegeben."""
         from PySide6.QtGui import QHideEvent, QShowEvent
