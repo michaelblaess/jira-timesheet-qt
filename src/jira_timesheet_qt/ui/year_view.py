@@ -10,10 +10,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 
-from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QMouseEvent, QPainter, QPaintEvent
 from PySide6.QtWidgets import QWidget
 
+from jira_timesheet_qt.models.timesheet import WorklogEntry
 from jira_timesheet_qt.services.holiday_service import HolidayService
 from jira_timesheet_qt.ui.theme import Mode, palette_for
 
@@ -62,9 +63,10 @@ class MonthCell:
     booked_days: int = 0
     workdays: int = 0
     manual_hours: float = 0.0
-    # Die Tickets mit den meisten Stunden im Monat (Nummer, Stunden), fuellen die
-    # Kachel unten auf. Absteigend sortiert, hoechstens drei.
-    top_tickets: list[tuple[str, float]] = field(default_factory=list)
+    # Die Tickets mit den meisten Stunden im Monat (Nummer, Stunden, Eintrag),
+    # fuellen die Kachel unten auf. Absteigend sortiert, hoechstens drei. Der
+    # Eintrag dient dem Detail-Dialog beim Klick auf die Ticketnummer.
+    top_tickets: list[tuple[str, float, WorklogEntry]] = field(default_factory=list)
 
     @property
     def ratio(self) -> float:
@@ -116,6 +118,8 @@ class YearView(QWidget):
     """Zwoelf Monatskacheln in drei Reihen."""
 
     month_selected = Signal(int)
+    # Klick auf eine Top-Ticketnummer in einer Kachel - meldet den Eintrag.
+    ticket_activated = Signal(object)
 
     COLUMNS = 4
     PADDING = 16
@@ -127,7 +131,11 @@ class YearView(QWidget):
         self._year = date.today().year
         self._cells: list[MonthCell] = [MonthCell(m) for m in range(1, 13)]
         self._summary = YearSummary(0.0, 0.0, 0.0)
+        # Trefferflaechen der Top-Ticketnummern (fuer Hover/Klick), neu je paintEvent.
+        self._ticket_hits: list[tuple[QRectF, WorklogEntry]] = []
+        self._hovered_ticket: WorklogEntry | None = None
         self.setMinimumHeight(400)
+        self.setMouseTracking(True)
 
     # --- Inhalte --------------------------------------------------------
 
@@ -140,7 +148,7 @@ class YearView(QWidget):
         federal_state: str = "SN",
         booked_days_by_month: dict[int, int] | None = None,
         manual_by_month: dict[int, float] | None = None,
-        top_tickets_by_month: dict[int, list[tuple[str, float]]] | None = None,
+        top_tickets_by_month: dict[int, list[tuple[str, float, WorklogEntry]]] | None = None,
     ) -> None:
         """Uebernimmt die Summen eines Jahres."""
         self._year = year
@@ -204,6 +212,9 @@ class YearView(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         p = palette_for(self._mode)
         painter.fillRect(self.rect(), QColor(p.bg_primary))
+
+        # Trefferflaechen der Ticketnummern bei jedem Zeichnen neu aufbauen.
+        self._ticket_hits = []
 
         # Kein Kopfstreifen mehr mit Ist/Soll/Prognose - dieselben Summen stehen
         # in der Summenleiste unten (Doppelung vermieden).
@@ -296,19 +307,28 @@ class YearView(QWidget):
                 "Top-Tickets",
             )
             y += line_height
-            painter.setFont(detail_font)
             metrics = QFontMetricsF(detail_font)
-            for ticket, hours in cell.top_tickets:
+            for ticket, hours, entry in cell.top_tickets:
                 if y + line_height > bar_top:
                     break
                 hours_text = _format_ticket_hours(hours)
                 hours_width = metrics.horizontalAdvance(hours_text) + 6.0
-                painter.setPen(QColor(p.text_secondary))
+                # Ticketnummer als Link: bei Hover unterstrichen und in Akzentfarbe.
+                hovered = self._hovered_ticket is entry
+                ticket_font = QFont(detail_font)
+                ticket_font.setUnderline(hovered)
+                painter.setFont(ticket_font)
+                painter.setPen(QColor(p.accent if hovered else p.text_secondary))
+                ticket_rect = QRectF(x_left, y, x_right - x_left - hours_width, line_height)
                 painter.drawText(
-                    QRectF(x_left, y, x_right - x_left - hours_width, line_height),
+                    ticket_rect,
                     int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
                     ticket,
                 )
+                # Nur die Breite der tatsaechlichen Nummer als Trefferflaeche.
+                hit_width = min(ticket_rect.width(), metrics.horizontalAdvance(ticket) + 4.0)
+                self._ticket_hits.append((QRectF(x_left, y, hit_width, line_height), entry))
+                painter.setFont(detail_font)
                 painter.setPen(QColor(p.text_tertiary))
                 painter.drawText(
                     QRectF(x_right - hours_width, y, hours_width, line_height),
@@ -331,10 +351,39 @@ class YearView(QWidget):
     # --- Auswahl --------------------------------------------------------
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        # Klick auf eine Top-Ticketnummer oeffnet dieses Ticket (Link-Verhalten).
+        entry = self._ticket_at(event.position().x(), event.position().y())
+        if entry is not None:
+            self.ticket_activated.emit(entry)
+            return
         for index in range(12):
             if self._rect_for(index).contains(event.position()):
                 self.month_selected.emit(index + 1)
                 return
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        """Hebt eine ueberfahrene Top-Ticketnummer hervor (Hand-Cursor + Unterstrich)."""
+        entry = self._ticket_at(event.position().x(), event.position().y())
+        if entry is not self._hovered_ticket:
+            self._hovered_ticket = entry
+            self.setCursor(Qt.CursorShape.PointingHandCursor if entry is not None else Qt.CursorShape.ArrowCursor)
+            self.update()
+
+    def leaveEvent(self, event: QEvent) -> None:  # noqa: N802
+        """Verlaesst die Maus das Widget, verschwindet die Hervorhebung."""
+        if self._hovered_ticket is not None:
+            self._hovered_ticket = None
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.update()
+        super().leaveEvent(event)
+
+    def _ticket_at(self, x: float, y: float) -> WorklogEntry | None:
+        """Liefert den Eintrag, dessen Top-Ticketnummer unter dem Punkt liegt, sonst None."""
+        point = QPointF(x, y)
+        for rect, entry in self._ticket_hits:
+            if rect.contains(point):
+                return entry
+        return None
 
 
 def _format_ticket_hours(hours: float) -> str:

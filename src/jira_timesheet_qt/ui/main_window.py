@@ -89,13 +89,21 @@ def _month_name(month: int) -> str:
     return _MONTHS[month - 1] if 1 <= month <= len(_MONTHS) else ""
 
 
-def _top_tickets(entries: list[WorklogEntry], limit: int = 3) -> list[tuple[str, float]]:
-    """Die Tickets mit den meisten Stunden, absteigend (fuer die Jahreskacheln)."""
+def _top_tickets(entries: list[WorklogEntry], limit: int = 3) -> list[tuple[str, float, WorklogEntry]]:
+    """Tickets mit den meisten Stunden, absteigend - je (Nummer, Stunden, Eintrag).
+
+    Der Eintrag ist der erste Worklog dieses Tickets und dient dem Detail-Dialog
+    (die Ticket-Kopfdaten - Beschreibung, Status, Typ - sind fuer alle Worklogs
+    desselben Tickets gleich).
+    """
     hours: dict[str, float] = {}
+    first: dict[str, WorklogEntry] = {}
     for entry in entries:
         if entry.ticket:
             hours[entry.ticket] = hours.get(entry.ticket, 0.0) + entry.hours
-    return sorted(hours.items(), key=lambda item: item[1], reverse=True)[:limit]
+            first.setdefault(entry.ticket, entry)
+    ranked = sorted(hours.items(), key=lambda item: item[1], reverse=True)[:limit]
+    return [(ticket, total, first[ticket]) for ticket, total in ranked]
 
 
 # Zustand der Statuszeile -> Ebene im Meldungsfenster.
@@ -134,8 +142,8 @@ class MainWindow(QMainWindow):
         # Gebuchte Tage und manueller Anteil je Monat (fuer die Jahreskacheln).
         self._year_booked: dict[int, int] = {}
         self._year_manual: dict[int, float] = {}
-        # Top-Tickets je Monat (Nummer, Stunden) - fuellen die Jahreskacheln unten.
-        self._year_top: dict[int, list[tuple[str, float]]] = {}
+        # Top-Tickets je Monat (Nummer, Stunden, Eintrag) - fuellen die Jahreskacheln.
+        self._year_top: dict[int, list[tuple[str, float, WorklogEntry]]] = {}
         # Fuer welches Jahr die Jahresansicht zuletzt vollstaendig geladen wurde.
         self._year_loaded_for: int | None = None
         # True, waehrend Spaltenbreiten programmatisch gesetzt werden - verhindert,
@@ -228,6 +236,8 @@ class MainWindow(QMainWindow):
 
         self._year_view = YearView(self._mode)
         self._year_view.month_selected.connect(self._on_month_selected)
+        # Klick auf eine Top-Ticketnummer in einer Jahreskachel oeffnet den Eintrag.
+        self._year_view.ticket_activated.connect(self._show_detail)
 
         self._stack = QStackedWidget()
         self._stack.addWidget(self._list_stack)

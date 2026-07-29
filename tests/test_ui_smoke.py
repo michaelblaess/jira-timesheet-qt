@@ -296,16 +296,31 @@ class TestWindow:
                 date=date(2026, 1, 5), ticket=ticket, summary="x", author="a", budget="", hours=hours
             )
 
-        top = _top_tickets([entry("A", 5.0), entry("B", 12.0), entry("A", 20.0), entry("C", 3.0)])
-        assert top == [("A", 25.0), ("B", 12.0), ("C", 3.0)]
+        first = entry("A", 5.0)
+        top = _top_tickets([first, entry("B", 12.0), entry("A", 20.0), entry("C", 3.0)])
+        # (Ticket, Summe, repraesentativer Eintrag), absteigend nach Summe.
+        assert [(t, h) for t, h, _e in top] == [("A", 25.0), ("B", 12.0), ("C", 3.0)]
+        assert top[0][2] is first  # erster Worklog des Tickets als Detail-Eintrag
 
-    def test_year_cells_carry_top_tickets(self, qapp: QApplication) -> None:
+    def test_year_ticket_click_opens_detail(self, qapp: QApplication) -> None:
+        """Ein Klick auf eine Top-Ticketnummer meldet den Eintrag zur Detailanzeige."""
+        from PySide6.QtGui import QPixmap
+
+        from jira_timesheet_qt.models.timesheet import WorklogEntry
         from jira_timesheet_qt.ui.theme import Mode as _Mode
         from jira_timesheet_qt.ui.year_view import YearView
 
+        rep = WorklogEntry(
+            date=date(2026, 1, 5), ticket="PROJ-0", summary="x", author="a", budget="", hours=25.0
+        )
         year = YearView(_Mode.DARK)
-        year.set_year(2026, {1: 100.0}, {1: 5}, 8.0, "SN", top_tickets_by_month={1: [("PROJ-0", 25.0)]})
-        assert year.cells[0].top_tickets == [("PROJ-0", 25.0)]
+        year.resize(1200, 800)
+        year.set_year(2026, {1: 100.0}, {1: 5}, 8.0, "SN", top_tickets_by_month={1: [("PROJ-0", 25.0, rep)]})
+        assert year.cells[0].top_tickets == [("PROJ-0", 25.0, rep)]
+        year.render(QPixmap(year.size()))  # erzwingt paint -> Trefferliste
+        assert year._ticket_hits  # mindestens ein Ticket-Trefferrechteck
+        rect, entry = year._ticket_hits[0]
+        assert year._ticket_at(rect.center().x(), rect.center().y()) is entry is rep
 
     def test_hero_releases_image_when_hidden(self, window: MainWindow) -> None:
         """Das Hintergrundbild wird geladen wenn sichtbar und beim Verbergen freigegeben."""
