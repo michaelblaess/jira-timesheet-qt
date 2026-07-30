@@ -123,6 +123,18 @@
             ]
           },
           {
+            "id": "act.view.anonymize",
+            "type": "action",
+            "command": "view.anonymize",
+            "title": "cmd.view.anonymize",
+            "icon": "mdi6.incognito",
+            "checkable": true,
+            "surfaces": [
+              "menu",
+              "toolbar"
+            ]
+          },
+          {
             "id": "sep.view.2",
             "type": "separator"
           },

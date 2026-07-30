@@ -36,7 +36,7 @@ class JiraClient:
         host: str,
         email: str,
         token: str,
-        budget_field: str = "customfield_XXXXX",
+        budget_field: str = "",
         legacy: bool = False,
         proxy: str = "",
         on_log: Callable[[str], None] | None = None,
@@ -56,7 +56,7 @@ class JiraClient:
             legacy:
                 True = alte Data-Center-Methode (v2, Bearer, issueFunction).
             proxy:
-                Optionale Proxy-URL (z.B. Corporate-Proxy/Corporate-Proxy,
+                Optionale Proxy-URL (z.B. Corporate-Proxy,
                 "http://host:port"). Leer = kein expliziter Proxy; httpx
                 liest dann weiterhin HTTP(S)_PROXY aus der Umgebung.
             on_log:
@@ -89,9 +89,13 @@ class JiraClient:
             Liste der Worklog-Eintraege, sortiert nach Datum und Ticket.
         """
         fields = (
-            f"worklog,summary,status,issuetype,components,labels,priority,"
-            f"resolution,assignee,created,updated,timespent,{self._budget_field}"
+            "worklog,summary,status,issuetype,components,labels,priority,"
+            "resolution,assignee,created,updated,timespent"
         )
+        # Das Budget-Feld nur anfordern, wenn eine Custom-Field-ID gesetzt ist -
+        # ein leerer Wert wuerde die Feldliste mit einem Komma abschliessen.
+        if self._budget_field:
+            fields = f"{fields},{self._budget_field}"
 
         if self._legacy:
             # Data Center: ScriptRunner-Funktion, sucht ab (date_from - 1 Tag).

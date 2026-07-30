@@ -42,6 +42,7 @@ from jira_timesheet_qt.models.settings import (
 )
 from jira_timesheet_qt.services.cache_service import CACHE_DIR
 from jira_timesheet_qt.services.manual_entry_service import DB_FILE
+from jira_timesheet_qt.ui.jira_worker import BudgetFieldWorker
 from jira_timesheet_qt.ui.theme import ACCENT_LABELS, SCALES
 
 # Einheitliche Breite aller Eingabefelder. Ohne das richtet sich jedes Feld
@@ -79,6 +80,8 @@ class SettingsDialog(QDialog):
     def __init__(self, settings: Settings, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._settings = settings
+        # Faden fuer die Budget-Feld-Autoerkennung (ein Netzwerkaufruf).
+        self._detect_worker: BudgetFieldWorker | None = None
         self.setWindowTitle("Einstellungen")
         self.setMinimumSize(720, 520)
         self.setSizeGripEnabled(True)
@@ -115,6 +118,10 @@ class SettingsDialog(QDialog):
         self._nav.currentRowChanged.connect(self._update_import_visibility)
         self._update_import_visibility(self._nav.currentRow())
 
+        # Wird der Dialog geschlossen, waehrend die Autoerkennung laeuft, erst auf
+        # den Faden warten - sonst zerstoert Qt ihn im Lauf.
+        self.finished.connect(self._await_detect_worker)
+
     # --- Seiten ---------------------------------------------------------
 
     def _page_access(self) -> QWidget:
@@ -148,7 +155,24 @@ class SettingsDialog(QDialog):
         self.budget_field = QLineEdit(self._settings.budget_field)
         self.budget_field.setFixedWidth(FIELD_WIDTH)
         self.budget_field.setPlaceholderText("customfield_XXXXX")
-        form.addRow(self._label("Budget-Feld"), self.budget_field)
+        budget_row = QWidget()
+        budget_layout = QHBoxLayout(budget_row)
+        budget_layout.setContentsMargins(0, 0, 0, 0)
+        budget_layout.setSpacing(8)
+        budget_layout.addWidget(self.budget_field)
+        self.detect_budget = QPushButton("Automatisch ermitteln")
+        self.detect_budget.setProperty("variant", "secondary")
+        self.detect_budget.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.detect_budget.setToolTip(
+            "Sucht in Jira (Cloud) das Custom-Feld mit 'budget' im Namen und trägt es hier ein."
+        )
+        self.detect_budget.clicked.connect(self._detect_budget_field)
+        # Die Autoerkennung nutzt die Cloud-API - im Data-Center-Modus abgeschaltet.
+        self.detect_budget.setEnabled(not self.legacy.isChecked())
+        self.legacy.toggled.connect(lambda checked: self.detect_budget.setEnabled(not checked))
+        budget_layout.addWidget(self.detect_budget)
+        budget_layout.addStretch(1)
+        form.addRow(self._label("Budget-Feld"), budget_row)
 
         form.addRow(
             self._hint(
@@ -199,8 +223,79 @@ class SettingsDialog(QDialog):
             self,
             "Import",
             "Zugang und Berechnung (Stundensatz, MwSt, Arbeitszeit) aus "
-            "jira-timesheet wurden übernommen.\nZum Sichern auf „Speichern“ klicken.",
+            "jira-timesheet wurden übernommen.\nZum Sichern auf 'Speichern' klicken.",
         )
+
+    # --- Budget-Feld automatisch ermitteln ------------------------------
+
+    def _detect_budget_field(self) -> None:
+        """Ermittelt das Budget-Custom-Field aus den aktuellen Zugangsfeldern.
+
+        Liest Host/E-Mail/Token/Proxy aus den Eingabefeldern (damit auch frisch
+        Eingetipptes greift) und startet den Netzwerkaufruf in einem Faden - der
+        Dialog bleibt bedienbar.
+        """
+        if self._detect_worker is not None and self._detect_worker.isRunning():
+            return
+        host = self.host.text().strip().rstrip("/")
+        email = self.email.text().strip()
+        token = self.token.text().strip()
+        proxy = self.proxy.text().strip()
+        if not host or not email or not token:
+            QMessageBox.warning(
+                self, "Budget-Feld ermitteln", "Bitte zuerst Host, E-Mail und Token eintragen."
+            )
+            return
+
+        self.detect_budget.setEnabled(False)
+        self.detect_budget.setText("Ermittle ...")
+        worker = BudgetFieldWorker(host, email, token, proxy, self)
+        worker.found.connect(self._on_budget_found)
+        worker.failed.connect(self._on_budget_failed)
+        worker.finished.connect(self._on_detect_finished)
+        self._detect_worker = worker
+        worker.start()
+
+    def _reset_detect_button(self) -> None:
+        """Setzt den Knopf zurueck (Beschriftung und - je nach Modus - aktiv)."""
+        self.detect_budget.setText("Automatisch ermitteln")
+        self.detect_budget.setEnabled(not self.legacy.isChecked())
+
+    def _on_detect_finished(self) -> None:
+        """Gibt die Faden-Referenz frei, sobald er durch ist."""
+        self._detect_worker = None
+
+    def _on_budget_found(self, matches: list[tuple[str, str]]) -> None:
+        """Uebernimmt den ersten Treffer und meldet das Ergebnis."""
+        self._reset_detect_button()
+        if not matches:
+            QMessageBox.warning(
+                self, "Budget-Feld ermitteln", "Kein Custom-Feld mit 'budget' im Namen gefunden."
+            )
+            return
+        field_id, field_name = matches[0]
+        self.budget_field.setText(field_id)
+        if len(matches) == 1:
+            QMessageBox.information(
+                self, "Budget-Feld ermitteln", f"Budget-Feld gefunden: {field_name} ({field_id})"
+            )
+        else:
+            listing = "\n".join(f"- {name} ({fid})" for fid, name in matches)
+            QMessageBox.warning(
+                self,
+                "Budget-Feld ermitteln",
+                f"Mehrere Treffer - der erste wurde übernommen:\n{listing}",
+            )
+
+    def _on_budget_failed(self, message: str) -> None:
+        """Meldet einen Fehler der Autoerkennung."""
+        self._reset_detect_button()
+        QMessageBox.critical(self, "Budget-Feld ermitteln", message)
+
+    def _await_detect_worker(self, _result: int) -> None:
+        """Wartet beim Schliessen auf einen noch laufenden Erkennungs-Faden."""
+        if self._detect_worker is not None and self._detect_worker.isRunning():
+            self._detect_worker.wait(3000)
 
     def _page_worktime(self) -> QWidget:
         page, form = self._page("Arbeitszeit")
@@ -618,7 +713,7 @@ class SettingsDialog(QDialog):
         s.jira_token = self.token.text().strip()
         s.use_legacy_api = self.legacy.isChecked()
         s.proxy_url = self.proxy.text().strip()
-        s.budget_field = self.budget_field.text().strip() or "customfield_XXXXX"
+        s.budget_field = self.budget_field.text().strip()
         s.hours_per_day = self.hours_per_day.value()
         s.max_yearly_hours = self.max_yearly.value()
         s.hourly_rate = self.hourly_rate.value()

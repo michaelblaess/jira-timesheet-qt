@@ -101,10 +101,12 @@ class TestSettingsDialog:
         assert result.jira_host == "https://neu.atlassian.net"
         assert result.email == "neu@beispiel.de"
 
-    def test_empty_budget_field_falls_back(self, qapp: QApplication) -> None:
+    def test_empty_budget_field_stays_empty(self, qapp: QApplication) -> None:
+        # Kein hartkodierter Default mehr - leer bleibt leer, das Budget-Feld wird
+        # dann einfach nicht angefordert (oder per Auto-Erkennung gesetzt).
         dialog = SettingsDialog(Settings())
         dialog.budget_field.setText("")
-        assert dialog.result_settings().budget_field == "customfield_XXXXX"
+        assert dialog.result_settings().budget_field == ""
 
     def test_manual_color_round_trips(self, qapp: QApplication) -> None:
         dialog = SettingsDialog(Settings(manual_entry_color="00FF00"))
@@ -126,6 +128,56 @@ class TestSettingsDialog:
     def test_all_pages_are_reachable(self, qapp: QApplication) -> None:
         dialog = SettingsDialog(Settings())
         assert dialog._nav.count() == dialog._pages.count() == 6
+
+    def test_detect_button_disabled_in_legacy_mode(self, qapp: QApplication) -> None:
+        """Die Autoerkennung nutzt die Cloud-API - im Data-Center-Modus aus."""
+        dialog = SettingsDialog(Settings(use_legacy_api=True))
+        assert dialog.detect_budget.isEnabled() is False
+        dialog.legacy.setChecked(False)
+        assert dialog.detect_budget.isEnabled() is True
+
+    def test_detect_warns_without_credentials(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        calls: list[object] = []
+        monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: calls.append(a))
+        dialog = SettingsDialog(Settings())  # blank -> kein Zugang
+        dialog._detect_budget_field()
+        assert calls  # eine Warnung erschien
+        assert dialog._detect_worker is None  # kein Faden gestartet
+
+    def test_detect_fills_field_on_single_match(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
+        dialog = SettingsDialog(_configured())
+        dialog._on_budget_found([("customfield_99", "Budget")])
+        assert dialog.budget_field.text() == "customfield_99"
+
+    def test_detect_takes_first_of_multiple(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
+        dialog = SettingsDialog(_configured())
+        dialog._on_budget_found([("cf_1", "Budget A"), ("cf_2", "Budget B")])
+        assert dialog.budget_field.text() == "cf_1"
+
+    def test_detect_none_keeps_field(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
+        dialog = SettingsDialog(_configured())
+        before = dialog.budget_field.text()
+        dialog._on_budget_found([])
+        assert dialog.budget_field.text() == before
 
 
 class TestEmptyState:
@@ -188,7 +240,7 @@ class TestStatusBar:
 
 def _jira_entry() -> WorklogEntry:
     return WorklogEntry(
-        date=date(2026, 7, 23), ticket="PROJ-17309", summary="Deployment anpassen",
+        date=date(2026, 7, 23), ticket="PROJ-42", summary="Deployment anpassen",
         author="Mustermann, Max", budget="", hours=4.5, status="IN ARBEIT",
         issuetype="Story", priority="High", assignee="Mustermann, Max",
     )
@@ -201,7 +253,7 @@ class TestTicketDetailDialog:
         ticket = dialog.findChild(QLabel, "DetailBannerTicket")
         summary = dialog.findChild(QLabel, "DetailBannerSummary")
         assert ticket is not None
-        assert "PROJ-17309" in ticket.text()
+        assert "PROJ-42" in ticket.text()
         assert summary is not None
         assert "Deployment anpassen" in summary.text()
 
@@ -218,7 +270,7 @@ class TestTicketDetailDialog:
         dialog = TicketDetailDialog(_jira_entry(), "https://beispiel.atlassian.net")
         link = dialog.findChild(QLabel, "DetailDialogLink")
         assert link is not None
-        assert "beispiel.atlassian.net/browse/PROJ-17309" in link.text()
+        assert "beispiel.atlassian.net/browse/PROJ-42" in link.text()
 
     def test_logo_browse_sets_the_path(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
         """Der Datei-Dialog uebernimmt die gewaehlte Grafik in das Logo-Feld."""

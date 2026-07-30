@@ -75,6 +75,35 @@ _FAKE_BUDGETS = [
 ]
 
 
+def _strip_scheme(host: str) -> str:
+    """Entfernt Schema und abschliessenden Schraegstrich eines Hosts."""
+    host = host.strip()
+    for prefix in ("https://", "http://"):
+        if host.startswith(prefix):
+            host = host[len(prefix) :]
+    return host.rstrip("/")
+
+
+def log_censor_map(email: str, host: str) -> dict[str, str]:
+    """Baut die Ersetzungen fuer die Log-Zensur im Anonymisierungs-Modus.
+
+    Bildet die echten Zugangswerte (E-Mail, Host mit und ohne Schema) auf die
+    zentralen Dummy-Werte ab. Laengere Schluessel zuerst, damit z.B. der Host
+    mit Schema vor dem blossen Hostnamen ersetzt wird.
+    """
+    pairs: dict[str, str] = {}
+    host = host.strip()
+    if host:
+        pairs[host.rstrip("/")] = FAKE_HOST
+        bare = _strip_scheme(host)
+        if bare:
+            pairs[bare] = _strip_scheme(FAKE_HOST)
+    if email.strip():
+        pairs[email.strip()] = FAKE_EMAIL
+    # Laengste Schluessel zuerst - sonst zensiert der blosse Host den Host mit Schema.
+    return dict(sorted(pairs.items(), key=lambda item: len(item[0]), reverse=True))
+
+
 def anonymize_timesheet(timesheet: Timesheet) -> Timesheet:
     """Erzeugt eine anonymisierte Kopie des Timesheets.
 

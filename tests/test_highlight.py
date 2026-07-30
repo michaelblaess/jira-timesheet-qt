@@ -13,15 +13,15 @@ from jira_timesheet_qt.ui.theme import Mode
 
 class TestHighlightHtml:
     def test_without_needle_returns_escaped_text(self) -> None:
-        assert HighlightDelegate.highlight_html("PROJ-17301", "") == "PROJ-17301"
+        assert HighlightDelegate.highlight_html("PROJ-101", "") == "PROJ-101"
 
     def test_escapes_html_special_characters(self) -> None:
         assert HighlightDelegate.highlight_html("<b> & </b>", "") == "&lt;b&gt; &amp; &lt;/b&gt;"
 
     def test_wraps_a_match_in_a_span(self) -> None:
-        result = HighlightDelegate.highlight_html("PROJ-17301", "17301")
+        result = HighlightDelegate.highlight_html("PROJ-101", "101")
         assert "<span" in result
-        assert "17301</span>" in result
+        assert "101</span>" in result
         # Der uebrige Text bleibt erhalten.
         assert result.startswith("PROJ-")
 
@@ -32,7 +32,7 @@ class TestHighlightHtml:
         assert ">Beispiel</span>" in result
 
     def test_no_match_leaves_text_unmarked(self) -> None:
-        assert HighlightDelegate.highlight_html("PROJ-17301", "xyz") == "PROJ-17301"
+        assert HighlightDelegate.highlight_html("PROJ-101", "xyz") == "PROJ-101"
 
 
 class TestSearchWiring:

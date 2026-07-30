@@ -44,7 +44,8 @@ SHARED = (
     "services/timesheet_service.py",
 )
 
-# Bewusst abweichend, siehe PLAN.md. Wird gemeldet, gilt aber nicht als Fehler.
+# Bewusst abweichend (anderer Datenpfad, kein Retro-Theme, Export-Verzeichnis).
+# Wird gemeldet, gilt aber nicht als Fehler.
 EXPECTED_DIFFERENT = {"models/settings.py"}
 
 DEFAULT_TUI = HERE.parent / "jira-timesheet"
@@ -82,7 +83,7 @@ def main(argv: list[str]) -> int:
 
         changed = sum(1 for line in difflib.unified_diff(theirs, mine, n=0) if line[:1] in "+-")
         if name in EXPECTED_DIFFERENT:
-            print(f"  {name}: {changed} Zeilen abweichend (bekannt, siehe PLAN.md)")
+            print(f"  {name}: {changed} Zeilen abweichend (bekannt, gewollt)")
         else:
             print(f"  {name}: {changed} Zeilen abweichend  <-- NEU")
             unexpected.append(name)

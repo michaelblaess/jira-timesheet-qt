@@ -1,9 +1,13 @@
 """Erzeugt die Screenshots in docs/screenshots neu.
 
-WICHTIG: Die Beispieldaten (demo.py) enthalten reale ExampleCorp/ExampleCorp-Ticketnummern
-und -Beschreibungen. Erzeugte Screenshots deshalb NICHT eigenmaechtig committen
-oder pushen - erst nach Absprache und mit anonymisierten Daten (Funktion
-"Daten anonymisieren"). Das gilt auch auf dem noch privaten Repo.
+Die Bilddaten laufen zusaetzlich durch anonymize_timesheet() - selbst wenn
+demo.py je reale Werte enthielte, koennen so keine echten Tickets, Texte oder
+Autoren ins Bild geraten (Guertel-und-Hosentraeger). Der Anonymisierungs-Modus
+der App bleibt dabei AUS, das "ANONYMISIERT"-Badge erscheint also bewusst nicht
+- die Screenshots sollen fuer README und GitHub-Pages sauber wirken.
+
+Trotzdem gilt: erzeugte Screenshots NICHT eigenmaechtig committen oder pushen,
+erst nach Absprache (auch auf dem noch privaten Repo).
 
 Bewusst mit BLANKEN Settings() (keine echten Zugangsdaten im Bild). Laeuft auf
 der echten Qt-Plattform - die Offscreen-Plattform kennt keine Systemschriften
@@ -17,6 +21,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 # VOR dem Qt-Import: sicherstellen, dass NICHT die Offscreen-Plattform greift
@@ -29,6 +34,8 @@ from PySide6.QtWidgets import QApplication, QComboBox, QWidget  # noqa: E402
 
 from jira_timesheet_qt.i18n import load_locale  # noqa: E402
 from jira_timesheet_qt.models.settings import Settings  # noqa: E402
+from jira_timesheet_qt.models.timesheet import Timesheet  # noqa: E402
+from jira_timesheet_qt.services.anonymizer import anonymize_timesheet  # noqa: E402
 from jira_timesheet_qt.ui.about_dialog import AboutDialog  # noqa: E402
 from jira_timesheet_qt.ui.demo import demo_timesheet  # noqa: E402
 from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog  # noqa: E402
@@ -39,6 +46,32 @@ from jira_timesheet_qt.ui.settings_dialog import SettingsDialog  # noqa: E402
 from jira_timesheet_qt.ui.theme import Mode, build_palette, build_qss  # noqa: E402
 
 OUT = Path(__file__).resolve().parent.parent / "docs" / "screenshots"
+
+# Im Screenshot-Lauf keine modalen Dialoge: das Hauptfenster wuerde sonst - weil
+# auf diesem Rechner eine echte Zugangs-Sicherung existiert - den Wiederher-
+# stellen-Dialog zeigen und jeden Fensteraufbau blockieren. Fuer Screenshots aus.
+MainWindow._maybe_offer_restore = lambda self: None  # type: ignore[method-assign, assignment]  # noqa: E731
+
+
+def _isolate_config() -> None:
+    """Lenkt Einstellungen und Fensterzustand in ein Wegwerf-Verzeichnis um.
+
+    KRITISCH: Ohne das schreibt closeEvent -> Settings.save() bei jedem
+    geschlossenen Fenster in die ECHTE ~/.jira-timesheet-qt/settings.json (und
+    die Windows-Registry). Der Screenshot-Lauf darf die echten Nutzerdaten
+    niemals anfassen - so wie die Testumgebung (siehe tests/conftest.py).
+    """
+    from PySide6.QtCore import QSettings
+
+    from jira_timesheet_qt.models import settings as settings_module
+    from jira_timesheet_qt.ui import main_window as main_window_module
+
+    iso = Path(tempfile.mkdtemp(prefix="jts-shots-"))
+    Settings.SETTINGS_DIR = iso
+    Settings.SETTINGS_FILE = iso / "settings.json"
+    settings_module.LEGACY_SETTINGS_FILE = iso / "legacy-absent.json"
+    ini = str(iso / "window.ini")
+    main_window_module.QSettings = lambda *_a, **_k: QSettings(ini, QSettings.Format.IniFormat)
 
 
 def _grab(widget: QWidget, path: Path, width: int, height: int) -> None:
@@ -71,13 +104,18 @@ def _grab_combo_popup(path: Path) -> None:
     combo.close()
 
 
+def _data() -> Timesheet:
+    """Anonymisierte Demodaten - nie echte Tickets/Texte/Autoren im Bild."""
+    return anonymize_timesheet(demo_timesheet())
+
+
 def _window(mode: Mode, *, with_data: bool = True) -> MainWindow:
     """Erzeugt ein Hauptfenster mit Demodaten (oder leer), flache Liste."""
     win = MainWindow(Settings(), mode)
     # Deterministisch die flache Liste zeigen - der Gruppierzustand kommt sonst
     # aus der Registry und schwankt zwischen Rechnern.
     win._grouped = False
-    win.set_timesheet(demo_timesheet() if with_data else None)
+    win.set_timesheet(_data() if with_data else None)
     return win
 
 
@@ -87,6 +125,7 @@ def _apply_theme(app: QApplication, mode: Mode, sans: str, mono: str) -> None:
 
 
 def main() -> int:
+    _isolate_config()  # echte Settings/Registry unangetastet lassen
     app = QApplication(sys.argv[:1])
     app.setStyle("Fusion")
     fonts = load_fonts()
@@ -103,6 +142,12 @@ def main() -> int:
         win = _window(mode)
         win._tabs.setCurrentIndex(0)
         _grab(win, OUT / f"main-{tag}.png", W, H)
+
+        # Suche - Live-Filter der Liste (Begriff trifft mehrere Zeilen)
+        win = _window(mode)
+        win._tabs.setCurrentIndex(0)
+        win._search.setText("Fix")
+        _grab(win, OUT / f"search-{tag}.png", W, H)
 
         # Kalender
         win = _window(mode)
@@ -121,7 +166,7 @@ def main() -> int:
         _grab(win, OUT / f"log-{tag}.png", W, H)
 
         # Ticket-Detail-Dialog (modal) - ersetzt den frueheren Detailbereich
-        entry = demo_timesheet().all_entries[0]
+        entry = _data().all_entries[0]
         _grab(TicketDetailDialog(entry, "https://beispiel.atlassian.net"), OUT / f"detail-{tag}.png", 540, 520)
 
         # Einstellungen - Arbeitszeit

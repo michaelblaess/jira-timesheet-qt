@@ -7,7 +7,7 @@ strukturellen Flaechen der Anwendung (Kopfzeile, Seitenleiste, Detailbereich,
 Summenleiste, Statuszeile, Dialoge) und die Typografie werden per QSS gesetzt.
 
 So ist die Anwendung leicht verstaendlich, plattformnah und wartungsarm - kein
-Riesen-QSS, das jede Qt-Vorgabe nachbaut. Details siehe docs/qt-grundlagen.md.
+Riesen-QSS, das jede Qt-Vorgabe nachbaut.
 """
 
 from __future__ import annotations
@@ -572,6 +572,15 @@ QStatusBar::item {{
 
 #StatusBar[state="busy"] {{
     color: {p.accent_hover};
+}}
+
+/* Deutliches Kennzeichen des Screenshot-/Anonymisierungs-Modus */
+#AnonBadge {{
+    background-color: {p.orange};
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: {RADIUS_SM}px;
 }}
 
 /* ------------------------------------------------------------------ Toast */

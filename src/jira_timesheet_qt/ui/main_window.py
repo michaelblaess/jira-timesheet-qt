@@ -55,6 +55,11 @@ from jira_timesheet_qt import __app_name__, __version__
 from jira_timesheet_qt.i18n import t
 from jira_timesheet_qt.models.settings import ACCESS_FIELDS, Settings, normalize_color
 from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
+from jira_timesheet_qt.services.anonymizer import (
+    FAKE_HOST,
+    anonymize_timesheet,
+    log_censor_map,
+)
 from jira_timesheet_qt.services.holiday_service import HolidayService
 from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
 from jira_timesheet_qt.ui.about_dialog import AboutDialog
@@ -121,7 +126,15 @@ class MainWindow(QMainWindow):
         self._settings = settings
         self._mode = mode
         self._worker: WorklogWorker | None = None
+        # Angezeigter Stundenzettel (bei aktiver Anonymisierung die Dummy-Kopie).
         self._timesheet: Timesheet | None = None
+        # Echte Rohdaten - bleiben erhalten, damit die Anonymisierung reversibel
+        # ist. Monat und (separat geladenes) Jahr getrennt gehalten.
+        self._real_ts: Timesheet | None = None
+        self._year_ts: Timesheet | None = None
+        # Screenshot-Modus: ersetzt Tickets, Texte, Autoren und Zugangsdaten in
+        # allen Ansichten durch Dummy-Werte. Echte Daten bleiben im Cache.
+        self._anonymize = False
         # Zuletzt in der Liste gewaehlter Eintrag - fuer den Details-Befehl aus
         # Toolbar/Menue (Doppelklick und Kontextmenue bringen ihren mit).
         self._current_entry: WorklogEntry | None = None
@@ -255,9 +268,16 @@ class MainWindow(QMainWindow):
         self._status = QLabel("Bereit")
         self._status.setObjectName("StatusBar")
         self._status.setContentsMargins(12, 5, 12, 5)
+        # Deutlich sichtbares Kennzeichen des Screenshot-Modus - nur eingeblendet,
+        # solange anonymisiert wird.
+        self._anon_badge = QLabel(t("subtitle.anonymized"))
+        self._anon_badge.setObjectName("AnonBadge")
+        self._anon_badge.setContentsMargins(10, 3, 10, 3)
+        self._anon_badge.setVisible(False)
         status_bar = QStatusBar()
         status_bar.setSizeGripEnabled(True)
         status_bar.addWidget(self._summary, 1)
+        status_bar.addPermanentWidget(self._anon_badge)
         status_bar.addPermanentWidget(self._status)
         self.setStatusBar(status_bar)
 
@@ -306,6 +326,12 @@ class MainWindow(QMainWindow):
 
         self._menu_definition = definition
         self._toolbar = toolbar
+
+        # Erklaerender Tooltip fuer den Screenshot-Modus (Menue und Toolbar teilen
+        # sich die eine QAction, der Builder setzt selbst keinen Tooltip).
+        anon_action = self._commands.get("view.anonymize").action
+        if anon_action is not None:
+            anon_action.setToolTip(t("tooltip.anonymize"))
 
     def _build_toolbar_extras(self, toolbar: QToolBar) -> None:
         """Ergaenzt die Toolbar um Monatsnavigation (mittig) und Suche (rechts).
@@ -382,6 +408,8 @@ class MainWindow(QMainWindow):
                     is_checked=lambda: self._grouped))
         add(Command("view.log", run=self.toggle_log,
                     is_checked=lambda: self._log.isVisible()))
+        add(Command("view.anonymize", run=self._toggle_anonymize,
+                    is_checked=lambda: self._anonymize))
         add(Command("view.theme", run=self._toggle_theme))
         add(Command("export.excel", run=self.export_excel))
         add(Command("export.pdf", run=self.export_pdf))
@@ -689,7 +717,13 @@ class MainWindow(QMainWindow):
             self._summary.set_day_colors(over_hex, under_hex)
 
     def set_timesheet(self, timesheet: Timesheet | None) -> None:
-        """Uebernimmt einen Stundenzettel in alle Ansichten."""
+        """Uebernimmt einen Stundenzettel in alle Ansichten.
+
+        Die echten Daten werden festgehalten; angezeigt wird bei aktivem
+        Screenshot-Modus die anonymisierte Kopie.
+        """
+        self._real_ts = timesheet
+        timesheet = self._display_ts(timesheet)
         self._timesheet = timesheet
         self._model.set_timesheet(timesheet)
         self._tree_model.set_timesheet(timesheet)
@@ -936,7 +970,7 @@ class MainWindow(QMainWindow):
 
     def _open_ticket(self, entry: WorklogEntry) -> None:
         """Oeffnet das Ticket im Standardbrowser."""
-        host = self._settings.jira_host.rstrip("/")
+        host = self._display_host().rstrip("/")
         if host and entry.ticket:
             webbrowser.open(f"{host}/browse/{entry.ticket}")
 
@@ -1021,13 +1055,51 @@ class MainWindow(QMainWindow):
         self.set_timesheet(None)
         self._set_status(message, "error")
 
+    def _display_host(self) -> str:
+        """Der anzuzeigende Jira-Host - im Screenshot-Modus der Dummy-Host."""
+        if self._anonymize:
+            return FAKE_HOST
+        return self._settings.jira_host
+
     def _host_label(self) -> str:
         """Der Jira-Host ohne Schema und Schraegstrich, fuer die Statusmeldung."""
-        host = self._settings.jira_host.strip()
+        host = self._display_host().strip()
         for prefix in ("https://", "http://"):
             if host.startswith(prefix):
                 host = host[len(prefix) :]
         return host.rstrip("/") or "Jira"
+
+    # --- Anonymisierung (Screenshot-Modus) ------------------------------
+
+    def _display_ts(self, timesheet: Timesheet | None) -> Timesheet | None:
+        """Liefert im Screenshot-Modus die Dummy-Kopie, sonst die Rohdaten."""
+        if timesheet is None or not self._anonymize:
+            return timesheet
+        return anonymize_timesheet(timesheet)
+
+    def _toggle_anonymize(self) -> None:
+        """Schaltet den Screenshot-Modus (Dummy-Daten) an oder aus.
+
+        Tickets, Ticket-Texte, Autoren und der Jira-Host werden in allen
+        Ansichten und im Meldungsfenster durch Dummy-Werte ersetzt. Die echten
+        Daten bleiben erhalten und kehren beim erneuten Umschalten zurueck.
+        """
+        self._anonymize = not self._anonymize
+        self._anon_badge.setVisible(self._anonymize)
+        # Meldungsfenster zensieren bzw. wieder Klartext zeigen.
+        self._log.set_censor(
+            log_censor_map(self._settings.email, self._settings.jira_host) if self._anonymize else {}
+        )
+        # Ansichten aus den echten Rohdaten neu aufbauen - jetzt (ent)anonymisiert.
+        if self._real_ts is not None:
+            self.set_timesheet(self._real_ts)
+        if self._year_ts is not None and self._year_loaded_for == self._year:
+            self._aggregate_year(self._display_ts(self._year_ts))
+        # Verbindungszustand mit dem nun ggf. verschleierten Host neu schreiben.
+        if self._real_ts is not None or self._year_ts is not None:
+            self._set_status(f"Verbunden mit {self._host_label()}")
+        self.show_toast(t("notify.anonymized" if self._anonymize else "notify.deanonymized"))
+        self._commands.refresh("view.anonymize")
 
     def _on_worker_done(self) -> None:
         self._worker = None
@@ -1051,6 +1123,14 @@ class MainWindow(QMainWindow):
 
     def _on_year_loaded(self, timesheet: Timesheet) -> None:
         """Aggregiert einen Jahres-Stundenzettel in die zwoelf Monatskacheln."""
+        self._year_ts = timesheet
+        self._aggregate_year(self._display_ts(timesheet))
+        self._set_status(f"Verbunden mit {self._host_label()}")
+
+    def _aggregate_year(self, timesheet: Timesheet | None) -> None:
+        """Fuellt die Jahreskacheln aus einem (ggf. anonymisierten) Jahres-Zettel."""
+        if timesheet is None:
+            return
         hours: dict[int, float] = {}
         entries: dict[int, int] = {}
         manual: dict[int, float] = {}
@@ -1078,7 +1158,6 @@ class MainWindow(QMainWindow):
             booked_days_by_month=booked, manual_by_month=manual, top_tickets_by_month=top,
         )
         self._refresh_summary_bar()
-        self._set_status(f"Verbunden mit {self._host_label()}")
 
     def reload_current(self) -> None:
         """Laedt neu - je nach aktiver Ansicht den Monat oder das ganze Jahr."""
@@ -1277,7 +1356,7 @@ class MainWindow(QMainWindow):
 
     def _show_detail(self, entry: WorklogEntry) -> None:
         """Oeffnet den modalen Detail-Dialog fuer einen Eintrag."""
-        TicketDetailDialog(entry, self._settings.jira_host, self).exec()
+        TicketDetailDialog(entry, self._display_host(), self).exec()
 
     def _show_detail_current(self) -> None:
         """Details-Befehl aus Toolbar/Menue: zeigt den gewaehlten Eintrag."""

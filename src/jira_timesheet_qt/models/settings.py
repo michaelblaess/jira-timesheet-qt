@@ -124,7 +124,7 @@ class Settings:
     # In der GUI beim ersten Start ausgeblendet: die Statuszeile zeigt den
     # letzten Stand, der Verlauf wird nur bei Bedarf gebraucht.
     log_visible: bool = False
-    budget_field: str = "customfield_XXXXX"
+    budget_field: str = ""
     federal_state: str = "SN"
     hours_per_day: float = 8.0
     max_yearly_hours: float = 1720.0
@@ -262,7 +262,7 @@ class Settings:
                 last_date_from=data.get("last_date_from", ""),
                 last_date_to=data.get("last_date_to", ""),
                 log_visible=bool(data.get("log_visible", False)),
-                budget_field=data.get("budget_field", "customfield_XXXXX"),
+                budget_field=data.get("budget_field", ""),
                 federal_state=data.get("federal_state", "SN"),
                 hours_per_day=data.get("hours_per_day", 8.0),
                 max_yearly_hours=data.get("max_yearly_hours", 1720.0),

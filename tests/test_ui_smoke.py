@@ -311,12 +311,12 @@ class TestWindow:
         from jira_timesheet_qt.ui.year_view import YearView
 
         rep = WorklogEntry(
-            date=date(2026, 1, 5), ticket="PROJ-0", summary="x", author="a", budget="", hours=25.0
+            date=date(2026, 1, 5), ticket="PROJ-1", summary="x", author="a", budget="", hours=25.0
         )
         year = YearView(_Mode.DARK)
         year.resize(1200, 800)
-        year.set_year(2026, {1: 100.0}, {1: 5}, 8.0, "SN", top_tickets_by_month={1: [("PROJ-0", 25.0, rep)]})
-        assert year.cells[0].top_tickets == [("PROJ-0", 25.0, rep)]
+        year.set_year(2026, {1: 100.0}, {1: 5}, 8.0, "SN", top_tickets_by_month={1: [("PROJ-1", 25.0, rep)]})
+        assert year.cells[0].top_tickets == [("PROJ-1", 25.0, rep)]
         year.render(QPixmap(year.size()))  # erzwingt paint -> Trefferliste
         assert year._ticket_hits  # mindestens ein Ticket-Trefferrechteck
         rect, entry = year._ticket_hits[0]

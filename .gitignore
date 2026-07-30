@@ -32,3 +32,6 @@ Thumbs.db
 .pytest_cache/
 htmlcov/
 .coverage
+
+# Planungs-/Design-Notizen bleiben lokal, nicht im Repo
+PLAN*.md

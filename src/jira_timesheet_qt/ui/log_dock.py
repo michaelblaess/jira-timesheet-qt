@@ -80,21 +80,60 @@ class LogDock(QDockWidget):
 
         self.setWidget(body)
 
+        # Rohdaten aller Meldungen (Zeitstempel, Text, Ebene) - noetig, um bei
+        # aktiver Anonymisierung das gesamte Fenster zensiert neu aufzubauen.
+        self._records: list[tuple[str, str, Level]] = []
+        # Ersetzungen fuer den Anonymisierungs-Modus (echter Wert -> Dummy).
+        self._censor: dict[str, str] = {}
+
     # --- Schreiben ------------------------------------------------------
 
     def write(self, message: str, level: Level = Level.INFO) -> None:
         """Haengt eine Meldung mit Zeitstempel an."""
         stamp = datetime.now().strftime("%H:%M:%S")  # noqa: DTZ005 - reine Anzeige
+        self._records.append((stamp, message, level))
+        # Rohdaten deckeln, damit die Liste nicht ueber die sichtbaren Zeilen
+        # hinaus waechst (das QPlainTextEdit deckelt sich per Blockzahl selbst).
+        if len(self._records) > self.MAX_LINES:
+            del self._records[: len(self._records) - self.MAX_LINES]
+        self._append_html(stamp, message, level)
+        self._view.verticalScrollBar().setValue(self._view.verticalScrollBar().maximum())
+
+    def _append_html(self, stamp: str, message: str, level: Level) -> None:
+        """Haengt eine bereits bekannte Meldung als eingefaerbte HTML-Zeile an."""
         color = _COLORS[level]
         # appendHtml, weil nur so einzelne Zeilen eingefaerbt werden koennen.
         self._view.appendHtml(
             f'<span style="color:{_STAMP_COLOR}">{stamp}</span>&nbsp;&nbsp;'
-            f'<span style="color:{color}">{_escape(message)}</span>'
+            f'<span style="color:{color}">{_escape(self._apply_censor(message))}</span>'
         )
+
+    def _apply_censor(self, message: str) -> str:
+        """Ersetzt im Anonymisierungs-Modus echte Werte durch Dummy-Werte."""
+        for real, fake in self._censor.items():
+            if real:
+                message = message.replace(real, fake)
+        return message
+
+    def set_censor(self, mapping: dict[str, str]) -> None:
+        """Aktiviert (oder loescht) die Zensur und baut das Fenster neu auf.
+
+        Damit verschwinden auch bereits geloggte echte Host-/E-Mail-Werte aus
+        dem sichtbaren Meldungsfenster - wichtig fuer Screenshots.
+        """
+        self._censor = dict(mapping)
+        self._rerender()
+
+    def _rerender(self) -> None:
+        """Baut das Fenster aus den Rohdaten neu auf (z.B. nach Zensur-Wechsel)."""
+        self._view.clear()
+        for stamp, message, level in self._records:
+            self._append_html(stamp, message, level)
         self._view.verticalScrollBar().setValue(self._view.verticalScrollBar().maximum())
 
     def clear(self) -> None:
         """Leert das Fenster."""
+        self._records.clear()
         self._view.clear()
 
     def copy_all(self) -> None:

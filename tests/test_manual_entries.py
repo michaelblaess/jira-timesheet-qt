@@ -74,7 +74,7 @@ class TestManualEntryService:
         entry_id = service.add(
             ManualEntry(
                 entry_date=date(2026, 7, 1),
-                ticket="PROJ-17024",
+                ticket="PROJ-1024",
                 summary="GitLab-Pipelines",
                 customer="Corporate",
                 hours=10.0,
@@ -84,21 +84,21 @@ class TestManualEntryService:
 
         stored = service.get(entry_id)
         assert stored is not None
-        assert stored.ticket == "PROJ-17024"
+        assert stored.ticket == "PROJ-1024"
         assert stored.customer == "Corporate"
         assert stored.hours == pytest.approx(10.0)
         assert stored.created_at
 
     def test_entries_between_filters_by_date(self, service: ManualEntryService) -> None:
         for day, hours in ((date(2026, 6, 30), 8.0), (date(2026, 7, 1), 10.0), (date(2026, 8, 1), 2.0)):
-            service.add(ManualEntry(entry_date=day, ticket="PROJ-17024", hours=hours))
+            service.add(ManualEntry(entry_date=day, ticket="PROJ-1024", hours=hours))
 
         july = service.entries_between(date(2026, 7, 1), date(2026, 7, 31))
         assert [e.entry_date for e in july] == [date(2026, 7, 1)]
 
     def test_worklogs_carry_manual_flag_and_id(self, service: ManualEntryService) -> None:
         entry_id = service.add(
-            ManualEntry(entry_date=date(2026, 7, 1), ticket="PROJ-17024", hours=10.0, customer="Corporate")
+            ManualEntry(entry_date=date(2026, 7, 1), ticket="PROJ-1024", hours=10.0, customer="Corporate")
         )
         worklogs = service.worklogs_between(date(2026, 7, 1), date(2026, 7, 31), author="Michael")
         assert len(worklogs) == 1
@@ -112,13 +112,13 @@ class TestManualEntryService:
         stored = service.get(entry_id)
         assert stored is not None
         stored.hours = 3.5
-        stored.ticket = "PROJ-17024"
+        stored.ticket = "PROJ-1024"
         assert service.update(stored) is True
 
         again = service.get(entry_id)
         assert again is not None
         assert again.hours == pytest.approx(3.5)
-        assert again.ticket == "PROJ-17024"
+        assert again.ticket == "PROJ-1024"
 
     def test_delete_removes_row(self, service: ManualEntryService) -> None:
         entry_id = service.add(ManualEntry(entry_date=date(2026, 7, 1), ticket="PROJ-1", hours=1.0))
@@ -140,9 +140,9 @@ class TestMergeIntoTimesheet:
 
     def test_manual_hours_count_into_day_total(self) -> None:
         jira = WorklogEntry(
-            date=date(2026, 7, 1), ticket="PROJ-13983", summary="Agile", author="M", budget="", hours=1.0
+            date=date(2026, 7, 1), ticket="PROJ-77", summary="Agile", author="M", budget="", hours=1.0
         )
-        manual = ManualEntry(entry_date=date(2026, 7, 1), ticket="PROJ-17024", hours=10.0).to_worklog()
+        manual = ManualEntry(entry_date=date(2026, 7, 1), ticket="PROJ-1024", hours=10.0).to_worklog()
 
         sheet = TimesheetService.build_timesheet(
             entries=[jira, manual],
@@ -156,7 +156,7 @@ class TestMergeIntoTimesheet:
 
     def test_day_with_only_manual_hours_is_not_a_gap(self) -> None:
         """Der Merge muss vor der Lueckenerkennung passieren."""
-        manual = ManualEntry(entry_date=date(2026, 7, 1), ticket="PROJ-17024", hours=10.0).to_worklog()
+        manual = ManualEntry(entry_date=date(2026, 7, 1), ticket="PROJ-1024", hours=10.0).to_worklog()
         worked_dates = {e.date for e in [manual]}
         assert date(2026, 7, 1) in worked_dates
 
@@ -247,11 +247,11 @@ class TestExcelExport:
     @staticmethod
     def _timesheet() -> Timesheet:
         jira = WorklogEntry(
-            date=date(2026, 7, 1), ticket="PROJ-13983", summary="Agile", author="M", budget="", hours=1.0
+            date=date(2026, 7, 1), ticket="PROJ-77", summary="Agile", author="M", budget="", hours=1.0
         )
         manual = ManualEntry(
             entry_date=date(2026, 7, 1),
-            ticket="PROJ-17024",
+            ticket="PROJ-1024",
             summary="Pipelines",
             customer="Corporate",
             hours=10.0,

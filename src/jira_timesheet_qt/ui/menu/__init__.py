@@ -4,7 +4,7 @@ Die Struktur (welche Menues/Aktionen wo) kommt aus einer JSON- oder DB-Quelle un
 wird zur Laufzeit gebaut - nie statisch. Verhalten liegt in der CommandRegistry,
 verbunden nur ueber eine Command-ID. Ein MenuBuilder rendert aus DERSELBEN
 Definition natives Menue UND Toolbar (eine QAction pro Command, von Qt synchron
-gehalten). Details in docs/qt-menues.md.
+gehalten).
 """
 
 from __future__ import annotations

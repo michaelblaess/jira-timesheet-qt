@@ -82,3 +82,51 @@ class WorklogWorker(QThread):
             date_from=self._from,
             date_to=self._to,
         )
+
+
+class BudgetFieldWorker(QThread):
+    """Ermittelt das Budget-Custom-Field ueber die Jira-Cloud-API.
+
+    Laeuft im Hintergrund, damit der Einstellungsdialog waehrend des einen
+    Netzwerkaufrufs nicht einfriert. Ergebnis ist eine Liste von
+    (field_id, field_name)-Tupeln - leer, wenn kein Feld passt.
+    """
+
+    found = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        host: str,
+        email: str,
+        token: str,
+        proxy: str = "",
+        parent: QObject | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._host = host
+        self._email = email
+        self._token = token
+        self._proxy = proxy
+
+    def run(self) -> None:
+        """Laeuft im Hintergrund-Thread."""
+        try:
+            matches = asyncio.run(self._detect())
+        except JiraClientError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:  # noqa: BLE001 - jede Netz-/Parse-Panne gemeldet, nie stiller Tod
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+        else:
+            self.found.emit(matches)
+
+    async def _detect(self) -> list[tuple[str, str]]:
+        """Fragt die Custom-Fields ab (Cloud-Modus, Autoerkennung nur dort)."""
+        client = JiraClient(
+            host=self._host,
+            email=self._email,
+            token=self._token,
+            legacy=False,
+            proxy=self._proxy,
+        )
+        return await client.detect_budget_field("budget")
