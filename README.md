@@ -16,6 +16,10 @@
 
 A native desktop application (PySide6 / Qt 6) for timesheets from Jira worklogs - including manual time entry for hours that are not booked in Jira.
 
+<p align="center">
+  <img src="docs/images/teaser.jpg" width="62%" alt="jira-timesheet-qt">
+</p>
+
 > **Disclaimer:** This project is **not** developed, supported, or authorized by Atlassian. "Jira" and "Atlassian" are registered trademarks of [Atlassian Corporation](https://www.atlassian.com/). This tool uses the public Jira REST API and is not affiliated with Atlassian.
 
 ## TUI or GUI?
@@ -62,11 +66,16 @@ The application follows the light or dark theme and a configurable accent colour
   <img src="docs/screenshots/year-dark.png" width="49%" alt="Year view (dark)">
 </p>
 
-### Ticket details and settings
+### Ticket details
 
 <p align="center">
-  <img src="docs/screenshots/detail-dark.png" width="34%" alt="Ticket details">
-  <img src="docs/screenshots/settings-dark.png" width="63%" alt="Settings - Jira access">
+  <img src="docs/screenshots/detail-dark.png" width="55%" alt="Ticket details">
+</p>
+
+### Settings - Jira access with budget-field auto-detect
+
+<p align="center">
+  <img src="docs/screenshots/settings-dark.png" width="80%" alt="Settings - Jira access">
 </p>
 
 ## Features
@@ -164,6 +173,14 @@ a manual entry can be edited directly in the table.
 *View → Anonymize data* (also on the toolbar) replaces tickets, descriptions, authors and the
 Jira host with neutral dummy values across every view and the log. Your real data stays in the
 cache and returns the moment you switch it off - handy for screenshots and demos.
+
+## Liability notice on first start
+
+On its first start the program shows a notice that has to be confirmed - without your consent it exits. The reason: this tool reads work log entries from a third-party system through the Jira REST API. Which issues and work logs become visible is determined solely by the permissions of the account you use, and depending on how rights are assigned these may include entries booked by other people. By confirming, you declare that you will only use the program against Jira instances you are authorised to access, and that you will only evaluate data you are permitted to process.
+
+Your consent is recorded in `~/.jira-timesheet-qt/disclaimer.json` and is only requested again when the wording changes. The "Storage" tab of the settings dialog shows the location, where you can also delete the file to see the notice again.
+
+The software is provided free of charge and without warranty of any kind ("as is"), as set out in section 7 of the Apache License 2.0. The liability of the author (Michael Blaess) for damages arising from its use is excluded to the extent permitted by applicable law. Liability for intent and gross negligence, for injury to life, body or health, and under mandatory product liability law remains unaffected.
 
 ## Keyboard Shortcuts
 

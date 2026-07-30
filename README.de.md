@@ -16,6 +16,10 @@
 
 Eine native Desktop-Anwendung (PySide6 / Qt 6) für Stundenzettel aus Jira-Worklogs - inklusive manueller Nacherfassung für Zeiten, die nicht in Jira gebucht sind.
 
+<p align="center">
+  <img src="docs/images/teaser.jpg" width="62%" alt="jira-timesheet-qt">
+</p>
+
 > **Haftungshinweis:** Dieses Projekt ist **nicht** von Atlassian entwickelt, unterstützt oder autorisiert. "Jira" und "Atlassian" sind eingetragene Markenzeichen von [Atlassian Corporation](https://www.atlassian.com/). Dieses Werkzeug nutzt die öffentliche Jira-REST-API und steht in keiner Verbindung zu Atlassian.
 
 ## TUI oder GUI?
@@ -64,11 +68,16 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   <img src="docs/screenshots/year-dark.png" width="49%" alt="Jahresansicht (dunkel)">
 </p>
 
-### Ticket-Details und Einstellungen
+### Ticket-Details
 
 <p align="center">
-  <img src="docs/screenshots/detail-dark.png" width="34%" alt="Ticket-Details">
-  <img src="docs/screenshots/settings-dark.png" width="63%" alt="Einstellungen - Jira-Zugang">
+  <img src="docs/screenshots/detail-dark.png" width="55%" alt="Ticket-Details">
+</p>
+
+### Einstellungen - Jira-Zugang mit Budget-Feld-Autoerkennung
+
+<p align="center">
+  <img src="docs/screenshots/settings-dark.png" width="80%" alt="Einstellungen - Jira-Zugang">
 </p>
 
 ## Funktionen
@@ -167,6 +176,14 @@ Beschreibung und Aufwand eines manuellen Eintrags lassen sich direkt in der Tabe
 und den Jira-Host in allen Ansichten und im Log durch neutrale Dummy-Werte. Deine echten Daten
 bleiben im Cache und kehren zurück, sobald Du wieder umschaltest - praktisch für Screenshots
 und Demos.
+
+## Haftungshinweis beim ersten Start
+
+Beim ersten Start erscheint ein Hinweis, der bestätigt werden muss - ohne Zustimmung beendet sich das Programm. Grund: Das Werkzeug liest über die Jira-REST-API Arbeitszeit-Buchungen aus einem fremden System. Welche Vorgänge und Worklogs dabei sichtbar werden, bestimmen allein die Berechtigungen des verwendeten Zugangs, und je nach Rechtevergabe gehören dazu auch Buchungen anderer Personen. Mit der Bestätigung erklärst Du, das Programm nur gegen dazu berechtigte Jira-Instanzen einzusetzen und nur Daten auszuwerten, zu deren Verarbeitung Du befugt bist.
+
+Die Zustimmung wird in `~/.jira-timesheet-qt/disclaimer.json` festgehalten und nur erneut abgefragt, wenn sich der Wortlaut ändert. Den Speicherort zeigt der Reiter "Speicherort" im Einstellungsdialog - dort lässt sich die Datei auch löschen, um den Hinweis wieder anzuzeigen.
+
+Die Software wird kostenlos und ohne jede Gewährleistung bereitgestellt ("as is"), wie in Abschnitt 7 der Apache License 2.0 geregelt. Die Haftung des Autors (Michael Blaess) für Schäden aus der Nutzung ist im gesetzlich zulässigen Rahmen ausgeschlossen. Die Haftung für Vorsatz und grobe Fahrlässigkeit, für die Verletzung von Leben, Körper oder Gesundheit sowie nach zwingendem Produkthaftungsrecht bleibt unberührt.
 
 ## Tastenkürzel
 
