@@ -17,7 +17,7 @@
 Eine native Desktop-Anwendung (PySide6 / Qt 6) für Stundenzettel aus Jira-Worklogs - inklusive manueller Nacherfassung für Zeiten, die nicht in Jira gebucht sind.
 
 <p align="center">
-  <img src="docs/images/teaser.jpg" width="62%" alt="jira-timesheet-qt">
+  <img src="docs/images/teaser.png" width="70%" alt="jira-timesheet-qt">
 </p>
 
 > **Haftungshinweis:** Dieses Projekt ist **nicht** von Atlassian entwickelt, unterstützt oder autorisiert. "Jira" und "Atlassian" sind eingetragene Markenzeichen von [Atlassian Corporation](https://www.atlassian.com/). Dieses Werkzeug nutzt die öffentliche Jira-REST-API und steht in keiner Verbindung zu Atlassian.

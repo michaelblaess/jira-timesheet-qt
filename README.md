@@ -17,7 +17,7 @@
 A native desktop application (PySide6 / Qt 6) for timesheets from Jira worklogs - including manual time entry for hours that are not booked in Jira.
 
 <p align="center">
-  <img src="docs/images/teaser.jpg" width="62%" alt="jira-timesheet-qt">
+  <img src="docs/images/teaser.png" width="70%" alt="jira-timesheet-qt">
 </p>
 
 > **Disclaimer:** This project is **not** developed, supported, or authorized by Atlassian. "Jira" and "Atlassian" are registered trademarks of [Atlassian Corporation](https://www.atlassian.com/). This tool uses the public Jira REST API and is not affiliated with Atlassian.
