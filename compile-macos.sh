@@ -50,6 +50,11 @@ if ! "$python" -m nuitka --version >/dev/null 2>&1; then
     uv pip install nuitka || { echo "Nuitka-Installation fehlgeschlagen" >&2; exit 1; }
 fi
 
+# Nuitka wandelt das PNG-App-Icon nur mit imageio ins native macOS-.icns
+# ("FATAL: Need to install 'imageio' ..."). Ins venv legen, bevor der Build laeuft.
+uv pip install imageio || "$python" -m pip install imageio || {
+    echo "imageio-Installation fehlgeschlagen" >&2; exit 1; }
+
 # --macos-create-app-bundle : .app statt nackter Binary (macOS-uebliche Form)
 # --enable-plugin=pyside6    : Qt-Binding samt Plugins buendeln
 "$python" -m nuitka \
