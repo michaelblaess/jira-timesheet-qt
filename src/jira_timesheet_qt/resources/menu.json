@@ -189,6 +189,22 @@
         "title": "menu.extras",
         "children": [
           {
+            "id": "act.ticket_report",
+            "type": "action",
+            "command": "tools.ticket_report",
+            "title": "cmd.ticket_report",
+            "icon": "mdi6.chart-timeline",
+            "shortcut": "Ctrl+T",
+            "surfaces": [
+              "menu",
+              "toolbar"
+            ]
+          },
+          {
+            "id": "sep.extras.1",
+            "type": "separator"
+          },
+          {
             "id": "act.settings",
             "type": "action",
             "command": "settings.open",

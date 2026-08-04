@@ -119,7 +119,7 @@ if (-not (Test-Path $VenvPython)) {
     & $PythonCmd -m venv (Join-Path $InstallDir ".venv")
 }
 
-# pip.ini fuer Corporate-Proxy/Corporate Proxy
+# pip.ini fuer Firmen-Proxys, die TLS aufbrechen
 $PipIni = Join-Path $InstallDir ".venv\pip.ini"
 if (-not (Test-Path $PipIni)) {
     Set-Content -Path $PipIni -Value "[global]`ntrusted-host = pypi.org pypi.python.org files.pythonhosted.org"

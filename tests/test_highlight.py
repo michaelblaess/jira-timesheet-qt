@@ -39,14 +39,14 @@ class TestSearchWiring:
     def test_search_sets_the_needle(self, qapp: QApplication) -> None:
         window = MainWindow(Settings(), Mode.DARK)
         window.set_timesheet(demo_timesheet())
-        window._on_search_changed("PROJ")
-        assert window._highlight._needle == "PROJ"
+        window._on_search_changed("ABC")
+        assert window._highlight._needle == "ABC"
         # Der Filter des Proxys folgt derselben Eingabe.
         assert window._proxy.filterRegularExpression().pattern() != ""
 
     def test_clearing_search_clears_the_needle(self, qapp: QApplication) -> None:
         window = MainWindow(Settings(), Mode.DARK)
         window.set_timesheet(demo_timesheet())
-        window._on_search_changed("PROJ")
+        window._on_search_changed("ABC")
         window._on_search_changed("")
         assert window._highlight._needle == ""

@@ -107,6 +107,11 @@ The application follows the light or dark theme and a configurable accent colour
   with vacation days and a net/gross revenue projection (configurable hourly rate and VAT)
 - **Ticket details** - A modal dialog shows status, type, assignee, components and a link to
   the ticket
+- **Ticket analysis** - Turns any ticket into an interactive report: a true-to-scale timeline
+  of its life cycle, waiting time per status (calendar time versus actual working hours), the
+  people involved, key figures such as flow efficiency and first response, plus findings that
+  each carry their evidence. The result is a single self-contained HTML file that works
+  offline and can be shared (`Ctrl+T`)
 - **Anonymization** - Replace tickets, descriptions, authors and the Jira host with dummy
   values for safe screenshots; the real data stays untouched
 - **Docked log** - An attachable message panel with the full history (`Ctrl+L`)
@@ -190,6 +195,7 @@ The software is provided free of charge and without warranty of any kind ("as is
 | `Ctrl+F` | Focus the search field |
 | `Ctrl+N` | Record manual time |
 | `Ctrl+D` | Show ticket details |
+| `Ctrl+T` | Ticket analysis (interactive report as an HTML file) |
 | `Ctrl+E` | Excel export |
 | `Ctrl+Shift+E` | PDF export |
 | `Ctrl+P` | Print preview |

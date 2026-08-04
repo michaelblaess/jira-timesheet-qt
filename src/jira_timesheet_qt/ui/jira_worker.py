@@ -16,7 +16,9 @@ from datetime import date
 
 from PySide6.QtCore import QObject, QThread, Signal
 
+from jira_timesheet_qt.i18n import t
 from jira_timesheet_qt.models.settings import Settings
+from jira_timesheet_qt.models.ticket_lifecycle import TicketLifecycleData
 from jira_timesheet_qt.models.timesheet import Timesheet
 from jira_timesheet_qt.services.jira_client import JiraClient, JiraClientError
 from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
@@ -82,6 +84,59 @@ class WorklogWorker(QThread):
             date_from=self._from,
             date_to=self._to,
         )
+
+
+class TicketReportWorker(QThread):
+    """Holt die Rohdaten eines Tickets fuer die Ticket-Analyse.
+
+    Der Abruf dauert je nach Ticketgroesse ein bis mehrere Sekunden - er
+    gehoert deshalb wie der Worklog-Abruf in einen eigenen Faden.
+    """
+
+    finished_ok = Signal(object)
+    failed = Signal(str)
+    progress = Signal(str)
+
+    def __init__(self, settings: Settings, key: str, parent: QObject | None = None) -> None:
+        """Merkt sich Zugang und Ticket.
+
+        Args:
+            settings:
+                Zugangsdaten aus den Einstellungen.
+            key:
+                Ticket-Key, z.B. "ABC-123".
+            parent:
+                Qt-Elternobjekt.
+        """
+        super().__init__(parent)
+        self._settings = settings
+        self._key = key
+
+    def run(self) -> None:
+        """Laeuft im Hintergrund-Thread."""
+        try:
+            data = asyncio.run(self._fetch())
+        except JiraClientError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:  # noqa: BLE001 - der Faden darf nie unbemerkt sterben
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+        else:
+            self.finished_ok.emit(data)
+
+    async def _fetch(self) -> TicketLifecycleData:
+        """Holt Issue, Aenderungsprotokoll und Kommentare."""
+        settings = self._settings
+        self.progress.emit(t("ticket_report.progress_fetch").format(key=self._key))
+
+        client = JiraClient(
+            host=settings.jira_host,
+            email=settings.email,
+            token=settings.jira_token,
+            legacy=settings.use_legacy_api,
+            proxy=settings.proxy_url,
+            on_log=self.progress.emit,
+        )
+        return await client.get_ticket_lifecycle(self._key)
 
 
 class BudgetFieldWorker(QThread):

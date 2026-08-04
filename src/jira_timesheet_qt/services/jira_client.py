@@ -19,6 +19,7 @@ from typing import Any
 import httpx
 
 from jira_timesheet_qt.i18n import t
+from jira_timesheet_qt.models.ticket_lifecycle import TicketLifecycleData
 from jira_timesheet_qt.models.timesheet import WorklogEntry
 
 logger = logging.getLogger(__name__)
@@ -142,6 +143,59 @@ class JiraClient:
         self._log(t("jira.worklogs_found", count=len(entries)))
         entries.sort(key=lambda e: (e.date, e.ticket))
         return entries
+
+    async def get_ticket_lifecycle(self, key: str) -> TicketLifecycleData:
+        """Holt Issue, Aenderungsprotokoll und Kommentare eines Tickets.
+
+        Grundlage der Ticket-Analyse. Das Aenderungsprotokoll kommt ueber den
+        eigenen, blaetterbaren Endpunkt - verlaesslicher als expand=changelog
+        am Issue, das bei langen Historien abschneidet.
+
+        Args:
+            key:
+                Ticket-Key, z.B. "ABC-123".
+
+        Returns:
+            Die drei Rohantworten der API.
+        """
+        version = "2" if self._legacy else "3"
+        base = f"{self._host}/rest/api/{version}/issue/{key}"
+
+        async with httpx.AsyncClient(
+            verify=False,
+            timeout=60.0,
+            follow_redirects=True,
+            auth=None if self._legacy else (self._email, self._token),
+            proxy=self._proxy or None,
+        ) as client:
+            response = await client.get(base, headers=self._headers())
+            self._check_response(response, base)
+            issue: dict[str, Any] = response.json()
+
+            changelog: list[dict[str, Any]] = []
+            start = 0
+            while True:
+                url = f"{base}/changelog"
+                params = {"startAt": start, "maxResults": 100}
+                response = await client.get(url, params=params, headers=self._headers())
+                self._check_response(response, url)
+                page = response.json()
+                values: list[dict[str, Any]] = page.get("values", [])
+                changelog += values
+                if page.get("isLast", True) or not values:
+                    break
+                start += len(values)
+
+            url = f"{base}/comment"
+            params = {"maxResults": 200}
+            response = await client.get(url, params=params, headers=self._headers())
+            self._check_response(response, url)
+            comments: list[dict[str, Any]] = response.json().get("comments", [])
+
+        self._log(
+            f"{key}: {len(changelog)} Änderungen, {len(comments)} Kommentare gelesen"
+        )
+        return TicketLifecycleData(issue=issue, changelog=changelog, comments=comments)
 
     async def detect_budget_field(self, keyword: str = "budget") -> list[tuple[str, str]]:
         """Sucht Cloud-Custom-Fields, deren Name das Keyword enthaelt.

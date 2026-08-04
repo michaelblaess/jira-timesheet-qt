@@ -109,6 +109,11 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   Urlaubstagen und einer Netto-/Brutto-Umsatzprognose (Stundensatz und MwSt einstellbar)
 - **Ticket-Details** - Ein modaler Dialog zeigt Status, Typ, Bearbeiter, Komponenten und einen
   Link zum Ticket
+- **Ticket-Analyse** - Macht aus einem Ticket einen interaktiven Bericht: maßstabsgetreue
+  Zeitachse des Lebenszyklus, Liegezeit je Status (Kalenderzeit gegen echte Arbeitszeit),
+  die Beteiligten, Kennzahlen wie Flow-Effizienz und erste Reaktion, dazu Befunde, die
+  jeweils ihren Beleg mitbringen. Ergebnis ist eine einzelne HTML-Datei, die offline läuft
+  und sich weitergeben lässt (`Strg+T`)
 - **Anonymisierung** - Ersetzt Tickets, Beschreibungen, Autoren und den Jira-Host durch
   Dummy-Werte für sichere Screenshots; die echten Daten bleiben unangetastet
 - **Andockbares Log** - Ein anheftbares Meldungsfenster mit dem vollen Verlauf (`Strg+L`)
@@ -193,6 +198,7 @@ Die Software wird kostenlos und ohne jede Gewährleistung bereitgestellt ("as is
 | `Strg+F` | Suchfeld fokussieren |
 | `Strg+N` | Manuelle Zeit erfassen |
 | `Strg+D` | Ticket-Details anzeigen |
+| `Strg+T` | Ticket-Analyse (interaktiver Bericht als HTML-Datei) |
 | `Strg+E` | Excel-Export |
 | `Strg+Umschalt+E` | PDF-Export |
 | `Strg+P` | Druckvorschau |

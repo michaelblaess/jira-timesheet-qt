@@ -422,6 +422,7 @@ class MainWindow(QMainWindow):
         add(Command("export.excel", run=self.export_excel))
         add(Command("export.pdf", run=self.export_pdf))
         add(Command("export.print", run=self.print_preview))
+        add(Command("tools.ticket_report", run=self.open_ticket_report))
         add(Command("settings.open", run=self.open_settings))
         add(Command("help.about", run=self.open_about))
 
@@ -1313,6 +1314,16 @@ class MainWindow(QMainWindow):
         self._log.setVisible(visible)
         self._settings.log_visible = visible
         self._settings.save()
+
+    def open_ticket_report(self) -> None:
+        """Oeffnet die Ticket-Analyse.
+
+        Der Dialog holt die Ticketdaten selbst und schreibt den Bericht als
+        HTML-Datei - der Stundenzettel bleibt davon unberuehrt.
+        """
+        from jira_timesheet_qt.ui.ticket_analysis_dialog import TicketAnalysisDialog
+
+        TicketAnalysisDialog(self._settings, self).exec()
 
     def open_about(self) -> None:
         """Zeigt den Info-Dialog."""

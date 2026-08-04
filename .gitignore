@@ -35,3 +35,6 @@ htmlcov/
 
 # Planungs-/Design-Notizen bleiben lokal, nicht im Repo
 PLAN*.md
+
+# Erzeugte Ticket-Berichte tragen interne Ticketdaten - nie ins Repo.
+*.html
