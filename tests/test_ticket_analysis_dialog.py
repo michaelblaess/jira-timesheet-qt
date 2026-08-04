@@ -271,3 +271,22 @@ def test_zeitzone_bleibt_erhalten() -> None:
     moment = parse_ts("2026-07-01T09:00:00.000+0200")
     assert moment is not None
     assert moment.utcoffset() == dt.timedelta(hours=2)
+
+
+class TestVorbelegung:
+    """Aus dem Kontextmenue kommt das Ticket schon mit."""
+
+    def test_dialog_mit_vorbelegtem_ticket(self, qapp: QApplication) -> None:
+        # Regression: die Vorbelegung loest textChanged aus. Wurde sie vor dem
+        # Aufbau der Knoepfe gesetzt, lief der Handler in ein noch nicht
+        # existierendes Attribut (AttributeError beim Oeffnen aus dem
+        # Kontextmenue).
+        dialog = TicketAnalysisDialog(_configured(), ticket="ABC-123")
+        assert dialog._input.text() == "ABC-123"
+        assert dialog._start_button.isEnabled()
+        assert "ABC-123" in dialog._status.text()
+
+    def test_dialog_ohne_vorbelegung_bleibt_leer(self, qapp: QApplication) -> None:
+        dialog = TicketAnalysisDialog(_configured())
+        assert dialog._input.text() == ""
+        assert not dialog._start_button.isEnabled()

@@ -99,9 +99,6 @@ class TicketAnalysisDialog(QDialog):
         self._status.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self._status)
 
-        if ticket:
-            self._input.setText(ticket)
-
         buttons = QDialogButtonBox()
         self._start_button = QPushButton(t("ticket_report.btn_analyse"))
         self._start_button.setDefault(True)
@@ -113,6 +110,12 @@ class TicketAnalysisDialog(QDialog):
         close_button.clicked.connect(self.reject)
         buttons.addButton(close_button, QDialogButtonBox.ButtonRole.RejectRole)
         layout.addWidget(buttons)
+
+        # Erst ganz zum Schluss vorbelegen: setText loest textChanged aus, und
+        # der Handler fasst den Knopf an - vor dessen Aufbau gaebe das einen
+        # AttributeError.
+        if ticket:
+            self._input.setText(ticket)
 
     # -- Eingabe --------------------------------------------------------
     def _on_text_changed(self, text: str) -> None:
