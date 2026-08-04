@@ -193,7 +193,19 @@ class TestWindow:
         assert window.mode is Mode.LIGHT
 
     def test_toolbar_shows_the_month(self, window: MainWindow) -> None:
-        assert window._month_label.text() == "Juli 2026"
+        """Die Leiste zeigt den laufenden Monat auf Deutsch.
+
+        Frueher stand hier "Juli 2026" fest verdrahtet - der Test war gruen,
+        solange Juli war, und ging am 1. August hoch. Die Monatsnamen stehen
+        hier absichtlich noch einmal, statt _month_name zu importieren: sonst
+        pruefte der Test die Funktion gegen sich selbst.
+        """
+        namen = (
+            "Januar", "Februar", "März", "April", "Mai", "Juni",
+            "Juli", "August", "September", "Oktober", "November", "Dezember",
+        )
+        heute = date.today()
+        assert window._month_label.text() == f"{namen[heute.month - 1]} {heute.year}"
 
     def test_all_columns_are_resizable(self, window: MainWindow) -> None:
         """Jede Spalte ist frei ziehbar - keine fixe oder zwangsgestreckte Spalte."""
