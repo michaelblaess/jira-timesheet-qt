@@ -126,6 +126,14 @@ class MainWindow(QMainWindow):
         self._settings = settings
         self._mode = mode
         self._worker: WorklogWorker | None = None
+        # Laufende Nummer je Abruf. Ein QThread laesst sich nicht abbrechen -
+        # ein ueberholter Faden laeuft also zu Ende, sein Ergebnis wird aber
+        # anhand dieser Nummer verworfen.
+        self._load_generation = 0
+        # Alle noch laufenden Faeden, auch die ueberholten. Beim Schliessen muss
+        # auf jeden davon gewartet werden, sonst zerstoert Qt einen laufenden
+        # Faden mitsamt dem Fenster.
+        self._running_workers: list[WorklogWorker] = []
         # Angezeigter Stundenzettel (bei aktiver Anonymisierung die Dummy-Kopie).
         self._timesheet: Timesheet | None = None
         # Echte Rohdaten - bleiben erhalten, damit die Anonymisierung reversibel
@@ -1026,8 +1034,6 @@ class MainWindow(QMainWindow):
 
     def load_month(self) -> None:
         """Holt die Buchungen des eingestellten Monats aus Jira."""
-        if self._worker is not None and self._worker.isRunning():
-            return
         if not self._settings_complete():
             self._set_status("Zugang unvollständig - bitte Host, E-Mail und Token hinterlegen.", "error")
             self.open_settings()
@@ -1035,23 +1041,66 @@ class MainWindow(QMainWindow):
 
         first = date(self._year, self._month, 1)
         last = date(self._year, self._month, calendar.monthrange(self._year, self._month)[1])
+        self._start_worker(
+            first,
+            last,
+            self._on_loaded,
+            f"Lade {_month_name(self._month)} {self._year} ...",
+        )
 
-        self._set_status(f"Lade {_month_name(self._month)} {self._year} ...", "busy")
+    def _start_worker(
+        self,
+        first: date,
+        last: date,
+        on_ok: Callable[[Timesheet, int], None],
+        status: str,
+    ) -> None:
+        """Startet einen Abruf und entwertet einen eventuell laufenden.
+
+        Frueher kehrte der Lader bei laufendem Faden wortlos zurueck: Ein
+        Zeitraumwechsel mitten im Abruf wurde stillschweigend verschluckt, und
+        das spaeter eintreffende Ergebnis landete in einer Ansicht, die
+        laengst einen anderen Monat zeigte. Ein QThread laesst sich nicht
+        abbrechen, deshalb laeuft der ueberholte Faden zu Ende - sein Ergebnis
+        wird aber anhand der Abruf-Nummer verworfen.
+        """
+        self._load_generation += 1
+        generation = self._load_generation
+
+        self._set_status(status, "busy")
         worker = WorklogWorker(self._settings, first, last, self)
-        worker.progress.connect(lambda text: self._set_status(text, "busy"))
-        worker.finished_ok.connect(self._on_loaded)
-        worker.failed.connect(self._on_failed)
-        worker.finished.connect(self._on_worker_done)
+        worker.progress.connect(lambda text, g=generation: self._on_progress(text, g))
+        worker.finished_ok.connect(lambda ts, g=generation: on_ok(ts, g))
+        worker.failed.connect(lambda msg, g=generation: self._on_failed(msg, g))
+        worker.finished.connect(lambda g=generation: self._on_worker_done(g))
+        # Ueberholte Faeden geben sich nach ihrem Ende selbst frei, sonst
+        # sammeln sie sich als Kinder des Fensters an.
+        worker.finished.connect(worker.deleteLater)
+        self._running_workers.append(worker)
         self._worker = worker
         worker.start()
 
-    def _on_loaded(self, timesheet: Timesheet) -> None:
+    def _is_current(self, generation: int | None) -> bool:
+        """Gehoert eine Rueckmeldung noch zum juengsten Abruf?"""
+        return generation is None or generation == self._load_generation
+
+    def _on_progress(self, text: str, generation: int | None = None) -> None:
+        """Fortschritt eines Abrufs - der eines ueberholten wird verworfen."""
+        if not self._is_current(generation):
+            return
+        self._set_status(text, "busy")
+
+    def _on_loaded(self, timesheet: Timesheet, generation: int | None = None) -> None:
+        if not self._is_current(generation):
+            return
         self.set_timesheet(timesheet)
         # Rechts in der Statusleiste steht der Verbindungszustand, nicht die
         # Summe - die Stunden zeigt schon die Kennzahlen-Leiste in der Mitte.
         self._set_status(f"Verbunden mit {self._host_label()}")
 
-    def _on_failed(self, message: str) -> None:
+    def _on_failed(self, message: str, generation: int | None = None) -> None:
+        if not self._is_current(generation):
+            return
         self.set_timesheet(None)
         self._set_status(message, "error")
 
@@ -1101,28 +1150,30 @@ class MainWindow(QMainWindow):
         self.show_toast(t("notify.anonymized" if self._anonymize else "notify.deanonymized"))
         self._commands.refresh("view.anonymize")
 
-    def _on_worker_done(self) -> None:
+    def _on_worker_done(self, generation: int | None = None) -> None:
+        """Ein Faden ist fertig - der juengste gibt den Platz frei."""
+        self._running_workers = [w for w in self._running_workers if w.isRunning()]
+        if not self._is_current(generation):
+            return  # ein ueberholter Faden - der aktuelle laeuft weiter
         self._worker = None
 
     def load_year(self) -> None:
         """Holt alle zwoelf Monate des Jahres in einem einzigen Bereichs-Abruf."""
-        if self._worker is not None and self._worker.isRunning():
-            return
         if not self._settings_complete():
             self._set_status("Zugang unvollständig - bitte Host, E-Mail und Token hinterlegen.", "error")
             self.open_settings()
             return
-        self._set_status(f"Lade Jahr {self._year} ...", "busy")
-        worker = WorklogWorker(self._settings, date(self._year, 1, 1), date(self._year, 12, 31), self)
-        worker.progress.connect(lambda text: self._set_status(text, "busy"))
-        worker.finished_ok.connect(self._on_year_loaded)
-        worker.failed.connect(self._on_failed)
-        worker.finished.connect(self._on_worker_done)
-        self._worker = worker
-        worker.start()
+        self._start_worker(
+            date(self._year, 1, 1),
+            date(self._year, 12, 31),
+            self._on_year_loaded,
+            f"Lade Jahr {self._year} ...",
+        )
 
-    def _on_year_loaded(self, timesheet: Timesheet) -> None:
+    def _on_year_loaded(self, timesheet: Timesheet, generation: int | None = None) -> None:
         """Aggregiert einen Jahres-Stundenzettel in die zwoelf Monatskacheln."""
+        if not self._is_current(generation):
+            return
         self._year_ts = timesheet
         self._aggregate_year(self._display_ts(timesheet))
         self._set_status(f"Verbunden mit {self._host_label()}")
@@ -1473,7 +1524,10 @@ class MainWindow(QMainWindow):
         self._settings.log_visible = self._log.isVisible()
         # Vom Nutzer gezogene Spaltenbreiten und den Log-Zustand dauerhaft sichern.
         self._settings.save()
-        if self._worker is not None and self._worker.isRunning():
-            # Ohne das kann Qt beim Beenden ueber einen laufenden Faden stolpern.
-            self._worker.wait(3000)
+        # Auf JEDEN laufenden Faden warten, auch auf ueberholte: Qt zerstoert
+        # beim Schliessen alle Kinder des Fensters, und ein dabei noch
+        # laufender QThread reisst das Programm mit.
+        for worker in list(self._running_workers):
+            if worker.isRunning():
+                worker.wait(3000)
         super().closeEvent(event)
