@@ -111,7 +111,7 @@ The application follows the light or dark theme and a configurable accent colour
   of its life cycle, waiting time per status (calendar time versus actual working hours), the
   people involved, key figures such as flow efficiency and first response, plus findings that
   each carry their evidence. The result is a single self-contained HTML file that works
-  offline and can be shared (`Ctrl+T`)
+  offline and can be shared (`Ctrl+T`) Unusually long waiting times are marked in red, related tickets show their title, and the finished report opens straight in the browser.
 - **Anonymization** - Replace tickets, descriptions, authors and the Jira host with dummy
   values for safe screenshots; the real data stays untouched
 - **Docked log** - An attachable message panel with the full history (`Ctrl+L`)

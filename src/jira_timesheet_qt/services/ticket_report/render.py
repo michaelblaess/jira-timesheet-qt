@@ -68,13 +68,6 @@ def _tone(name: str) -> str:
     return f"--c:{TONES.get(name, TONES['mut'])}"
 
 
-def _short(name: str) -> str:
-    """Kuerzt einen Anzeigenamen auf den Rufnamen."""
-    if not name:
-        return "?"
-    return name.split(",")[0].strip() if "," in name else name.split()[0].strip()
-
-
 # ---------------------------------------------------------------------------
 # Bausteine
 # ---------------------------------------------------------------------------
@@ -139,12 +132,14 @@ def rail(report: Report) -> str:
         if m.is_status
     )
     segs = "".join(
-        f'<div class="seg" style="left:{s.left:.3f}%;width:{s.width:.3f}%;{_tone(s.tone)}">'
+        f'<div class="seg{" long" if s.long else ""}" '
+        f'style="left:{s.left:.3f}%;width:{s.width:.3f}%;{_tone(s.tone)}">'
         f'<span>{e(s.status) if s.width > 6 else ""}</span></div>'
         for s in report.segments
     )
     labs = "".join(
-        f'<div class="sl" style="left:{s.left + s.width / 2:.3f}%;transform:translateX(-50%)">'
+        f'<div class="sl{" long" if s.long else ""}" '
+        f'style="left:{s.left + s.width / 2:.3f}%;transform:translateX(-50%)">'
         f"{e(s.gross)}</div>"
         for s in report.segments
         if s.width > 9
@@ -173,11 +168,25 @@ def _day_ticks(report: Report) -> list[tuple[float, str]]:
     end = max(last, dt.datetime.now(tz=start.tzinfo))
     span = (end - start).total_seconds() or 1
 
+    # Bei langen Laufzeiten wuerden taegliche Marken zu einem Brei verschmelzen.
+    tage = span / 86400
+    if tage <= 16:
+        schritt, monatlich = 1, False
+    elif tage <= 70:
+        schritt, monatlich = 7, False
+    else:
+        schritt, monatlich = 1, True
+
     ticks: list[tuple[float, str]] = []
     day = (start + dt.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     while day < end:
+        if monatlich:
+            if day.day == 1:
+                ticks.append(((day - start).total_seconds() / span * 100, f"{day:%b %y}"))
+            day += dt.timedelta(days=1)
+            continue
         ticks.append(((day - start).total_seconds() / span * 100, f"{day:%d.%m.}"))
-        day += dt.timedelta(days=1)
+        day += dt.timedelta(days=schritt)
     return ticks
 
 
@@ -274,7 +283,8 @@ def duration_bars(report: Report) -> str:
         density = _density(segment)
         sub = f'<span class="dsub">{e(density)}</span>' if density else ""
         rows.append(
-            f'<div class="drow" style="{_tone(segment.tone)}">'
+            f'<div class="drow{" long" if segment.long else ""}" '
+            f'style="{_tone(segment.tone)}">'
             f'<span class="dnm">{e(segment.status)}{sub}</span>'
             f'<div class="dbar"><span class="g" style="width:{gross:.2f}%"></span>'
             f'<span class="n" style="width:{net:.2f}%"></span></div>'
@@ -304,7 +314,8 @@ def related_cards(report: Report) -> str:
     cards = "".join(
         f'<a class="rc" href="{e(item["url"])}" target="_blank">'
         f'<span class="rk">{e(item["key"])}</span>'
-        f'<span class="ro">{e(item["origin"])}</span></a>'
+        + (f'<span class="rs">{e(item["summary"])}</span>' if item.get("summary") else "")
+        + f'<span class="ro">{e(item["origin"])}</span></a>'
         for item in report.related
     )
     return f'<div class="rel">{cards}</div>'

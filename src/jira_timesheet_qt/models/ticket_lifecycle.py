@@ -18,6 +18,9 @@ class TicketLifecycleData:
     issue: dict[str, Any] = field(default_factory=dict)
     changelog: list[dict[str, Any]] = field(default_factory=list)
     comments: list[dict[str, Any]] = field(default_factory=list)
+    # Titel der im Ticket erwaehnten anderen Tickets, vom Client
+    # nachgeladen - Parent und Verknuepfungen bringen ihren selbst mit.
+    titles: dict[str, str] = field(default_factory=dict)
 
     @property
     def key(self) -> str:

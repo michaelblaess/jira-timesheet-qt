@@ -60,6 +60,28 @@ _FILLER = re.compile(r"^(hallo|hi|guten (morgen|tag)|moin|servus|danke|vielen da
 FILLER_MAX_LEN = 60
 
 
+def display_name(raw: str) -> str:
+    """Dreht "Nachname, Vorname" in die uebliche Leseform.
+
+    Jira liefert Anzeigenamen je nach Verzeichnis mal als "Blaess, Michael",
+    mal als "Erika Musterfrau". Im Bericht steht ueberall die gesprochene Form.
+
+    Args:
+        raw:
+            Anzeigename aus der Jira-API.
+
+    Returns:
+        Name in der Form "Vorname Nachname".
+    """
+    name = (raw or "").strip()
+    if "," not in name:
+        return name
+    nachname, _, vorname = name.partition(",")
+    vorname = vorname.strip()
+    nachname = nachname.strip()
+    return f"{vorname} {nachname}".strip() if vorname else nachname
+
+
 def parse_ts(raw: str | None) -> dt.datetime | None:
     """Wandelt einen Jira-Zeitstempel in ein datetime mit Zeitzone.
 
@@ -177,6 +199,10 @@ class Lifecycle:
     actors: dict[str, Actor] = field(default_factory=dict)
     links: list[str] = field(default_factory=list)
     mentioned: dict[str, str] = field(default_factory=dict)
+    # Titel der erwaehnten Tickets, soweit bekannt. Parent und echte
+    # Verknuepfungen bringen ihn im Issue-JSON mit, alles andere muss
+    # die Anwendung nachreichen.
+    titles: dict[str, str] = field(default_factory=dict)
 
     @property
     def total_age(self) -> dt.timedelta | None:
@@ -291,8 +317,8 @@ def from_raw(
         created=created,
         updated=parse_ts(fields.get("updated")),
         current_status=adf.field_to_text(fields.get("status")),
-        reporter=adf.field_to_text(fields.get("reporter")),
-        assignee=adf.field_to_text(fields.get("assignee")),
+        reporter=display_name(adf.field_to_text(fields.get("reporter"))),
+        assignee=display_name(adf.field_to_text(fields.get("assignee"))),
         parent="",
     )
 
@@ -301,6 +327,8 @@ def from_raw(
         parent_summary = (parent.get("fields") or {}).get("summary", "")
         life.parent = f"{parent.get('key')} - {parent_summary}"
         life.mentioned.setdefault(str(parent.get("key")), "Parent (Epic)")
+        if parent_summary:
+            life.titles[str(parent.get("key"))] = parent_summary
 
     for link in fields.get("issuelinks") or []:
         outward = "outwardIssue" in link
@@ -309,6 +337,8 @@ def from_raw(
         summary = (other.get("fields") or {}).get("summary", "")
         life.links.append(f"{relation}: {other.get('key')} - {summary}")
         life.mentioned.setdefault(str(other.get("key")), f"Verknuepfung ({relation})")
+        if summary:
+            life.titles[str(other.get("key"))] = summary
 
     _collect_keys(adf.field_to_text(fields.get("description")), life.mentioned, "Beschreibung")
 
@@ -448,7 +478,7 @@ def _add_changelog(entries: list[dict[str, Any]], life: Lifecycle) -> None:
         when = parse_ts(entry.get("created"))
         if None is when:
             continue
-        who = (entry.get("author") or {}).get("displayName", "?")
+        who = display_name((entry.get("author") or {}).get("displayName", "?"))
 
         for item in entry.get("items") or []:
             field_name = item.get("field", "")
@@ -460,6 +490,8 @@ def _add_changelog(entries: list[dict[str, Any]], life: Lifecycle) -> None:
                 life.events.append(Event(when, "status", who, f"{old} -> {new}"))
             elif field_name == FIELD_ASSIGNEE:
                 _actor(life.actors, who, ROLE_EDITOR, when).changes += 1
+                new = display_name(new)
+                old = display_name(old)
                 if new:
                     _actor(life.actors, new, ROLE_ASSIGNEE, when)
                 life.events.append(Event(when, "assignee", who, f"Zuweisung: {old or '(niemand)'} -> {new or '(niemand)'}"))
@@ -494,7 +526,7 @@ def _add_comments(comments: list[dict[str, Any]], life: Lifecycle) -> None:
         when = parse_ts(comment.get("created"))
         if None is when:
             continue
-        who = (comment.get("author") or {}).get("displayName", "?")
+        who = display_name((comment.get("author") or {}).get("displayName", "?"))
         _actor(life.actors, who, ROLE_COMMENTER, when).comments += 1
 
         body = adf.field_to_text(comment.get("body"))

@@ -829,23 +829,29 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
 
         if entry is not None:
-            detail_action = menu.addAction("Details anzeigen")
+            detail_action = menu.addAction(t("menu.details"))
             detail_action.triggered.connect(lambda _checked=False, e=entry: self._show_detail(e))
 
         if entry is not None and entry.ticket and self._settings.jira_host:
-            open_action = menu.addAction("Ticket im Browser öffnen")
+            open_action = menu.addAction(t("menu.open_ticket"))
             open_action.triggered.connect(lambda _checked=False, e=entry: self._open_ticket(e))
+
+        if entry is not None and entry.ticket and self._settings.jira_host and self._settings.jira_token:
+            report_action = menu.addAction(t("menu.ticket_report"))
+            report_action.triggered.connect(
+                lambda _checked=False, e=entry: self.open_ticket_report(e.ticket)
+            )
 
         if entry is not None:
             menu.addSeparator()
 
-        new_action = menu.addAction("Manuelle Zeit erfassen")
+        new_action = menu.addAction(t("menu.manual_new"))
         new_action.triggered.connect(lambda _checked=False, d=day: self.action_new_manual(d))
 
         if entry is not None and entry.manual and entry.manual_id > 0:
-            edit_action = menu.addAction("Manuellen Eintrag bearbeiten")
+            edit_action = menu.addAction(t("menu.manual_edit"))
             edit_action.triggered.connect(lambda _checked=False, e=entry: self._edit_manual(e))
-            delete_action = menu.addAction("Manuellen Eintrag löschen")
+            delete_action = menu.addAction(t("menu.manual_delete"))
             delete_action.triggered.connect(lambda _checked=False, e=entry: self._delete_manual(e))
 
         return menu
@@ -1315,15 +1321,20 @@ class MainWindow(QMainWindow):
         self._settings.log_visible = visible
         self._settings.save()
 
-    def open_ticket_report(self) -> None:
+    def open_ticket_report(self, ticket: str = "") -> None:
         """Oeffnet die Ticket-Analyse.
 
         Der Dialog holt die Ticketdaten selbst und schreibt den Bericht als
         HTML-Datei - der Stundenzettel bleibt davon unberuehrt.
+
+        Args:
+            ticket:
+                Vorbelegung des Eingabefelds. Aus dem Kontextmenue kommt hier
+                das Ticket der angeklickten Zeile.
         """
         from jira_timesheet_qt.ui.ticket_analysis_dialog import TicketAnalysisDialog
 
-        TicketAnalysisDialog(self._settings, self).exec()
+        TicketAnalysisDialog(self._settings, self, ticket=ticket).exec()
 
     def open_about(self) -> None:
         """Zeigt den Info-Dialog."""

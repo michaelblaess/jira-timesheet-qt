@@ -113,7 +113,7 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   Zeitachse des Lebenszyklus, Liegezeit je Status (Kalenderzeit gegen echte Arbeitszeit),
   die Beteiligten, Kennzahlen wie Flow-Effizienz und erste Reaktion, dazu Befunde, die
   jeweils ihren Beleg mitbringen. Ergebnis ist eine einzelne HTML-Datei, die offline läuft
-  und sich weitergeben lässt (`Strg+T`)
+  und sich weitergeben lässt (`Strg+T`) Auffällig lange Liegezeiten werden rot markiert, verwandte Tickets zeigen ihren Titel, und der fertige Bericht öffnet sich gleich im Browser.
 - **Anonymisierung** - Ersetzt Tickets, Beschreibungen, Autoren und den Jira-Host durch
   Dummy-Werte für sichere Screenshots; die echten Daten bleiben unangetastet
 - **Andockbares Log** - Ein anheftbares Meldungsfenster mit dem vollen Verlauf (`Strg+L`)

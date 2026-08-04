@@ -49,6 +49,11 @@ STATUS_TONE = {
 # ausgewiesen - sie bestimmt die Flow-Effizienz.
 ACTIVE_STATUS = {"in arbeit", "im code review"}
 
+# Ab dieser Liegezeit gilt eine Phase als auffaellig lang. Gerechnet in
+# ARBEITSTAGEN (netto), nicht in Kalendertagen - sonst schlaegt jedes
+# Wochenende zu Buche. Die Schwelle steht im Bericht.
+LONG_PHASE_WORKDAYS = 5.0
+
 # Felder, deren Aenderung nach Arbeitsbeginn eine Aenderung am Auftrag ist.
 SCOPE_FIELDS = ("summary", "description")
 
@@ -194,6 +199,8 @@ class Segment:
     comments: int = 0
     attachments: int = 0
     active: bool = False
+    long: bool = False
+    workdays: float = 0.0
 
 
 @dataclass
@@ -262,13 +269,6 @@ def _tone_for_status(status: str) -> str:
     return STATUS_TONE.get(status.strip().lower(), "wait")
 
 
-def _short(name: str) -> str:
-    """Kuerzt einen Anzeigenamen auf den Rufnamen."""
-    if not name:
-        return "?"
-    return name.split(",")[0].strip() if "," in name else name.split()[0].strip()
-
-
 def _marker_title(event: lifecycle.Event) -> str:
     """Ueberschrift der Detailkarte eines Ereignisses."""
     if event.kind == "status":
@@ -282,12 +282,12 @@ def _marker_title(event: lifecycle.Event) -> str:
 
 def _marker_label(event: lifecycle.Event, count: int) -> str:
     """Knappe Beschriftung an der Achse."""
-    who = _short(event.actor)
+    who = event.actor
     if event.kind == "status":
         # Der Zielstatus steht als eigener Chip darunter, hier nur der Name.
         text = "Statuswechsel"
     elif event.kind == "assignee":
-        text = f"an {_short(event.text.split(' -> ')[-1])}"
+        text = f"an {event.text.split(' -> ')[-1]}"
     elif event.kind == "created":
         text = "angelegt"
     else:
@@ -387,6 +387,8 @@ def _build_segments(life: Lifecycle, start: dt.datetime, span: float, end: dt.da
                 end=status_span.end,
                 open_ended=status_span.open_ended,
                 active=status_span.status.strip().lower() in ACTIVE_STATUS,
+                workdays=net / (WORK_END_HOUR - WORK_START_HOUR) / 3600,
+                long=net / (WORK_END_HOUR - WORK_START_HOUR) / 3600 >= LONG_PHASE_WORKDAYS,
             )
         )
     return segments
@@ -600,6 +602,25 @@ def _build_findings(life: Lifecycle, segments: list[Segment]) -> list[Finding]:
             )
         )
 
+    for segment in (s for s in segments if s.long):
+        findings.append(
+            Finding(
+                tone="warn",
+                title=f"Lange Liegezeit: {segment.status}",
+                text=(
+                    f"{segment.gross} nach Kalenderzeit, das sind "
+                    f"{segment.workdays:.1f} Arbeitstage".replace(".", ",")
+                    + f" - ab {LONG_PHASE_WORKDAYS:.0f} gilt eine Phase hier als auffällig. "
+                    f"Von {segment.start:%d.%m.%Y %H:%M} bis "
+                    + (
+                        f"{segment.end:%d.%m.%Y %H:%M}."
+                        if segment.end
+                        else "jetzt (läuft noch)."
+                    )
+                ),
+            )
+        )
+
     seen: dict[str, int] = {}
     for segment in segments:
         seen[segment.status] = seen.get(segment.status, 0) + 1
@@ -646,7 +667,7 @@ def _build_findings(life: Lifecycle, segments: list[Segment]) -> list[Finding]:
 
     handovers = life.handovers()
     if handovers:
-        owners = " -> ".join(_short(span.who) for span in life.ownership)
+        owners = " -> ".join(span.who for span in life.ownership)
         findings.append(
             Finding(
                 tone="pine",
@@ -691,6 +712,7 @@ def build(
     changelog: list[dict[str, Any]],
     comments: list[dict[str, Any]],
     browse_base: str,
+    titles: dict[str, str] | None = None,
 ) -> Report:
     """Baut aus den Rohdaten eines Tickets das vollstaendige Anzeigemodell.
 
@@ -704,6 +726,10 @@ def build(
         browse_base:
             Basis fuer Ticket-Links, z.B.
             "https://example.atlassian.net/browse".
+        titles:
+            Titel weiterer erwaehnter Tickets. Parent und echte
+            Verknuepfungen bringen ihren Titel selbst mit - fuer nur im Text
+            erwaehnte Tickets kann die Anwendung sie hier nachreichen.
 
     Returns:
         Fertiges Report-Objekt fuer die Darstellung.
@@ -743,12 +769,15 @@ def build(
         for gap_start, gap_end in off_hours(start, end)
     ]
 
+    bekannte_titel = dict(life.titles)
+    bekannte_titel.update(titles or {})
     related = []
     for ticket_key, origin in life.mentioned.items():
         related.append(
             {
                 "key": ticket_key,
                 "origin": origin,
+                "summary": bekannte_titel.get(ticket_key, ""),
                 "url": f"{browse_base}/{ticket_key}",
             }
         )

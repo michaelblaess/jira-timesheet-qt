@@ -197,6 +197,47 @@ class JiraClient:
         )
         return TicketLifecycleData(issue=issue, changelog=changelog, comments=comments)
 
+    async def get_ticket_summaries(self, keys: list[str]) -> dict[str, str]:
+        """Holt die Titel mehrerer Tickets in einem Aufruf.
+
+        Fuer die im Kommentartext erwaehnten Tickets - Parent und echte
+        Verknuepfungen bringen ihren Titel schon im Issue-JSON mit.
+
+        Args:
+            keys:
+                Ticket-Keys, z.B. ["ABC-123", "ABC-456"].
+
+        Returns:
+            Zuordnung Key -> Titel. Nicht lesbare Tickets fehlen einfach.
+        """
+        if not keys:
+            return {}
+
+        version = "2" if self._legacy else "3"
+        jql = "key in (" + ",".join(sorted(set(keys))) + ")"
+        url = f"{self._host}/rest/api/{version}/search/jql"
+        params = {"jql": jql, "fields": "summary", "maxResults": len(set(keys))}
+
+        titles: dict[str, str] = {}
+        try:
+            async with httpx.AsyncClient(
+                verify=False,
+                timeout=30.0,
+                follow_redirects=True,
+                auth=None if self._legacy else (self._email, self._token),
+                proxy=self._proxy or None,
+            ) as client:
+                response = await client.get(url, params=params, headers=self._headers())
+                self._check_response(response, url)
+                for issue in response.json().get("issues", []):
+                    key = str(issue.get("key", ""))
+                    summary = str((issue.get("fields") or {}).get("summary", ""))
+                    if key and summary:
+                        titles[key] = summary
+        except Exception:  # noqa: BLE001 - Titel sind Beiwerk, kein Grund zum Abbruch
+            return titles
+        return titles
+
     async def detect_budget_field(self, keyword: str = "budget") -> list[tuple[str, str]]:
         """Sucht Cloud-Custom-Fields, deren Name das Keyword enthaelt.
 

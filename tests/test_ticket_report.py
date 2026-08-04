@@ -174,7 +174,7 @@ class TestLebenszyklus:
             [],
         )
         anteile = {name: prozent for name, _, prozent in life.ownership_share()}
-        assert set(anteile) == {"Beispiel, Max", "Muster, Erika"}
+        assert set(anteile) == {"Max Beispiel", "Erika Muster"}
         assert life.handovers() == 1
 
 
@@ -222,3 +222,101 @@ class TestBericht:
         ziel = write_report(self._report(), tmp_path / "ABC-1.html")
         rohdaten = ziel.read_bytes()
         assert b"\r\n" not in rohdaten
+
+
+class TestNamen:
+    """Anzeigenamen kommen von Jira mal so, mal so."""
+
+    @pytest.mark.parametrize(
+        ("roh", "erwartet"),
+        [
+            ("Blaess, Michael", "Michael Blaess"),
+            ("Nachname, Vorname", "Vorname Nachname"),
+            ("Erika Musterfrau", "Erika Musterfrau"),
+            ("Mustermann", "Mustermann"),
+            ("", ""),
+            ("Nur, ", "Nur"),
+        ],
+    )
+    def test_wird_zur_leseform(self, roh: str, erwartet: str) -> None:
+        assert lifecycle.display_name(roh) == erwartet
+
+    def test_akteure_tragen_die_leseform(self) -> None:
+        life = lifecycle.from_raw(issue_stub(), [], [comment_stub(stamp(1, 10), "Blaess, Michael", "Hi")])
+        assert "Michael Blaess" in life.actors
+        assert "Blaess, Michael" not in life.actors
+
+
+class TestLangePhasen:
+    """Auffaellig lange Liegezeiten werden markiert."""
+
+    def test_kurze_phase_ist_unauffaellig(self) -> None:
+        # Nur ABGESCHLOSSENE Phasen pruefen: die letzte laeuft bis jetzt und
+        # wuerde mit jedem Tag laenger - ein Test darf nicht am Kalender haengen.
+        report = build_report(
+            issue_stub(),
+            changelog_stub(
+                (stamp(1, 10), "Beispiel, Max", [("status", "Offen", "Prüfen")]),
+                (stamp(2, 10), "Beispiel, Max", [("status", "Prüfen", "IN ARBEIT")]),
+            ),
+            [],
+            BASE,
+        )
+        beendet = [segment for segment in report.segments if segment.end is not None]
+        assert beendet, "Es muss abgeschlossene Phasen geben"
+        assert not any(segment.long for segment in beendet)
+
+    def test_lange_phase_wird_markiert(self) -> None:
+        # Von Mitte Juli bis Ende August in einem Status - weit ueber der
+        # Schwelle von fuenf Arbeitstagen.
+        report = build_report(
+            issue_stub(created=stamp(1, 9)),
+            changelog_stub(
+                (stamp(1, 10), "Beispiel, Max", [("status", "Offen", "Schätzen")]),
+                ("2026-08-31T10:00:00.000+0200", "Beispiel, Max",
+                 [("status", "Schätzen", "IN ARBEIT")]),
+            ),
+            [],
+            BASE,
+        )
+        lang = [segment for segment in report.segments if segment.long]
+        assert [segment.status for segment in lang] == ["Schätzen"]
+        assert lang[0].workdays > viewmodel.LONG_PHASE_WORKDAYS
+        # Der Befund muss den Beleg mitbringen.
+        befunde = [f for f in report.findings if f.title.startswith("Lange Liegezeit")]
+        assert befunde and "Arbeitstage" in befunde[0].text
+
+
+class TestVerwandteTickets:
+    """Die Karten sollen den Titel zeigen, nicht nur den Key."""
+
+    def test_parent_titel_kommt_aus_dem_issue(self) -> None:
+        report = build_report(
+            issue_stub(parent={"key": "ABC-9", "fields": {"summary": "Das Epic"}}),
+            [],
+            [],
+            BASE,
+        )
+        parent = next(item for item in report.related if item["key"] == "ABC-9")
+        assert parent["summary"] == "Das Epic"
+
+    def test_nachgereichter_titel_wird_uebernommen(self) -> None:
+        report = build_report(
+            issue_stub(),
+            [],
+            [comment_stub(stamp(2, 11), "Muster, Erika", "siehe auch ABC-77")],
+            BASE,
+            titles={"ABC-77": "Nachgereichter Titel"},
+        )
+        erwaehnt = next(item for item in report.related if item["key"] == "ABC-77")
+        assert erwaehnt["summary"] == "Nachgereichter Titel"
+
+    def test_ohne_titel_bleibt_das_feld_leer(self) -> None:
+        report = build_report(
+            issue_stub(),
+            [],
+            [comment_stub(stamp(2, 11), "Muster, Erika", "siehe auch ABC-88")],
+            BASE,
+        )
+        erwaehnt = next(item for item in report.related if item["key"] == "ABC-88")
+        assert erwaehnt["summary"] == ""

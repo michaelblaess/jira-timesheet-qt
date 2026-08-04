@@ -74,6 +74,11 @@ text-transform:uppercase;color:var(--c);white-space:nowrap}
 .seglab{position:absolute;top:121px;left:0;right:0;height:14px}
 .sl{position:absolute;font:600 10.5px/1 var(--mono);letter-spacing:.3px;color:var(--mut);
 white-space:nowrap}
+/* Auffaellig lange Phasen: das Band bekommt eine Warnkante, die Dauer
+   wird hervorgehoben. Die Schwelle steht als Befund darunter. */
+.seg.long{border:1px solid #b42318;border-left-width:2px}
+.sl.long{color:#b42318;font-weight:700}
+.drow.long .dnm{color:#b42318}
 .days{position:absolute;left:0;right:0;top:139px;height:14px}
 .day{position:absolute;font:600 10px/1 var(--mono);letter-spacing:.5px;color:var(--faint);
 white-space:nowrap;padding-left:4px;border-left:1px solid var(--line);height:11px}
@@ -200,7 +205,8 @@ padding:11px 16px;box-shadow:0 1px 2px #16201c08}
 text-decoration:none;color:inherit;transition:.15s;border-left:3px solid var(--dorm)}
 .rc:hover{border-left-color:var(--clock);background:#fbfcfb}
 .rk{font:700 12.5px/1 var(--mono);letter-spacing:.4px;color:var(--hold);display:block}
-.ro{font-size:11.5px;color:var(--mut);display:block;margin-top:4px}
+.rs{font-size:12.5px;color:var(--ink);display:block;margin-top:3px;max-width:32ch}
+.ro{font-size:11.5px;color:var(--faint);display:block;margin-top:4px}
 
 .foot{color:var(--faint);font:11.5px/1.5 var(--mono);margin-top:18px;padding-top:12px;
 border-top:1px solid var(--line)}

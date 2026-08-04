@@ -22,6 +22,7 @@ from jira_timesheet_qt.models.ticket_lifecycle import TicketLifecycleData
 from jira_timesheet_qt.models.timesheet import Timesheet
 from jira_timesheet_qt.services.jira_client import JiraClient, JiraClientError
 from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
+from jira_timesheet_qt.services.ticket_report import lifecycle
 from jira_timesheet_qt.services.timesheet_service import TimesheetService
 
 
@@ -126,7 +127,7 @@ class TicketReportWorker(QThread):
     async def _fetch(self) -> TicketLifecycleData:
         """Holt Issue, Aenderungsprotokoll und Kommentare."""
         settings = self._settings
-        self.progress.emit(t("ticket_report.progress_fetch").format(key=self._key))
+        self.progress.emit(t("ticket_report.progress_fetch").format(ticket=self._key))
 
         client = JiraClient(
             host=settings.jira_host,
@@ -136,7 +137,15 @@ class TicketReportWorker(QThread):
             proxy=settings.proxy_url,
             on_log=self.progress.emit,
         )
-        return await client.get_ticket_lifecycle(self._key)
+        daten = await client.get_ticket_lifecycle(self._key)
+
+        # Titel der nur im Text erwaehnten Tickets nachreichen - ein Aufruf
+        # fuer alle, damit die Karten im Bericht nicht nur den Key zeigen.
+        leben = lifecycle.from_raw(daten.issue, daten.changelog, daten.comments)
+        offen = [key for key in leben.mentioned if key not in leben.titles]
+        if offen:
+            daten.titles = await client.get_ticket_summaries(offen)
+        return daten
 
 
 class BudgetFieldWorker(QThread):

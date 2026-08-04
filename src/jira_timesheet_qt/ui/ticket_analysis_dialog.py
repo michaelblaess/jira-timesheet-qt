@@ -10,7 +10,9 @@ Oberflaeche waehrenddessen bedienbar bleibt.
 
 from __future__ import annotations
 
+import contextlib
 import re
+import webbrowser
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -55,7 +57,9 @@ def ticket_key(reference: str) -> str:
 class TicketAnalysisDialog(QDialog):
     """Fragt ein Ticket ab und schreibt den Bericht als HTML-Datei."""
 
-    def __init__(self, settings: Settings, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, settings: Settings, parent: QWidget | None = None, ticket: str = ""
+    ) -> None:
         """Baut den Dialog.
 
         Args:
@@ -63,6 +67,8 @@ class TicketAnalysisDialog(QDialog):
                 Zugangsdaten und zuletzt genutztes Zielverzeichnis.
             parent:
                 Elternfenster.
+            ticket:
+                Vorbelegung des Eingabefelds, z.B. aus dem Kontextmenue.
         """
         super().__init__(parent)
         self._settings = settings
@@ -93,6 +99,9 @@ class TicketAnalysisDialog(QDialog):
         self._status.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self._status)
 
+        if ticket:
+            self._input.setText(ticket)
+
         buttons = QDialogButtonBox()
         self._start_button = QPushButton(t("ticket_report.btn_analyse"))
         self._start_button.setDefault(True)
@@ -110,7 +119,7 @@ class TicketAnalysisDialog(QDialog):
         """Schaltet den Knopf frei, sobald ein Key erkennbar ist."""
         key = ticket_key(text)
         self._start_button.setEnabled(bool(key))
-        self._status.setText(t("ticket_report.recognised").format(key=key) if key else "")
+        self._status.setText(t("ticket_report.recognised").format(ticket=key) if key else "")
 
     # -- Abruf ----------------------------------------------------------
     def _on_start(self) -> None:
@@ -127,7 +136,7 @@ class TicketAnalysisDialog(QDialog):
             return
 
         self._set_busy(True)
-        self._status.setText(t("ticket_report.progress_fetch").format(key=key))
+        self._status.setText(t("ticket_report.progress_fetch").format(ticket=key))
 
         worker = TicketReportWorker(self._settings, key, self)
         worker.progress.connect(self._status.setText)
@@ -152,7 +161,7 @@ class TicketAnalysisDialog(QDialog):
         """Baut den Bericht und fragt nach dem Speicherort."""
         self._data = data
         key = data.key or ticket_key(self._input.text())
-        self._status.setText(t("ticket_report.building").format(key=key))
+        self._status.setText(t("ticket_report.building").format(ticket=key))
 
         try:
             report = build_report(
@@ -160,6 +169,7 @@ class TicketAnalysisDialog(QDialog):
                 data.changelog,
                 data.comments,
                 f"{self._settings.jira_host.rstrip('/')}/browse",
+                titles=data.titles,
             )
         except Exception as exc:  # noqa: BLE001 - der Dialog darf nie mitsterben
             self._on_failed(f"{type(exc).__name__}: {exc}")
@@ -181,10 +191,13 @@ class TicketAnalysisDialog(QDialog):
         self._settings.last_export_dir = str(path.parent)
         self._settings.save()
         self._status.setText(t("ticket_report.written").format(path=path))
+        # Der Bericht ist zum Ansehen da - also gleich aufmachen.
+        with contextlib.suppress(Exception):
+            webbrowser.open(path.resolve().as_uri())
 
         QMessageBox.information(
             self,
             t("ticket_report.title"),
-            t("ticket_report.done").format(key=report.key, path=path),
+            t("ticket_report.done").format(ticket=report.key, path=path),
         )
         self.accept()
