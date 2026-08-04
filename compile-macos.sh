@@ -3,7 +3,7 @@
 #
 # Produces a --standalone .app bundle (no Python install needed on the target
 # machine). Output: dist/jira-timesheet-qt.app and
-# dist/jira-timesheet-qt-vX.Y.Z-macos.tar.gz.
+# dist/jira-timesheet-qt-vX.Y.Z-macos-<arch>.tar.gz.
 #
 # --standalone/App-Bundle, NICHT --onefile: nur der Ordner-Build erfuellt die
 # LGPL-Weitergabepflicht von PySide6 (Qt-Frameworks als eigene Dateien daneben).
@@ -83,7 +83,11 @@ elapsed=$(( $(date +%s) - started ))
 size_mb=$(du -sm "$app_bundle" | cut -f1)
 
 # tar.gz statt zip - bewahrt Bundle-Struktur und Ausfuehrungs-Flags
-tarball="$out_dir/jira-timesheet-qt-v$version-macos.tar.gz"
+# Architektur in den Namen: der Build ist host-gebunden (arm64 auf Apple
+# Silicon, x86_64 auf Intel). Ohne diese Unterscheidung ueberschreiben sich die
+# beiden macOS-Artefakte im Release gegenseitig.
+arch="$(uname -m)"
+tarball="$out_dir/jira-timesheet-qt-v$version-macos-$arch.tar.gz"
 rm -f "$tarball"
 tar -czf "$tarball" -C "$out_dir" jira-timesheet-qt.app
 tar_mb=$(du -sm "$tarball" | cut -f1)

@@ -15,7 +15,11 @@ jobs:
       # pro Release, was baut und was (noch) nicht.
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-22.04, macos-latest]
+        # macos-latest ist Apple Silicon (arm64). macos-15-intel liefert den
+        # x86_64-Build fuer aeltere Intel-Macs - ohne ihn lehnt macOS die App
+        # mit "nicht mit dieser Version von macOS verwendbar" ab. Das Label ist
+        # laut GitHub bis August 2027 verfuegbar, danach endet x86_64.
+        os: [windows-latest, ubuntu-22.04, macos-latest, macos-15-intel]
 
     runs-on: ${{ matrix.os }}
 
