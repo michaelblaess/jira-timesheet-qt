@@ -35,15 +35,20 @@ from PySide6.QtWidgets import QApplication, QComboBox, QWidget  # noqa: E402
 from jira_timesheet_qt.i18n import load_locale  # noqa: E402
 from jira_timesheet_qt.models.settings import Settings  # noqa: E402
 from jira_timesheet_qt.models.timesheet import Timesheet  # noqa: E402
-from jira_timesheet_qt.services.anonymizer import anonymize_timesheet  # noqa: E402
+from jira_timesheet_qt.services.anonymizer import (  # noqa: E402
+    anonymize_board,
+    anonymize_timesheet,
+)
 from jira_timesheet_qt.ui.about_dialog import AboutDialog  # noqa: E402
 from jira_timesheet_qt.ui.demo import demo_timesheet  # noqa: E402
+from jira_timesheet_qt.ui.demo_board import demo_board, demo_statistics  # noqa: E402
 from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog  # noqa: E402
 from jira_timesheet_qt.ui.disclaimer_dialog import DisclaimerDialog  # noqa: E402
 from jira_timesheet_qt.ui.fonts import load_fonts  # noqa: E402
 from jira_timesheet_qt.ui.main_window import MainWindow  # noqa: E402
 from jira_timesheet_qt.ui.settings_dialog import SettingsDialog  # noqa: E402
 from jira_timesheet_qt.ui.theme import Mode, build_palette, build_qss  # noqa: E402
+from jira_timesheet_qt.ui.ticket_board_worker import MODE_ASSIGNED, MODE_RELEVANT  # noqa: E402
 
 OUT = Path(__file__).resolve().parent.parent / "docs" / "screenshots"
 
@@ -119,6 +124,37 @@ def _window(mode: Mode, *, with_data: bool = True) -> MainWindow:
     return win
 
 
+def _board_window(mode: Mode, *, relevant: bool = False) -> MainWindow:
+    """Erzeugt ein Hauptfenster mit einer gefuellten Ticket-Ansicht.
+
+    Die Daten kommen aus demo_board und laufen zusaetzlich durch
+    anonymize_board - dieselbe Guertel-und-Hosentraeger-Regel wie beim
+    Stundenzettel. Der Anzeige-Schalter der App bleibt aus, damit kein
+    Badge im Bild steht.
+
+    Args:
+        mode:
+            Helles oder dunkles Erscheinungsbild.
+        relevant:
+            True zeigt "Relevante Tickets", sonst "Meine Tickets".
+
+    Returns:
+        Das vorbereitete Fenster, noch nicht angezeigt.
+    """
+    win = MainWindow(Settings(), mode)
+    board_mode = MODE_RELEVANT if relevant else MODE_ASSIGNED
+    board = anonymize_board(demo_board(relevant=relevant))
+    view = win._board_view(board_mode)
+    win._real_boards[board_mode] = board
+    win._board_loaded[board_mode] = True
+    view.set_board(board)
+    view.set_statistics(demo_statistics())
+    win._stack.setCurrentIndex(4 if relevant else 3)
+    win._tabs.setCurrentIndex(4 if relevant else 3)
+    win._summary_board(view, board_mode)
+    return win
+
+
 def _apply_theme(app: QApplication, mode: Mode, sans: str, mono: str) -> None:
     app.setPalette(build_palette(mode))
     app.setStyleSheet(build_qss(mode, sans, mono))
@@ -169,10 +205,21 @@ def main() -> int:
         entry = _data().all_entries[0]
         _grab(TicketDetailDialog(entry, "https://beispiel.atlassian.net"), OUT / f"detail-{tag}.png", 540, 520)
 
+        # Meine Tickets - gruppiert, mit Markern und Auswertung
+        _grab(_board_window(mode), OUT / f"board-assigned-{tag}.png", W, H)
+
+        # Relevante Tickets - dieselbe Ansicht, fremde Zuweisung
+        _grab(_board_window(mode, relevant=True), OUT / f"board-relevant-{tag}.png", W, H)
+
         # Einstellungen - Arbeitszeit
         dlg = SettingsDialog(Settings())
         dlg._nav.setCurrentRow(1)
         _grab(dlg, OUT / f"settings-worktime-{tag}.png", 760, 560)
+
+        # Einstellungen - Ticket-Ansichten (Statuszuordnung)
+        dlg = SettingsDialog(Settings())
+        dlg._nav.setCurrentRow(2)
+        _grab(dlg, OUT / f"settings-tickets-{tag}.png", 900, 820)
 
         # Info-Dialog
         _grab(AboutDialog(), OUT / f"about-{tag}.png", 520, 560)

@@ -361,8 +361,35 @@ class TestEinstellungsseite:
         qapp.processEvents()
         try:
             feld = dialog.board_priorities
-            assert feld.parentWidget() is dialog._pages.currentWidget()
-            assert feld.x() + feld.width() <= dialog.width()
+            # Die Seite haengt in einem Bildlaufbereich, x() ist also relativ
+            # zur Seite. Gemessen wird die Kante im Dialog.
+            rechts = feld.mapTo(dialog, feld.rect().topRight()).x()
+            assert rechts <= dialog.width()
+        finally:
+            dialog.close()
+
+    def test_die_lange_seite_bleibt_erreichbar(self, qapp: QApplication) -> None:
+        # Die Ticket-Seite ist hoeher als der Dialog. Ohne Bildlaufbereich ist
+        # der untere Teil nicht abgeschnitten, sondern unerreichbar - die
+        # Erklaerung zu den Schwellen war schlicht weg.
+        from PySide6.QtWidgets import QScrollArea
+
+        from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(Settings())
+        dialog.resize(dialog.minimumSize())
+        dialog.show()
+        dialog._nav.setCurrentRow(2)
+        qapp.processEvents()
+        try:
+            bereich = dialog._pages.currentWidget()
+            assert isinstance(bereich, QScrollArea)
+            seite = bereich.widget()
+            # Der Beleg: die Seite braucht mehr Hoehe als der Bereich hergibt,
+            # und genau dafuer ist die Bildlaufleiste da.
+            assert seite.height() > bereich.viewport().height()
+            leiste = bereich.verticalScrollBar()
+            assert leiste.maximum() > 0
         finally:
             dialog.close()
 

@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QStackedWidget,
     QVBoxLayout,
@@ -94,10 +95,11 @@ class SettingsDialog(QDialog):
         # Faden fuer die Budget-Feld-Autoerkennung (ein Netzwerkaufruf).
         self._detect_worker: BudgetFieldWorker | None = None
         self.setWindowTitle("Einstellungen")
-        # Die Breite folgt dem breitesten Feld: Seitenleiste, Beschriftung und
-        # ein Textfeld von WIDE_FIELD_WIDTH muessen nebeneinander passen. Bei
-        # 720 lief die Ticket-Seite rechts aus dem Dialog heraus.
-        self.setMinimumSize(820, 520)
+        # Die Breite folgt dem breitesten Feld: Seitenleiste, Beschriftung,
+        # ein Textfeld von WIDE_FIELD_WIDTH und die senkrechte Bildlaufleiste
+        # muessen nebeneinander passen. Bei 720 lief die Ticket-Seite rechts
+        # aus dem Dialog heraus, bei 820 fehlte die Breite der Bildlaufleiste.
+        self.setMinimumSize(880, 520)
         self.setSizeGripEnabled(True)
 
         outer = QVBoxLayout(self)
@@ -118,13 +120,13 @@ class SettingsDialog(QDialog):
         body.addWidget(self._nav)
 
         self._pages = QStackedWidget()
-        self._pages.addWidget(self._page_access())
-        self._pages.addWidget(self._page_worktime())
-        self._pages.addWidget(self._page_tickets())
-        self._pages.addWidget(self._page_export())
-        self._pages.addWidget(self._page_columns())
-        self._pages.addWidget(self._page_appearance())
-        self._pages.addWidget(self._page_storage())
+        self._pages.addWidget(self._scrollable(self._page_access()))
+        self._pages.addWidget(self._scrollable(self._page_worktime()))
+        self._pages.addWidget(self._scrollable(self._page_tickets()))
+        self._pages.addWidget(self._scrollable(self._page_export()))
+        self._pages.addWidget(self._scrollable(self._page_columns()))
+        self._pages.addWidget(self._scrollable(self._page_appearance()))
+        self._pages.addWidget(self._scrollable(self._page_storage()))
         self._nav.currentRowChanged.connect(self._pages.setCurrentIndex)
         body.addWidget(self._pages, 1)
 
@@ -745,6 +747,32 @@ class SettingsDialog(QDialog):
         return page
 
     # --- Bausteine ------------------------------------------------------
+
+    @staticmethod
+    def _scrollable(page: QWidget) -> QWidget:
+        """Haengt eine Seite in einen Bildlaufbereich.
+
+        Ohne das wird eine Seite, die hoeher ist als der Dialog, schlicht
+        abgeschnitten - der untere Teil ist dann nicht abgeschnitten, sondern
+        UNERREICHBAR. Aufgefallen an der Ticket-Seite, deren Erklaerungstexte
+        unten weggeschnitten wurden.
+
+        Args:
+            page:
+                Die aufgebaute Seite.
+
+        Returns:
+            Der Bildlaufbereich, der in den Seitenstapel gehoert.
+        """
+        area = QScrollArea()
+        area.setObjectName("SettingsScroll")
+        area.setWidget(page)
+        # Ohne das behaelt die Seite ihre Wunschbreite und der Bereich zeigt
+        # eine waagerechte Bildlaufleiste statt die Seite mitzuziehen.
+        area.setWidgetResizable(True)
+        area.setFrameShape(QScrollArea.Shape.NoFrame)
+        area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        return area
 
     def _page(self, title: str) -> tuple[QWidget, QFormLayout]:
         """Baut eine Seite mit Ueberschrift und liefert ihr Formular."""
