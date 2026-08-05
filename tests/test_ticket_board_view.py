@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QComboBox
 
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.services.ticket_board import (
@@ -179,6 +179,25 @@ class TestAnsicht:
         eintraege = [view._status_box.itemData(i) for i in range(view._status_box.count())]
         assert eintraege == ["", "Im Review", "In Arbeit"]
 
+    def test_statusfilter_hat_eine_lesbare_mindestbreite(self, qapp: QApplication) -> None:
+        # Vorher stand dort "IN A ..." - die gewaehlte Auswahl war nicht mehr
+        # lesbar. Die Mindestbreite haelt das Feld auf, auch wenn gerade nur
+        # kurze Statusnamen vorkommen.
+        view = TicketBoardView("Kurz")
+        view.set_board(board(Group(role=Role.ACTIVE, tickets=[ticket("A-1", status="Neu")])))
+        breite_von_18_zeichen = view._status_box.fontMetrics().horizontalAdvance("x" * 18)
+        assert view._status_box.sizeHint().width() >= breite_von_18_zeichen
+
+    def test_statusfilter_waechst_mit_spaeter_gesetzten_werten(self, qapp: QApplication) -> None:
+        # Die Statusnamen kommen erst mit dem Board herein, also lange nach dem
+        # Aufbau. Ohne AdjustToContents bleibt das Feld auf der Breite stehen,
+        # die es beim ersten Anzeigen hatte.
+        view = TicketBoardView("Lang")
+        assert (
+            view._status_box.sizeAdjustPolicy()
+            is QComboBox.SizeAdjustPolicy.AdjustToContents
+        )
+
     def test_statusfilter_wirkt(self, qapp: QApplication) -> None:
         view = self._view()
         view._status_box.setCurrentIndex(view._status_box.findData("Im Review"))
@@ -307,6 +326,44 @@ class TestEinstellungsseite:
     steht und im Dialog gesetzt wird, aber beim Auslesen vergessen wurde,
     springt nach dem Speichern wortlos auf den alten Wert zurueck.
     """
+
+    def test_jedes_statusfeld_zeigt_ein_beispiel(self, qapp: QApplication) -> None:
+        # Die Felder heissen "Ich bin dran" oder "Rueckgabe" - ohne ein
+        # Beispiel im leeren Feld ist nicht zu erraten, dass dort Statusnamen
+        # der eigenen Instanz hineingehoeren.
+        from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(Settings())
+        felder = (
+            dialog.board_active,
+            dialog.board_backlog,
+            dialog.board_acceptance,
+            dialog.board_handback,
+            dialog.board_closing,
+            dialog.board_priorities,
+        )
+        for feld in felder:
+            assert feld.placeholderText()
+
+    def test_beispiele_verraten_keine_fremde_instanz(self, qapp: QApplication) -> None:
+        # Die Beispiele sind erfunden. Echte Statusnamen eines Kunden waeren
+        # in einem oeffentlichen Repo ein Datenabfluss - und fuer jeden
+        # anderen Anwender ohnehin falsch.
+        from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(Settings())
+        beispiele = " ".join(
+            feld.placeholderText()
+            for feld in (
+                dialog.board_active,
+                dialog.board_backlog,
+                dialog.board_acceptance,
+                dialog.board_handback,
+                dialog.board_closing,
+            )
+        ).casefold()
+        for echt in ("evaluation", "übergabe betrieb", "fertig für entwicklung", "schließen"):
+            assert echt not in beispiele
 
     def test_alle_felder_kommen_zurueck(self, qapp: QApplication) -> None:
         from jira_timesheet_qt.ui.settings_dialog import SettingsDialog

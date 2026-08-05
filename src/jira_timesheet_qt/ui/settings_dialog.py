@@ -365,22 +365,32 @@ class SettingsDialog(QDialog):
 
         form.addRow(
             self._hint(
-                "Welcher Status welche Rolle hat, weiß nur diese Jira-Instanz. Bleiben die "
-                "Felder leer, ordnet die Anwendung nach der Jira-Statuskategorie zu - das ist "
-                "gröber, funktioniert aber sofort. Mehrere Status durch Komma trennen."
+                "Die Ansicht gruppiert deine Tickets danach, wer gerade am Zug ist. Trage "
+                "hier ein, welcher Status deiner Jira-Instanz zu welcher Gruppe gehört - "
+                "mehrere durch Komma getrennt, genau so geschrieben wie im Ticket. Die "
+                "grauen Beispiele sind erfunden und zeigen nur die Form. Bleiben die Felder "
+                "leer, ordnet die Anwendung grob nach der Jira-Statuskategorie zu."
             )
         )
 
-        self.board_active = self._wide_edit(self._settings.board_active_status)
+        self.board_active = self._wide_edit(
+            self._settings.board_active_status, "In Bearbeitung, Im Review"
+        )
         form.addRow(self._label("Ich bin dran"), self.board_active)
 
-        self.board_backlog = self._wide_edit(self._settings.board_backlog_status)
+        self.board_backlog = self._wide_edit(
+            self._settings.board_backlog_status, "Bereit, Eingeplant"
+        )
         form.addRow(self._label("Backlog"), self.board_backlog)
 
-        self.board_acceptance = self._wide_edit(self._settings.board_acceptance_status)
+        self.board_acceptance = self._wide_edit(
+            self._settings.board_acceptance_status, "Wartet auf Freigabe, Beim Fachbereich"
+        )
         form.addRow(self._label("Andere sind dran"), self.board_acceptance)
 
-        self.board_handback = self._wide_edit(self._settings.board_handback_status)
+        self.board_handback = self._wide_edit(
+            self._settings.board_handback_status, "Ausgeliefert, Zur Bewertung"
+        )
         form.addRow(self._label("Rückgabe"), self.board_handback)
         form.addRow(
             self._hint(
@@ -389,7 +399,9 @@ class SettingsDialog(QDialog):
             )
         )
 
-        self.board_closing = self._wide_edit(self._settings.board_closing_status)
+        self.board_closing = self._wide_edit(
+            self._settings.board_closing_status, "Zur Abnahme, Doku offen"
+        )
         form.addRow(self._label("Abschluss offen"), self.board_closing)
         form.addRow(
             self._hint(
@@ -398,7 +410,9 @@ class SettingsDialog(QDialog):
             )
         )
 
-        self.board_priorities = self._wide_edit(self._settings.board_priorities)
+        self.board_priorities = self._wide_edit(
+            self._settings.board_priorities, "Blocker, Kritisch, Hoch, Mittel, Niedrig"
+        )
         form.addRow(self._label("Prioritäten"), self.board_priorities)
         form.addRow(self._hint("Rangfolge, dringendstes zuerst. Leer = Reihenfolge aus Jira."))
 
@@ -442,9 +456,22 @@ class SettingsDialog(QDialog):
         )
         return page
 
-    def _wide_edit(self, values: list[str]) -> QLineEdit:
-        """Ein breites Eingabefeld fuer eine Kommaliste."""
+    def _wide_edit(self, values: list[str], placeholder: str = "") -> QLineEdit:
+        """Ein breites Eingabefeld fuer eine Kommaliste.
+
+        Args:
+            values:
+                Die bereits gesetzten Werte.
+            placeholder:
+                Beispielhafte Eingabe. Bewusst mit erfundenen Statusnamen - die
+                echten kennt nur die jeweilige Jira-Instanz, und die Namen einer
+                fremden Instanz gehoeren nicht in ein oeffentliches Repo.
+
+        Returns:
+            Das vorbereitete Eingabefeld.
+        """
         edit = QLineEdit(", ".join(values))
+        edit.setPlaceholderText(placeholder)
         # Bewusst ueber die einheitliche Feldbreite hinaus - eine Statusliste
         # passt sonst nicht hinein.
         edit.setObjectName("ExpandingField")

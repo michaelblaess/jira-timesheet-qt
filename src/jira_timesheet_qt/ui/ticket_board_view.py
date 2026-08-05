@@ -155,6 +155,10 @@ class TicketBoardView(QWidget):
         head.addWidget(QLabel("Status:"))
         self._status_box = QComboBox()
         self._status_box.setObjectName("BoardStatusFilter")
+        # Statusnamen sind lang ("Freigabe Produktivsetzung"). Ohne das waechst
+        # das Feld nicht mit und zeigt nur noch "IN A ...".
+        self._status_box.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self._status_box.setMinimumContentsLength(18)
         self._status_box.addItem("alle", "")
         self._status_box.currentIndexChanged.connect(self._on_status_changed)
         head.addWidget(self._status_box)
