@@ -230,9 +230,9 @@ class TestNamen:
     @pytest.mark.parametrize(
         ("roh", "erwartet"),
         [
-            ("Blaess, Michael", "Michael Blaess"),
-            ("Nachname, Vorname", "Vorname Nachname"),
-            ("Erika Musterfrau", "Erika Musterfrau"),
+            ("Mustermann, Max", "Max Mustermann"),
+            ("Musterfrau, Erika", "Erika Musterfrau"),
+            ("Max Beispiel", "Max Beispiel"),
             ("Mustermann", "Mustermann"),
             ("", ""),
             ("Nur, ", "Nur"),
@@ -242,9 +242,9 @@ class TestNamen:
         assert lifecycle.display_name(roh) == erwartet
 
     def test_akteure_tragen_die_leseform(self) -> None:
-        life = lifecycle.from_raw(issue_stub(), [], [comment_stub(stamp(1, 10), "Blaess, Michael", "Hi")])
-        assert "Michael Blaess" in life.actors
-        assert "Blaess, Michael" not in life.actors
+        life = lifecycle.from_raw(issue_stub(), [], [comment_stub(stamp(1, 10), "Mustermann, Max", "Hi")])
+        assert "Max Mustermann" in life.actors
+        assert "Mustermann, Max" not in life.actors
 
 
 class TestLangePhasen:

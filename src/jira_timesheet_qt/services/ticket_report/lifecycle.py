@@ -63,8 +63,8 @@ FILLER_MAX_LEN = 60
 def display_name(raw: str) -> str:
     """Dreht "Nachname, Vorname" in die uebliche Leseform.
 
-    Jira liefert Anzeigenamen je nach Verzeichnis mal als "Blaess, Michael",
-    mal als "Erika Musterfrau". Im Bericht steht ueberall die gesprochene Form.
+    Jira liefert Anzeigenamen je nach Verzeichnis mal als "Nachname, Vorname",
+    mal als "Vorname Nachname". Im Bericht steht ueberall die gesprochene Form.
 
     Args:
         raw:
