@@ -37,6 +37,7 @@
     </div>
     <div class="header-right">
       <a href="#features" class="header-link">Features</a>
+      <a href="#tickets" class="header-link">Ticket-Ansichten</a>
       <a href="#keys" class="header-link">Tastenkürzel</a>
       <a href="#install" class="header-link">Installation</a>
       <a href="https://github.com/michaelblaess/jira-timesheet-qt" class="header-link">GitHub</a>
@@ -69,8 +70,9 @@
       <button class="gallery-tab" onclick="showCat(1)">Suche</button>
       <button class="gallery-tab" onclick="showCat(2)">Kalender</button>
       <button class="gallery-tab" onclick="showCat(3)">Jahr</button>
-      <button class="gallery-tab" onclick="showCat(4)">Details</button>
-      <button class="gallery-tab" onclick="showCat(5)">Einstellungen</button>
+      <button class="gallery-tab" onclick="showCat(4)">Meine Tickets</button>
+      <button class="gallery-tab" onclick="showCat(5)">Details</button>
+      <button class="gallery-tab" onclick="showCat(6)">Einstellungen</button>
     </div>
 
     <div class="gallery-cat active" data-cat="0">
@@ -94,12 +96,20 @@
     </div>
 
     <div class="gallery-cat" data-cat="4">
+      <div class="gallery-card"><img src="screenshots/board-assigned-dark.png" alt="Meine Tickets (dunkel)"><div class="gallery-caption">Meine Tickets: gruppiert danach, wer am Zug ist - dunkel</div></div>
+      <div class="gallery-card"><img src="screenshots/board-assigned-light.png" alt="Meine Tickets (hell)"><div class="gallery-caption">Meine Tickets: gruppiert danach, wer am Zug ist - hell</div></div>
+      <div class="gallery-card"><img src="screenshots/board-relevant-dark.png" alt="Relevante Tickets (dunkel)"><div class="gallery-caption">Relevante Tickets: alles, woran Du mitgewirkt hast - dunkel</div></div>
+      <div class="gallery-card"><img src="screenshots/board-relevant-light.png" alt="Relevante Tickets (hell)"><div class="gallery-caption">Relevante Tickets: alles, woran Du mitgewirkt hast - hell</div></div>
+    </div>
+
+    <div class="gallery-cat" data-cat="5">
       <div class="gallery-card"><img src="screenshots/detail-dark.png" alt="Ticket-Details (dunkel)"><div class="gallery-caption">Ticket-Details - dunkel</div></div>
       <div class="gallery-card"><img src="screenshots/detail-light.png" alt="Ticket-Details (hell)"><div class="gallery-caption">Ticket-Details - hell</div></div>
     </div>
 
-    <div class="gallery-cat" data-cat="5">
+    <div class="gallery-cat" data-cat="6">
       <div class="gallery-card"><img src="screenshots/settings-dark.png" alt="Einstellungen Jira-Zugang"><div class="gallery-caption">Einstellungen: Jira-Zugang mit Budget-Auto-Erkennung</div></div>
+      <div class="gallery-card"><img src="screenshots/settings-tickets-light.png" alt="Einstellungen Ticket-Ansichten"><div class="gallery-caption">Einstellungen: Statuszuordnung der Ticket-Ansichten</div></div>
       <div class="gallery-card"><img src="screenshots/settings-worktime-dark.png" alt="Einstellungen Arbeitszeit (dunkel)"><div class="gallery-caption">Einstellungen: Arbeitszeit - dunkel</div></div>
       <div class="gallery-card"><img src="screenshots/settings-worktime-light.png" alt="Einstellungen Arbeitszeit (hell)"><div class="gallery-caption">Einstellungen: Arbeitszeit - hell</div></div>
     </div>
@@ -151,8 +161,23 @@
       </div>
       <div class="feature-card">
         <div class="feature-icon">📋</div>
-        <h3>Drei Ansichten</h3>
-        <p>Liste mit KW und Wochentag, Kalender als Monatsgrid, Jahresansicht mit Prognose. Umschalten per Reiter oder Klick.</p>
+        <h3>Fünf Ansichten</h3>
+        <p>Liste mit KW und Wochentag, Kalender als Monatsgrid, Jahresansicht mit Prognose, dazu die beiden Ticket-Ansichten. Umschalten per Reiter oder Klick.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🎯</div>
+        <h3>Meine Tickets</h3>
+        <p>Alle Dir zugewiesenen Tickets, gruppiert danach, <strong>wer am Zug ist</strong>: ich bin dran, andere sind dran, Backlog, Rückläufer, Abschluss offen. Dazu Merkmale für Handlungsbedarf, die Liegezeit in Arbeitstagen und drei Diagramme.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">💬</div>
+        <h3>Relevante Tickets</h3>
+        <p>Tickets, an denen Du mitgewirkt hast, auch wenn sie jemand anderem gehören: kommentiert, erwähnt, bearbeitet oder bebucht - in einem einstellbaren Zeitfenster.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔥</div>
+        <h3>Pile of Shame</h3>
+        <p>Markiert Tickets, deren Status Aktivität behauptet, obwohl es seit der Schwelle weder eine Änderung noch eine gebuchte Stunde gab. Ein bewusst offengehaltenes Dauerticket mit regelmäßigen Buchungen bleibt draußen - eine Ausnahmeliste braucht es nicht.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon">📄</div>
@@ -205,6 +230,28 @@
   <div class="divider"><div class="divider-line"></div></div>
 
   <!-- TASTENKUERZEL -->
+  <section class="section" id="tickets">
+    <div class="section-label">Einrichtung</div>
+    <h2 class="section-title">Ticket-Ansichten einrichten</h2>
+    <p class="section-description" style="max-width: 760px;">Die Reiter <strong>Meine Tickets</strong> und <strong>Relevante Tickets</strong> gruppieren nicht nach Statusnamen, sondern nach der Frage <strong>wer ist am Zug</strong>. Weil jede Jira-Instanz ihre Status anders nennt, wird diese Zuordnung einmal eingetragen: Einstellungen (<code>Strg+,</code>), Seite <em>Tickets</em>. Bleiben die Felder leer, ordnet die Anwendung nach Jiras eigener Statuskategorie zu - das funktioniert sofort, ist aber grob.</p>
+    <div class="cli-table-wrap">
+      <table class="cli-table">
+        <thead><tr><th>Gruppe</th><th>Was dort hingehört</th><th>Beispiel</th></tr></thead>
+        <tbody>
+          <tr><td>Ich bin dran</td><td>Der Ball liegt bei Dir, es wird gerade gearbeitet</td><td><code>In Bearbeitung, Im Review</code></td></tr>
+          <tr><td>Backlog</td><td>Fertig verfeinert, wartet darauf, gezogen zu werden</td><td><code>Bereit, Eingeplant</code></td></tr>
+          <tr><td>Andere sind dran</td><td>Wartet auf Freigabe durch jemand anderen</td><td><code>Wartet auf Freigabe</code></td></tr>
+          <tr><td>Rückgabe</td><td>Ausgeliefert, wartet auf Bewertung durch den Autor</td><td><code>Ausgeliefert, Zur Bewertung</code></td></tr>
+          <tr><td>Abschluss offen</td><td>Status, die Jira als <strong>fertig</strong> zählt, obwohl noch etwas zu tun ist</td><td><code>Zur Abnahme, Übergabe</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="section-description" style="max-width: 760px;">Das Feld <strong>Abschluss offen</strong> ist das wichtigste. Ein Status wie "Deployment offen" oder "Zur Übergabe" liegt in Jira in der Kategorie <em>Done</em>. Solche Tickets fallen durch jeden normalen Filter und werden ohne diesen Eintrag gar nicht erst abgefragt - sie fehlen dann vollständig, ohne dass es auffällt.</p>
+    <p class="section-description" style="max-width: 760px;">Gerechnet wird in <strong>Arbeitstagen</strong> (Mo-Fr, 8-18 Uhr), nicht in Kalendertagen. Ein Ticket, das über ein langes Wochenende liegt, ist nicht drei Tage vernachlässigt worden. Die Schwellen für den Pile of Shame sind eine Setzung, keine Messung: zu klein gewählt trifft der Hinweis alles und sagt dann nichts mehr.</p>
+  </section>
+
+  <div class="divider"><div class="divider-line"></div></div>
+
   <section class="section" id="keys">
     <div class="section-label">Bedienung</div>
     <h2 class="section-title">Tastenkürzel</h2>

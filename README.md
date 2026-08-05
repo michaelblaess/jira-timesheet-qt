@@ -66,6 +66,20 @@ The application follows the light or dark theme and a configurable accent colour
   <img src="docs/screenshots/year-dark.png" width="49%" alt="Year view (dark)">
 </p>
 
+### My tickets - grouped by whose move it is
+
+<p align="center">
+  <img src="docs/screenshots/board-assigned-dark.png" width="49%" alt="My tickets (dark)">
+  <img src="docs/screenshots/board-assigned-light.png" width="49%" alt="My tickets (light)">
+</p>
+
+### Relevant tickets - everything you had a hand in
+
+<p align="center">
+  <img src="docs/screenshots/board-relevant-dark.png" width="49%" alt="Relevant tickets (dark)">
+  <img src="docs/screenshots/board-relevant-light.png" width="49%" alt="Relevant tickets (light)">
+</p>
+
 ### Ticket details
 
 <p align="center">
@@ -76,6 +90,12 @@ The application follows the light or dark theme and a configurable accent colour
 
 <p align="center">
   <img src="docs/screenshots/settings-dark.png" width="80%" alt="Settings - Jira access">
+</p>
+
+### Settings - status mapping for the ticket views
+
+<p align="center">
+  <img src="docs/screenshots/settings-tickets-light.png" width="80%" alt="Settings - ticket views">
 </p>
 
 ## Features
@@ -112,8 +132,17 @@ The application follows the light or dark theme and a configurable accent colour
   people involved, key figures such as flow efficiency and first response, plus findings that
   each carry their evidence. The result is a single self-contained HTML file that works
   offline and can be shared (`Ctrl+T`) Unusually long waiting times are marked in red, related tickets show their title, and the finished report opens straight in the browser.
-- **Anonymization** - Replace tickets, descriptions, authors and the Jira host with dummy
-  values for safe screenshots; the real data stays untouched
+- **My tickets** - Every ticket assigned to you, grouped by whose move it is: mine, someone
+  else's, backlog, handback, closing. Plus markers for what needs attention, the idle time in
+  working days and three charts (inflow against outflow, stock, age distribution)
+- **Relevant tickets** - Tickets you had a hand in even though they belong to someone else:
+  commented, mentioned, edited or logged work on, within a configurable time window
+- **Pile of Shame** - Marks tickets whose status claims activity although there has been
+  neither a change nor a logged hour since the threshold. The second half is the trick: a
+  long-running ticket deliberately kept open, with regular bookings, stays out - no exception
+  list needed
+- **Anonymization** - Replace tickets, descriptions, authors, status names and the Jira host
+  with dummy values for safe screenshots; the real data stays untouched
 - **Docked log** - An attachable message panel with the full history (`Ctrl+L`)
 - **Zoom** - Scale the whole interface with `Ctrl` +/- / 0 or `Ctrl` + mouse wheel, like a browser
 - **Worklog cache** - Completed months are cached, the year view loads instantly
@@ -173,6 +202,65 @@ calendar, year view, Excel and PDF - and are colour-marked so it is obvious what
 Jira and what does not. A right-click on a row opens a context menu; description and effort of
 a manual entry can be edited directly in the table.
 
+### Setting up the ticket views
+
+The **My tickets** and **Relevant tickets** tabs load on their own the first time you look at
+them, and `F5` fetches them again. Neither groups by status name. They group by the question
+**whose move is it**. Because every Jira instance names its statuses differently, that mapping
+has to be entered once: Settings (`Ctrl+,`), page **Tickets**.
+
+If the fields stay empty, the application falls back to Jira's own status category. That works
+right away but is coarse - Jira only knows "new", "in progress" and "done".
+
+| Group | What belongs there | Example |
+| --- | --- | --- |
+| Mine | The ball is in your court, work is happening | `In Progress, In Review` |
+| Backlog | Refined and ready to be pulled | `Ready, Planned` |
+| Someone else's | Waiting for approval by another person - this is where you chase | `Waiting for approval` |
+| Handback | Delivered, waiting to be assessed by the reporter | `Delivered, For assessment` |
+| Closing open | Statuses Jira counts as **done** although work remains | `For acceptance, Handover` |
+
+**The "closing open" field matters most.** A status like "Deployment pending" or "For handover"
+sits in Jira's *Done* category. Such tickets slip through every ordinary filter and without
+this entry they are **never even queried** - they are simply missing, and nothing says so.
+
+**Handback** has a special rule: if the reporter is somebody else, the ticket should be handed
+back rather than worked on. If you are the reporter yourself, there is nobody to hand it back
+to, so it moves to "Mine" instead of gathering dust in a group labelled "do not work on this".
+
+The **priorities** are a ranking, most urgent first. It drives the sort order inside a group
+and decides which tickets get the *priority* marker. Bugs always come first regardless.
+
+#### Markers
+
+A ticket can carry several at once - which is why they are markers and not more groups. A
+drawer could file each ticket only once.
+
+| Marker | Meaning |
+| --- | --- |
+| Pile of Shame | The status claims activity, but there has been neither a change nor a logged hour since the threshold |
+| Handback | Delivered, foreign reporter - hand it back, do not work on it |
+| Stale | Untouched for a very long time (default: 180 days) |
+| Priority | Priority within the upper part of the ranking |
+| Chase | Waiting for approval by somebody else |
+| Blocked | A predecessor is still open |
+
+#### Thresholds and time window
+
+| Setting | What for | Default |
+| --- | --- | --- |
+| Time window | Only for "Relevant tickets". 0 = no window, which turns the list into an archive instead of a work stock | 90 days |
+| Stale after | When the *stale* marker is set | 180 days |
+| Threshold: mine | Working days until the Pile of Shame in your own group | 20 |
+| Threshold: others | The same for tickets waiting for approval | 10 |
+| Threshold: closing | The same for the closing group. 0 exempts the role | 0 |
+
+These numbers are a **choice, not a measurement**. Set too low, the marker hits everything and
+then says nothing - pick a threshold that leaves a handful of tickets, not half the list.
+
+The maths runs in **working days** (Mon-Fri, 8 am to 6 pm), not calendar days. A ticket sitting
+over a long weekend has not been neglected for three days.
+
 ### Anonymizing for screenshots
 
 *View → Anonymize data* (also on the toolbar) replaces tickets, descriptions, authors and the
@@ -228,6 +316,15 @@ Settings are stored in `~/.jira-timesheet-qt/settings.json`:
 | Highlight manual entries | Colours manual time in list, Excel and PDF | true |
 | Day-total colouring | Colours daily totals by target/actual | true |
 | Columns | Per column: display, export and label | all enabled |
+| Status "mine" | Status names for your own working group | empty |
+| Status "backlog" | Status names for the work stock | empty |
+| Status "someone else's" | Status names for tickets in other hands | empty |
+| Status "handback" | Status names for delivered tickets awaiting assessment | empty |
+| Status "closing open" | Statuses Jira counts as done but with work remaining | empty |
+| Priorities | Ranking, most urgent first | empty (Jira order) |
+| Time window | Look-back for "Relevant tickets" | 90 days |
+| Stale after | Threshold for the *stale* marker | 180 days |
+| Pile of Shame thresholds | Working days per group, 0 disables | 20 / 10 / 0 |
 | Theme / accent / zoom | Appearance | system / orange / 100 % |
 | Language | UI language (de / en) | de |
 

@@ -68,6 +68,20 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   <img src="docs/screenshots/year-dark.png" width="49%" alt="Jahresansicht (dunkel)">
 </p>
 
+### Meine Tickets - gruppiert danach, wer am Zug ist
+
+<p align="center">
+  <img src="docs/screenshots/board-assigned-dark.png" width="49%" alt="Meine Tickets (dunkel)">
+  <img src="docs/screenshots/board-assigned-light.png" width="49%" alt="Meine Tickets (hell)">
+</p>
+
+### Relevante Tickets - alles, woran Du mitgewirkt hast
+
+<p align="center">
+  <img src="docs/screenshots/board-relevant-dark.png" width="49%" alt="Relevante Tickets (dunkel)">
+  <img src="docs/screenshots/board-relevant-light.png" width="49%" alt="Relevante Tickets (hell)">
+</p>
+
 ### Ticket-Details
 
 <p align="center">
@@ -78,6 +92,12 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
 
 <p align="center">
   <img src="docs/screenshots/settings-dark.png" width="80%" alt="Einstellungen - Jira-Zugang">
+</p>
+
+### Einstellungen - Statuszuordnung der Ticket-Ansichten
+
+<p align="center">
+  <img src="docs/screenshots/settings-tickets-light.png" width="80%" alt="Einstellungen - Ticket-Ansichten">
 </p>
 
 ## Funktionen
@@ -114,8 +134,18 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   die Beteiligten, Kennzahlen wie Flow-Effizienz und erste Reaktion, dazu Befunde, die
   jeweils ihren Beleg mitbringen. Ergebnis ist eine einzelne HTML-Datei, die offline läuft
   und sich weitergeben lässt (`Strg+T`) Auffällig lange Liegezeiten werden rot markiert, verwandte Tickets zeigen ihren Titel, und der fertige Bericht öffnet sich gleich im Browser.
-- **Anonymisierung** - Ersetzt Tickets, Beschreibungen, Autoren und den Jira-Host durch
-  Dummy-Werte für sichere Screenshots; die echten Daten bleiben unangetastet
+- **Meine Tickets** - Alle Tickets, die Dir zugewiesen sind, gruppiert danach, wer am Zug ist:
+  ich bin dran, andere sind dran, Backlog, Rückläufer, Abschluss offen. Dazu Merkmale für
+  Handlungsbedarf, die Liegezeit in Arbeitstagen und drei Diagramme (Zulauf gegen Abgang,
+  Bestand, Altersverteilung)
+- **Relevante Tickets** - Tickets, an denen Du mitgewirkt hast, auch wenn sie jemand anderem
+  gehören: kommentiert, erwähnt, bearbeitet oder bebucht, in einem einstellbaren Zeitfenster
+- **Pile of Shame** - Markiert Tickets, deren Status Aktivität behauptet, obwohl es seit der
+  Schwelle weder eine Änderung noch eine gebuchte Stunde gab. Die zweite Hälfte ist der
+  Trick: ein bewusst offengehaltenes Dauerticket mit regelmäßigen Buchungen bleibt draußen,
+  eine Ausnahmeliste braucht es nicht
+- **Anonymisierung** - Ersetzt Tickets, Beschreibungen, Autoren, Statusnamen und den Jira-Host
+  durch Dummy-Werte für sichere Screenshots - die echten Daten bleiben unangetastet
 - **Andockbares Log** - Ein anheftbares Meldungsfenster mit dem vollen Verlauf (`Strg+L`)
 - **Zoom** - Skaliert die ganze Oberfläche mit `Strg` +/- / 0 oder `Strg` + Mausrad, wie im Browser
 - **Worklog-Cache** - Abgeschlossene Monate werden gecacht, die Jahresansicht lädt sofort
@@ -175,6 +205,69 @@ Kalender, Jahresansicht, Excel und PDF - und sind farblich markiert, damit auf e
 ist, was aus Jira kommt und was nicht. Ein Rechtsklick auf eine Zeile öffnet ein Kontextmenü;
 Beschreibung und Aufwand eines manuellen Eintrags lassen sich direkt in der Tabelle bearbeiten.
 
+### Ticket-Ansichten einrichten
+
+Die Reiter **Meine Tickets** und **Relevante Tickets** laden beim ersten Hinschauen von
+selbst, `F5` holt sie neu. Beide gruppieren nicht nach Statusnamen, sondern nach der Frage
+**wer ist am Zug**. Weil jede Jira-Instanz ihre Status anders nennt, muss diese Zuordnung
+einmal eingetragen werden: Einstellungen (`Strg+,`), Seite **Tickets**.
+
+Bleiben die Felder leer, ordnet die Anwendung nach Jiras eigener Statuskategorie zu. Das
+funktioniert sofort, ist aber grob - Jira kennt nur "neu", "in Arbeit" und "fertig".
+
+| Gruppe | Was dort hingehört | Beispiel |
+| --- | --- | --- |
+| Ich bin dran | Der Ball liegt bei Dir, es wird gerade gearbeitet | `In Bearbeitung, Im Review` |
+| Backlog | Fertig verfeinert, wartet darauf, gezogen zu werden | `Bereit, Eingeplant` |
+| Andere sind dran | Wartet auf Freigabe durch jemand anderen - hier hakt man nach | `Wartet auf Freigabe` |
+| Rückgabe | Ausgeliefert, wartet auf Bewertung durch den Autor | `Ausgeliefert, Zur Bewertung` |
+| Abschluss offen | Status, die Jira als **fertig** zählt, obwohl noch etwas zu tun ist | `Zur Abnahme, Übergabe` |
+
+**Das Feld "Abschluss offen" ist das wichtigste.** Ein Status wie "Deployment offen" oder "Zur
+Übergabe" liegt in Jira in der Kategorie *Done*. Solche Tickets fallen durch jeden normalen
+Filter und werden ohne diesen Eintrag **gar nicht erst abgefragt** - sie fehlen dann
+vollständig, ohne dass es auffällt.
+
+Bei **Rückgabe** gilt eine Sonderregel: Ist der Autor jemand anderes, gehört das Ticket
+zurückgegeben und nicht bearbeitet. Bist Du selbst der Autor, gibt es niemanden, dem man es
+zurückgeben könnte - dann wandert es zu "Ich bin dran", damit es nicht in einer Gruppe
+verstaubt, die "nicht bearbeiten" heißt.
+
+Die **Prioritäten** sind eine Rangfolge, dringendstes zuerst. Sie bestimmt die Sortierung
+innerhalb einer Gruppe und, welche Tickets das Merkmal *Priorität* bekommen. Bugs stehen
+dabei immer vor allem anderen.
+
+#### Merkmale
+
+Ein Ticket kann mehrere gleichzeitig tragen - deshalb sind es Merkmale und keine weiteren
+Gruppen. Eine Schublade könnte jedes Ticket nur einmal einsortieren.
+
+| Merkmal | Bedeutung |
+| --- | --- |
+| Pile of Shame | Der Status behauptet Aktivität, aber seit der Schwelle gab es weder eine Änderung noch eine gebuchte Stunde |
+| Rückgabe | Ausgeliefert, fremder Autor - zurückgeben, nicht bearbeiten |
+| verwaist | Seit sehr langer Zeit unverändert (Standard: 180 Tage) |
+| Priorität | Priorität in der oberen Gruppe der Rangfolge |
+| nachhaken | Wartet auf Freigabe durch jemand anderen |
+| blockiert | Ein Vorgänger ist noch offen |
+
+#### Schwellen und Zeitfenster
+
+| Einstellung | Wofür | Standard |
+| --- | --- | --- |
+| Zeitfenster | Nur für "Relevante Tickets". 0 = kein Fenster, dann wird die Liste zum Archiv statt zum Arbeitsvorrat | 90 Tage |
+| Verwaist ab | Ab wann das Merkmal *verwaist* gesetzt wird | 180 Tage |
+| Schwelle: ich dran | Arbeitstage bis zum Pile of Shame in der eigenen Gruppe | 20 |
+| Schwelle: andere | Dasselbe für Tickets, die auf Freigabe warten | 10 |
+| Schwelle: Abschluss | Dasselbe für die Abschluss-Gruppe. 0 schaltet die Rolle davon frei | 0 |
+
+Die Zahlen sind eine **Setzung, keine Messung**. Zu klein gewählt trifft der Hinweis alles
+und sagt dann nichts mehr - such Dir die Schwelle so, dass eine Handvoll Tickets übrig
+bleibt, nicht die halbe Liste.
+
+Gerechnet wird in **Arbeitstagen** (Mo-Fr, 8-18 Uhr), nicht in Kalendertagen. Ein Ticket, das
+über ein langes Wochenende liegt, ist nicht drei Tage vernachlässigt worden.
+
 ### Anonymisieren für Screenshots
 
 *Ansicht -> Daten anonymisieren* (auch in der Toolbar) ersetzt Tickets, Beschreibungen, Autoren
@@ -231,6 +324,15 @@ Die Einstellungen liegen in `~/.jira-timesheet-qt/settings.json`:
 | Manuelle Einträge markieren | Färbt manuelle Zeiten in Liste, Excel und PDF | wahr |
 | Tagessummen einfärben | Färbt Tagessummen nach Soll/Ist | wahr |
 | Spalten | Je Spalte: Anzeige, Export und Bezeichnung | alle an |
+| Status "Ich bin dran" | Statusnamen für die eigene Arbeitsgruppe | leer |
+| Status "Backlog" | Statusnamen für den Arbeitsvorrat | leer |
+| Status "Andere sind dran" | Statusnamen für Tickets in fremder Hand | leer |
+| Status "Rückgabe" | Statusnamen für ausgelieferte Tickets zur Bewertung | leer |
+| Status "Abschluss offen" | Von Jira als fertig gezählte Status mit Restarbeit | leer |
+| Prioritäten | Rangfolge, dringendstes zuerst | leer (Reihenfolge aus Jira) |
+| Zeitfenster | Rückblick für "Relevante Tickets" | 90 Tage |
+| Verwaist ab | Schwelle für das Merkmal *verwaist* | 180 Tage |
+| Pile-of-Shame-Schwellen | Arbeitstage je Gruppe, 0 schaltet ab | 20 / 10 / 0 |
 | Theme / Akzent / Zoom | Erscheinungsbild | System / Orange / 100 % |
 | Sprache | Oberflächensprache (de / en) | de |
 
