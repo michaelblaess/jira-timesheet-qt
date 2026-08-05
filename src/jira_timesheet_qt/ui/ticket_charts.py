@@ -15,13 +15,12 @@ Drei Fragen, drei Bilder:
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPaintEvent, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QSizePolicy,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -30,9 +29,9 @@ from jira_timesheet_qt.services.ticket_board import FOOTNOTE, Statistics
 
 from .theme import Mode, palette_for
 
-# Hoehe der Zeichenflaeche. Reicht fuer eine lesbare Skala, ohne der Tabelle
-# den Platz zu nehmen - die Diagramme sind Beiwerk, nicht der Inhalt.
-CHART_HEIGHT = 130
+# Anfangshoehe des Streifens. Reicht fuer eine lesbare Skala; darueber
+# entscheidet der Anwender ueber den Splitter.
+CHART_HEIGHT = 150
 
 # Rand um die Zeichenflaeche: links fuer die Skala, unten fuer die
 # Beschriftung, oben fuer den Titel.
@@ -49,8 +48,8 @@ class _Chart(QWidget):
         super().__init__(parent)
         self._title = title
         self._mode = mode
-        self.setMinimumHeight(CHART_HEIGHT)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setMinimumHeight(70)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def apply_mode(self, mode: Mode) -> None:
         """Uebernimmt ein anderes Erscheinungsbild."""
@@ -300,39 +299,20 @@ class AgeChart(_Chart):
 
 
 class ChartPanel(QWidget):
-    """Einklappbarer Streifen mit den drei Diagrammen.
+    """Streifen mit den drei Diagrammen unter der Liste.
 
-    Standardmaessig zu: die Diagramme sind Beiwerk, die Liste ist der Inhalt.
-    Die Zahlen werden erst beim ersten Aufklappen geholt - ein Abruf, den
-    niemand sehen will, muss auch nicht laufen.
+    Dauerhaft sichtbar: die Hoehe bestimmt der Anwender ueber den Splitter
+    darueber. Ein Einklappknopf waere daneben ein zweites Bedienelement fuer
+    dieselbe Sache.
     """
-
-    statistics_requested = Signal()
 
     def __init__(self, mode: Mode = Mode.DARK, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._mode = mode
-        self._requested = False
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(4)
-
-        self._toggle = QToolButton()
-        self._toggle.setObjectName("ChartToggle")
-        self._toggle.setText("Auswertung")
-        self._toggle.setCheckable(True)
-        self._toggle.setChecked(False)
-        self._toggle.setArrowType(Qt.ArrowType.RightArrow)
-        self._toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self._toggle.setAutoRaise(True)
-        self._toggle.toggled.connect(self._on_toggled)
-        outer.addWidget(self._toggle, 0, Qt.AlignmentFlag.AlignLeft)
-
-        self._body = QWidget()
-        body = QVBoxLayout(self._body)
-        body.setContentsMargins(0, 0, 0, 0)
-        body.setSpacing(2)
+        outer.setContentsMargins(0, 4, 0, 0)
+        outer.setSpacing(2)
 
         charts = QHBoxLayout()
         charts.setSpacing(12)
@@ -341,15 +321,12 @@ class ChartPanel(QWidget):
         self._age = AgeChart(mode)
         for chart in (self._flow, self._stock, self._age):
             charts.addWidget(chart, 1)
-        body.addLayout(charts)
+        outer.addLayout(charts, 1)
 
         self._note = QLabel(FOOTNOTE)
         self._note.setObjectName("ChartNote")
         self._note.setWordWrap(True)
-        body.addWidget(self._note)
-
-        self._body.setVisible(False)
-        outer.addWidget(self._body)
+        outer.addWidget(self._note)
 
     def set_statistics(self, stats: Statistics | None) -> None:
         """Verteilt die Zahlen auf die drei Diagramme."""
@@ -361,29 +338,3 @@ class ChartPanel(QWidget):
         self._mode = mode
         for chart in (self._flow, self._stock, self._age):
             chart.apply_mode(mode)
-
-    def invalidate(self) -> None:
-        """Vergisst, dass die Zahlen schon geholt wurden.
-
-        Nach einem neuen Abruf der Liste sind sie veraltet - beim naechsten
-        Aufklappen werden sie erneut angefordert.
-        """
-        self._requested = False
-        if self._toggle.isChecked():
-            self._request()
-
-    def _on_toggled(self, expanded: bool) -> None:
-        """Klappt auf oder zu und holt beim ersten Mal die Zahlen."""
-        self._body.setVisible(expanded)
-        self._toggle.setArrowType(
-            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
-        )
-        if expanded:
-            self._request()
-
-    def _request(self) -> None:
-        """Fordert die Zahlen an, aber hoechstens einmal je Stand."""
-        if self._requested:
-            return
-        self._requested = True
-        self.statistics_requested.emit()

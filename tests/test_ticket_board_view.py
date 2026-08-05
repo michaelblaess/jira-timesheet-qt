@@ -828,54 +828,63 @@ class TestDiagramme:
         assert window._assigned_board._charts is not None
         assert window._relevant_board._charts is None
 
-    def test_standardmaessig_eingeklappt(self, qapp: QApplication) -> None:
+    def test_liegt_unter_der_liste_hinter_einem_trenner(self, qapp: QApplication) -> None:
+        # Der Anwender bestimmt die Hoehe selbst - ein Einklappknopf waere
+        # daneben ein zweites Bedienelement fuer dieselbe Sache.
+        from PySide6.QtCore import Qt as Qt2
+
+        view = TicketBoardView("Test", with_charts=True)
+        assert view._splitter.orientation() is Qt2.Orientation.Vertical
+        assert view._splitter.count() == 2
+        # Reihenfolge: erst die Liste, dann die Auswertung.
+        assert view._splitter.widget(0) is view._pages
+        assert view._splitter.widget(1) is view._charts
+
+    def test_kein_einklappknopf_mehr(self, qapp: QApplication) -> None:
+        from PySide6.QtWidgets import QToolButton
+
         from jira_timesheet_qt.ui.ticket_charts import ChartPanel
 
         panel = ChartPanel()
-        assert panel._toggle.isChecked() is False
-        assert panel._body.isHidden() is True
+        assert not hasattr(panel, "_toggle")
+        assert panel.findChildren(QToolButton) == []
 
-    def test_erst_beim_aufklappen_werden_zahlen_geholt(self, qapp: QApplication) -> None:
-        # Ein Abruf, den niemand sehen will, muss auch nicht laufen.
-        from jira_timesheet_qt.ui.ticket_charts import ChartPanel
+    def test_keiner_der_beiden_teile_laesst_sich_zuklappen(self, qapp: QApplication) -> None:
+        # Sonst verschwindet die Liste oder die Auswertung versehentlich ganz.
+        view = TicketBoardView("Test", with_charts=True)
+        assert view._splitter.childrenCollapsible() is False
 
-        panel = ChartPanel()
-        gerufen: list[int] = []
-        panel.statistics_requested.connect(lambda: gerufen.append(1))
-        assert gerufen == []
-        panel._toggle.setChecked(True)
-        assert gerufen == [1]
+    def test_die_liste_bekommt_den_zusaetzlichen_platz(self, qapp: QApplication) -> None:
+        # Beim Vergroessern des Fensters soll die Tabelle wachsen, nicht die
+        # Auswertung. QSplitter hat keinen Abfrage-Zugang fuer den
+        # Streckfaktor - also das Verhalten pruefen statt der Einstellung.
+        view = TicketBoardView("Test", with_charts=True)
+        # Ohne show() loest der Splitter seine Geometrie nicht auf - alle
+        # Groessen blieben gleich, und der Test waere gruen ohne etwas zu
+        # pruefen.
+        view.resize(800, 600)
+        view.show()
+        qapp.processEvents()
+        vorher = view._splitter.sizes()
+        view.resize(800, 900)
+        qapp.processEvents()
+        nachher = view._splitter.sizes()
+        view.hide()
+        assert nachher[0] > vorher[0]
+        assert abs(nachher[1] - vorher[1]) <= 4
 
-    def test_zweites_aufklappen_holt_nicht_erneut(self, qapp: QApplication) -> None:
-        from jira_timesheet_qt.ui.ticket_charts import ChartPanel
+    def test_trenner_zustand_ueberlebt_die_ablage(self, qapp: QApplication) -> None:
+        view = TicketBoardView("Test", with_charts=True)
+        view._splitter.setSizes([400, 300])
+        zustand = view.splitter_state()
+        assert zustand
+        andere = TicketBoardView("Test", with_charts=True)
+        andere.restore_splitter_state(zustand)
+        assert andere.splitter_state() == zustand
 
-        panel = ChartPanel()
-        gerufen: list[int] = []
-        panel.statistics_requested.connect(lambda: gerufen.append(1))
-        panel._toggle.setChecked(True)
-        panel._toggle.setChecked(False)
-        panel._toggle.setChecked(True)
-        assert gerufen == [1]
-
-    def test_nach_neuer_liste_werden_die_zahlen_erneut_geholt(self, qapp: QApplication) -> None:
-        # Neue Liste heisst neue Lage - die alten Zahlen sind veraltet.
-        from jira_timesheet_qt.ui.ticket_charts import ChartPanel
-
-        panel = ChartPanel()
-        gerufen: list[int] = []
-        panel.statistics_requested.connect(lambda: gerufen.append(1))
-        panel._toggle.setChecked(True)
-        panel.invalidate()
-        assert gerufen == [1, 1]
-
-    def test_eingeklappt_wird_nach_neuer_liste_nichts_geholt(self, qapp: QApplication) -> None:
-        from jira_timesheet_qt.ui.ticket_charts import ChartPanel
-
-        panel = ChartPanel()
-        gerufen: list[int] = []
-        panel.statistics_requested.connect(lambda: gerufen.append(1))
-        panel.invalidate()
-        assert gerufen == []
+    def test_ohne_diagramme_gibt_es_keinen_trenner(self, qapp: QApplication) -> None:
+        view = TicketBoardView("Test")
+        assert view.splitter_state() == b""
 
     def test_diagramme_zeichnen_mit_daten(self, qapp: QApplication) -> None:
         from PySide6.QtGui import QPixmap

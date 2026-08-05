@@ -449,6 +449,19 @@ QSplitter::handle {{
     background-color: {p.border};
 }}
 
+/* Griffleiste zwischen Liste und Auswertung. Ohne sichtbare Hoehe und einen
+   Hover-Zustand findet man die Kante nicht - eine 1px-Linie ist kein Griff. */
+QSplitter#BoardSplitter::handle {{
+    background-color: {p.bg_secondary};
+    border-top: 1px solid {p.border};
+    border-bottom: 1px solid {p.border};
+    height: 7px;
+}}
+
+QSplitter#BoardSplitter::handle:hover {{
+    background-color: {p.accent_subtle};
+}}
+
 /* Trenn-/Griffleiste des Meldungsfensters (QDockWidget). Ohne eigene Regel ist
    sie im hellen Erscheinungsbild kaum zu sehen. */
 QMainWindow::separator {{

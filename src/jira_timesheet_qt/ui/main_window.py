@@ -293,7 +293,6 @@ class MainWindow(QMainWindow):
         self._assigned_board = TicketBoardView(
             "Meine Tickets", with_charts=True, mode=self._mode
         )
-        self._assigned_board.statistics_requested.connect(self._load_statistics)
         self._assigned_board.detail_requested.connect(self._show_detail)
         self._assigned_board.report_requested.connect(self.open_ticket_report)
         self._relevant_board = TicketBoardView("Relevante Tickets")
@@ -1259,8 +1258,9 @@ class MainWindow(QMainWindow):
     def _load_statistics(self) -> None:
         """Holt die Zahlen fuer die Diagramme.
 
-        Erst beim Aufklappen der Auswertung - die Historie braucht eine
-        eigene Abfrage, und eingeklappt sieht sie ohnehin niemand.
+        Eine eigene Abfrage ueber die ganze Historie, im Anschluss an die
+        Liste. Sie ist klein und schnell - das Ergebnis steht dauerhaft
+        unter der Tabelle und muss zur gezeigten Lage passen.
         """
         if not self._settings_complete():
             return
@@ -1300,6 +1300,10 @@ class MainWindow(QMainWindow):
             self._board_loaded[mode] = True
             self._refresh_summary_bar()
             self._set_status(f"{board.count} Tickets geladen")
+            if mode == MODE_ASSIGNED:
+                # Die Auswertung steht dauerhaft unter der Liste - sie muss
+                # zur gerade geladenen Lage passen.
+                self._load_statistics()
             if board.unknown_status:
                 # Nicht zugeordnete Status duerfen nicht still in einem
                 # Sammeltopf verschwinden - sonst merkt niemand, dass die
@@ -1816,6 +1820,9 @@ class MainWindow(QMainWindow):
         if state is not None:
             # Stellt auch die Sichtbarkeit des Meldungsfensters wieder her.
             self.restoreState(state)
+        splitter = self._qsettings.value("board/splitter")
+        if splitter is not None:
+            self._assigned_board.restore_splitter_state(bytes(splitter))
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802
         """Laesst die Beschreibungs-Spalte mitwachsen, wenn ein Viewport waechst.
@@ -1855,6 +1862,7 @@ class MainWindow(QMainWindow):
         """Merkt Fenstergroesse, -zustand und Spaltenbreiten, wartet auf den Faden."""
         self._qsettings.setValue("window/geometry", self.saveGeometry())
         self._qsettings.setValue("window/state", self.saveState())
+        self._qsettings.setValue("board/splitter", self._assigned_board.splitter_state())
         # Sichtbarkeit des Log-Docks festhalten - auch wenn es ueber sein eigenes
         # X geschlossen wurde (das laeuft nicht ueber toggle_log).
         self._settings.log_visible = self._log.isVisible()

@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QMenu,
+    QSplitter,
     QStackedWidget,
     QTreeView,
     QVBoxLayout,
@@ -36,7 +37,7 @@ from jira_timesheet_qt.services.ticket_board import Board, Marker, Ticket
 
 from .theme import Mode
 from .ticket_board_model import SORT_ROLE, TICKET_ROLE, TicketBoardModel
-from .ticket_charts import ChartPanel
+from .ticket_charts import CHART_HEIGHT, ChartPanel
 
 AnyIndex = QModelIndex | QPersistentModelIndex
 
@@ -112,7 +113,6 @@ class TicketBoardView(QWidget):
     # Felder anzeigen koennen, ohne sie erneut abzurufen.
     detail_requested = Signal(object)
     report_requested = Signal(str)
-    statistics_requested = Signal()
 
     def __init__(
         self,
@@ -145,12 +145,6 @@ class TicketBoardView(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(8, 8, 8, 8)
         outer.setSpacing(6)
-
-        self._charts: ChartPanel | None = None
-        if self._with_charts:
-            self._charts = ChartPanel(self._mode)
-            self._charts.statistics_requested.connect(self.statistics_requested.emit)
-            outer.addWidget(self._charts)
 
         head = QHBoxLayout()
         head.setSpacing(8)
@@ -200,7 +194,28 @@ class TicketBoardView(QWidget):
         self._pages = QStackedWidget()
         self._pages.addWidget(self._placeholder)
         self._pages.addWidget(self._tree)
-        outer.addWidget(self._pages, 1)
+
+        self._charts: ChartPanel | None = None
+        if not self._with_charts:
+            outer.addWidget(self._pages, 1)
+            return
+
+        # Liste oben, Auswertung unten, dazwischen ein greifbarer Trenner.
+        # Die Hoehe bestimmt der Anwender - ein Einklappknopf waere daneben
+        # ein zweites Bedienelement fuer dieselbe Sache.
+        self._charts = ChartPanel(self._mode)
+        self._splitter = QSplitter(Qt.Orientation.Vertical)
+        self._splitter.setObjectName("BoardSplitter")
+        self._splitter.setHandleWidth(7)
+        self._splitter.setChildrenCollapsible(False)
+        self._splitter.addWidget(self._pages)
+        self._splitter.addWidget(self._charts)
+        # Die Liste bekommt beim Vergroessern des Fensters den Platz, die
+        # Auswertung behaelt ihre Hoehe.
+        self._splitter.setStretchFactor(0, 1)
+        self._splitter.setStretchFactor(1, 0)
+        self._splitter.setSizes([600, CHART_HEIGHT])
+        outer.addWidget(self._splitter, 1)
 
     # --- Fuellen ---------------------------------------------------------
 
@@ -216,9 +231,6 @@ class TicketBoardView(QWidget):
         self._fill_status_filter(board)
         self._tree.expandAll()
         self._resize_columns()
-        if self._charts is not None:
-            # Neue Liste heisst neue Lage - die Zahlen sind veraltet.
-            self._charts.invalidate()
         if board is not None and board.count == 0:
             self._show_placeholder("Keine Tickets gefunden.")
         else:
@@ -228,6 +240,19 @@ class TicketBoardView(QWidget):
         """Reicht die ausgewerteten Zahlen an die Diagramme weiter."""
         if self._charts is not None:
             self._charts.set_statistics(stats)  # type: ignore[arg-type]
+
+    def splitter_state(self) -> bytes:
+        """Zustand des Trenners fuer die dauerhafte Ablage."""
+        if self._charts is None:
+            return b""
+        # .data() ist als bytes-artig typisiert - fuer die Ablage brauchen wir
+        # echte bytes.
+        return bytes(self._splitter.saveState().data())
+
+    def restore_splitter_state(self, state: bytes) -> None:
+        """Stellt einen gemerkten Trenner-Zustand wieder her."""
+        if self._charts is not None and state:
+            self._splitter.restoreState(state)
 
     def apply_mode(self, mode: Mode) -> None:
         """Uebernimmt ein anderes Erscheinungsbild."""
