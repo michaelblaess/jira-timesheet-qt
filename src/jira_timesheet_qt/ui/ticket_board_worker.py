@@ -21,14 +21,18 @@ from jira_timesheet_qt.services.jira_client import JiraClient, JiraClientError
 from jira_timesheet_qt.services.ticket_board import (
     DEFAULT_PRIORITIES,
     FIELDS,
+    STATS_FIELDS,
     AccountIdError,
     Board,
     BoardConfig,
     Role,
+    Statistics,
     WorklogInfo,
     assigned_jql,
     build_board,
+    build_statistics,
     closing_jql,
+    history_jql,
     parse_ts,
     pending_worklog_keys,
     relevant_jql,
@@ -203,3 +207,46 @@ class TicketBoardWorker(QThread):
             browse_base=settings.jira_host,
             worklogs=worklogs,
         )
+
+
+class TicketStatsWorker(QThread):
+    """Holt die Ticket-Historie und wertet sie fuer die Diagramme aus.
+
+    Bewusst ein eigener Faden und nicht Teil des Listen-Abrufs: die Historie
+    braucht eine weitere Abfrage, und die Diagramme sind standardmaessig
+    eingeklappt. Ein Abruf, den niemand sehen will, muss auch nicht laufen.
+    """
+
+    finished_ok = Signal(object)
+    failed = Signal(str)
+    log = Signal(str)
+
+    def __init__(self, settings: Settings, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._settings = settings
+
+    def run(self) -> None:
+        """Laeuft im Hintergrund-Thread."""
+        try:
+            stats = asyncio.run(self._fetch())
+        except JiraClientError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:  # noqa: BLE001 - der Faden darf nie unbemerkt sterben
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+        else:
+            self.finished_ok.emit(stats)
+
+    async def _fetch(self) -> Statistics:
+        """Holt alle eigenen Tickets, offen wie erledigt."""
+        settings = self._settings
+        client = JiraClient(
+            host=settings.jira_host,
+            email=settings.email,
+            token=settings.jira_token,
+            budget_field=settings.budget_field,
+            legacy=settings.use_legacy_api,
+            proxy=settings.proxy_url,
+            on_log=self.log.emit,
+        )
+        _, issues = await client.fetch_issues(lambda _aid: [history_jql()], STATS_FIELDS)
+        return build_statistics(issues, dt.datetime.now(dt.UTC))

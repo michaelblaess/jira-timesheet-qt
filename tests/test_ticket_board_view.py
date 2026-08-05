@@ -790,3 +790,149 @@ class TestMeldungskanaele:
         vorher = window._log.line_count
         window.log_message("JQL: irgendwas")
         assert window._log.line_count == vorher + 1
+
+
+class TestDiagramme:
+    """Der einklappbare Auswertungsstreifen über der Tabelle."""
+
+    def _stats(self):
+        from jira_timesheet_qt.services.ticket_board import build_statistics
+
+        def issue_row(key: str, created: str, done: str = "") -> dict[str, object]:
+            fields: dict[str, object] = {
+                "created": created,
+                "updated": "2026-08-01T10:00:00.000+0200",
+                "status": {
+                    "name": "Fertig" if done else "In Arbeit",
+                    "statusCategory": {"key": "done" if done else "indeterminate"},
+                },
+                "issuetype": {"name": "Story"},
+            }
+            if done:
+                fields["statuscategorychangedate"] = done
+            return {"key": key, "fields": fields}
+
+        return build_statistics(
+            [
+                issue_row("A-1", "2026-05-02T10:00:00.000+0200"),
+                issue_row("A-2", "2026-06-02T10:00:00.000+0200"),
+                issue_row("A-3", "2026-06-03T10:00:00.000+0200", "2026-07-02T10:00:00.000+0200"),
+            ],
+            now=NOW,
+        )
+
+    def test_nur_bei_den_eigenen_tickets(self, qapp: QApplication) -> None:
+        # Die Auswertung zeigt den eigenen Durchsatz. Bei fremden Tickets wäre
+        # sie eine Zahl über jemand anderen.
+        window = MainWindow(Settings(), Mode.DARK)
+        assert window._assigned_board._charts is not None
+        assert window._relevant_board._charts is None
+
+    def test_standardmaessig_eingeklappt(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.ui.ticket_charts import ChartPanel
+
+        panel = ChartPanel()
+        assert panel._toggle.isChecked() is False
+        assert panel._body.isHidden() is True
+
+    def test_erst_beim_aufklappen_werden_zahlen_geholt(self, qapp: QApplication) -> None:
+        # Ein Abruf, den niemand sehen will, muss auch nicht laufen.
+        from jira_timesheet_qt.ui.ticket_charts import ChartPanel
+
+        panel = ChartPanel()
+        gerufen: list[int] = []
+        panel.statistics_requested.connect(lambda: gerufen.append(1))
+        assert gerufen == []
+        panel._toggle.setChecked(True)
+        assert gerufen == [1]
+
+    def test_zweites_aufklappen_holt_nicht_erneut(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.ui.ticket_charts import ChartPanel
+
+        panel = ChartPanel()
+        gerufen: list[int] = []
+        panel.statistics_requested.connect(lambda: gerufen.append(1))
+        panel._toggle.setChecked(True)
+        panel._toggle.setChecked(False)
+        panel._toggle.setChecked(True)
+        assert gerufen == [1]
+
+    def test_nach_neuer_liste_werden_die_zahlen_erneut_geholt(self, qapp: QApplication) -> None:
+        # Neue Liste heisst neue Lage - die alten Zahlen sind veraltet.
+        from jira_timesheet_qt.ui.ticket_charts import ChartPanel
+
+        panel = ChartPanel()
+        gerufen: list[int] = []
+        panel.statistics_requested.connect(lambda: gerufen.append(1))
+        panel._toggle.setChecked(True)
+        panel.invalidate()
+        assert gerufen == [1, 1]
+
+    def test_eingeklappt_wird_nach_neuer_liste_nichts_geholt(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.ui.ticket_charts import ChartPanel
+
+        panel = ChartPanel()
+        gerufen: list[int] = []
+        panel.statistics_requested.connect(lambda: gerufen.append(1))
+        panel.invalidate()
+        assert gerufen == []
+
+    def test_diagramme_zeichnen_mit_daten(self, qapp: QApplication) -> None:
+        from PySide6.QtGui import QPixmap
+
+        from jira_timesheet_qt.ui.ticket_charts import AgeChart, FlowChart, StockChart
+
+        stats = self._stats()
+        for cls in (FlowChart, StockChart, AgeChart):
+            chart = cls()
+            chart.resize(240, 130)
+            chart.set_statistics(stats)
+            # render() erzwingt einen Zeichenvorgang - ein Fehler dort faellt
+            # sonst erst am laufenden Fenster auf.
+            chart.render(QPixmap(chart.size()))
+
+    def test_diagramme_zeichnen_auch_ohne_daten(self, qapp: QApplication) -> None:
+        from PySide6.QtGui import QPixmap
+
+        from jira_timesheet_qt.ui.ticket_charts import AgeChart, FlowChart, StockChart
+
+        for cls in (FlowChart, StockChart, AgeChart):
+            chart = cls()
+            chart.resize(240, 130)
+            chart.set_statistics(None)
+            chart.render(QPixmap(chart.size()))
+
+    def test_die_zahlen_stimmen(self, qapp: QApplication) -> None:
+        stats = self._stats()
+        # Drei angelegt, eines erledigt.
+        assert stats.inflow_total == 3
+        assert stats.outflow_total == 1
+        assert stats.balance_total == 2
+        assert stats.open_count == 2
+        # Lueckenlose Monatsreihe von Mai bis August.
+        assert [m.month for m in stats.months] == [
+            "2026-05",
+            "2026-06",
+            "2026-07",
+            "2026-08",
+        ]
+        assert [m.cumulative for m in stats.months] == [1, 3, 2, 2]
+
+    def test_fussnote_nennt_die_grenze(self, qapp: QApplication) -> None:
+        # Gezaehlt wird nur, was aktuell dieser Person zugewiesen ist - das
+        # gehoert unter das Bild, sonst liest man eine Untergrenze als
+        # Gesamtbild.
+        from jira_timesheet_qt.ui.ticket_charts import ChartPanel
+
+        panel = ChartPanel()
+        assert "Untergrenze" in panel._note.text()
+
+    def test_abweichende_ticketzahl_wird_erklaert(self, qapp: QApplication) -> None:
+        # Die Liste zaehlt zusaetzlich die Abschluss-Status, die Jira schon
+        # als fertig fuehrt. Ohne Erklaerung stehen zwei verschiedene Zahlen
+        # uebereinander und niemand weiss warum.
+        from jira_timesheet_qt.ui.ticket_charts import AgeChart
+
+        chart = AgeChart()
+        chart.set_statistics(self._stats())
+        assert "Abschluss-Status" in chart.toolTip()

@@ -34,7 +34,9 @@ from PySide6.QtWidgets import (
 
 from jira_timesheet_qt.services.ticket_board import Board, Marker, Ticket
 
+from .theme import Mode
 from .ticket_board_model import SORT_ROLE, TICKET_ROLE, TicketBoardModel
+from .ticket_charts import ChartPanel
 
 AnyIndex = QModelIndex | QPersistentModelIndex
 
@@ -110,10 +112,23 @@ class TicketBoardView(QWidget):
     # Felder anzeigen koennen, ohne sie erneut abzurufen.
     detail_requested = Signal(object)
     report_requested = Signal(str)
+    statistics_requested = Signal()
 
-    def __init__(self, title: str, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        title: str,
+        *,
+        with_charts: bool = False,
+        mode: Mode = Mode.DARK,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self._title = title
+        # Die Auswertung zeigt den eigenen Durchsatz. Bei fremden Tickets
+        # waere sie eine Zahl ueber jemand anderen - deshalb nur dort, wo
+        # es die eigenen sind.
+        self._with_charts = with_charts
+        self._mode = mode
         self._board: Board | None = None
         # Die Analyse braucht Zugangsdaten. Ohne sie bleibt der Eintrag
         # sichtbar, aber ausgegraut - so bleibt das Menue an jeder Zeile
@@ -130,6 +145,12 @@ class TicketBoardView(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(8, 8, 8, 8)
         outer.setSpacing(6)
+
+        self._charts: ChartPanel | None = None
+        if self._with_charts:
+            self._charts = ChartPanel(self._mode)
+            self._charts.statistics_requested.connect(self.statistics_requested.emit)
+            outer.addWidget(self._charts)
 
         head = QHBoxLayout()
         head.setSpacing(8)
@@ -195,10 +216,24 @@ class TicketBoardView(QWidget):
         self._fill_status_filter(board)
         self._tree.expandAll()
         self._resize_columns()
+        if self._charts is not None:
+            # Neue Liste heisst neue Lage - die Zahlen sind veraltet.
+            self._charts.invalidate()
         if board is not None and board.count == 0:
             self._show_placeholder("Keine Tickets gefunden.")
         else:
             self._pages.setCurrentWidget(self._tree)
+
+    def set_statistics(self, stats: object) -> None:
+        """Reicht die ausgewerteten Zahlen an die Diagramme weiter."""
+        if self._charts is not None:
+            self._charts.set_statistics(stats)  # type: ignore[arg-type]
+
+    def apply_mode(self, mode: Mode) -> None:
+        """Uebernimmt ein anderes Erscheinungsbild."""
+        self._mode = mode
+        if self._charts is not None:
+            self._charts.apply_mode(mode)
 
     def set_loading(self, text: str = "Tickets werden geladen ...") -> None:
         """Zeigt waehrend des Abrufs einen Hinweis statt einer leeren Tabelle.

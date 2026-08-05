@@ -85,6 +85,7 @@ from jira_timesheet_qt.ui.ticket_board_worker import (
     MODE_ASSIGNED,
     MODE_RELEVANT,
     TicketBoardWorker,
+    TicketStatsWorker,
     config_from,
 )
 from jira_timesheet_qt.ui.timesheet_model import ENTRY_ROLE, SORT_ROLE, TimesheetModel
@@ -289,7 +290,10 @@ class MainWindow(QMainWindow):
         # Klick auf eine Top-Ticketnummer in einer Jahreskachel oeffnet den Eintrag.
         self._year_view.ticket_activated.connect(self._show_detail)
 
-        self._assigned_board = TicketBoardView("Meine Tickets")
+        self._assigned_board = TicketBoardView(
+            "Meine Tickets", with_charts=True, mode=self._mode
+        )
+        self._assigned_board.statistics_requested.connect(self._load_statistics)
         self._assigned_board.detail_requested.connect(self._show_detail)
         self._assigned_board.report_requested.connect(self.open_ticket_report)
         self._relevant_board = TicketBoardView("Relevante Tickets")
@@ -1251,6 +1255,29 @@ class MainWindow(QMainWindow):
         worker.finished.connect(worker.deleteLater)
         self._running_workers.append(worker)
         worker.start()
+
+    def _load_statistics(self) -> None:
+        """Holt die Zahlen fuer die Diagramme.
+
+        Erst beim Aufklappen der Auswertung - die Historie braucht eine
+        eigene Abfrage, und eingeklappt sieht sie ohnehin niemand.
+        """
+        if not self._settings_complete():
+            return
+        self._set_status("Auswertung wird geladen ...", "busy")
+        worker = TicketStatsWorker(self._settings, self)
+        worker.log.connect(self._log.write)
+        worker.finished_ok.connect(self._on_statistics)
+        worker.failed.connect(lambda message: self._set_status(message, "error"))
+        worker.finished.connect(worker.deleteLater)
+        self._running_workers.append(worker)
+        worker.start()
+
+    def _on_statistics(self, stats: object) -> None:
+        """Uebernimmt die ausgewerteten Zahlen in die Diagramme."""
+        self._running_workers = [w for w in self._running_workers if w.isRunning()]
+        self._assigned_board.set_statistics(stats)
+        self._set_status("Auswertung geladen")
 
     def _board_is_current(self, mode: str, generation: int) -> bool:
         """Prueft, ob ein Ergebnis noch zur juengsten Anforderung gehoert."""
