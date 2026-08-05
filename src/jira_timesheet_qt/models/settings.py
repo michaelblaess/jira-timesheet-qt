@@ -152,6 +152,30 @@ class Settings:
     # Auswahlliste fuer das Kunden-Feld im Dialog fuer manuelle Zeiten.
     customers: list[str] = field(default_factory=lambda: list(DEFAULT_CUSTOMERS))
 
+    # --- Ticket-Ansichten ------------------------------------------------
+    # Welcher Status welche Rolle hat, ist bewusst KEINE Konstante im Code:
+    # jede Jira-Instanz fuehrt eigene Workflows, und fest verdrahtete Namen
+    # waeren zugleich instanzspezifisch und fremde Betriebsinterna. Bleiben
+    # die Listen leer, faellt die Anwendung auf die Jira-Statuskategorie
+    # zurueck - groeber, aber sofort und ueberall brauchbar.
+    board_active_status: list[str] = field(default_factory=list)
+    board_backlog_status: list[str] = field(default_factory=list)
+    board_handback_status: list[str] = field(default_factory=list)
+    board_acceptance_status: list[str] = field(default_factory=list)
+    board_closing_status: list[str] = field(default_factory=list)
+    # Rangfolge der Prioritaeten, dringendstes zuerst. Leer = die von Jira
+    # gelieferte Reihenfolge.
+    board_priorities: list[str] = field(default_factory=list)
+    # Zeitfenster der Ansicht "Relevante Tickets" in Kalendertagen.
+    board_window_days: int = 90
+    # Ab so vielen Kalendertagen ohne Aenderung gilt ein Ticket als verwaist.
+    board_stale_days: int = 180
+    # Ab so vielen ARBEITSTAGEN ohne Regung und ohne Buchung faellt ein
+    # Ticket je Rolle auf. 0 = diese Rolle erzeugt keinen Pile of Shame.
+    board_threshold_active: float = 20.0
+    board_threshold_acceptance: float = 10.0
+    board_threshold_closing: float = 0.0
+
     SETTINGS_DIR: Path = Path.home() / ".jira-timesheet-qt"
     SETTINGS_FILE: Path = SETTINGS_DIR / "settings.json"
 
@@ -191,6 +215,17 @@ class Settings:
         "default_customer",
         "customers",
         "last_export_dir",
+        "board_active_status",
+        "board_backlog_status",
+        "board_handback_status",
+        "board_acceptance_status",
+        "board_closing_status",
+        "board_priorities",
+        "board_window_days",
+        "board_stale_days",
+        "board_threshold_active",
+        "board_threshold_acceptance",
+        "board_threshold_closing",
     )
 
     def to_dict(self) -> dict[str, object]:
@@ -288,10 +323,47 @@ class Settings:
                 default_customer=str(data.get("default_customer", "Vertrieb")),
                 customers=Settings._parse_customers(data.get("customers")),
                 last_export_dir=str(data.get("last_export_dir", "")),
+                board_active_status=Settings._parse_str_list(data.get("board_active_status")),
+                board_backlog_status=Settings._parse_str_list(data.get("board_backlog_status")),
+                board_handback_status=Settings._parse_str_list(
+                    data.get("board_handback_status")
+                ),
+                board_acceptance_status=Settings._parse_str_list(
+                    data.get("board_acceptance_status")
+                ),
+                board_closing_status=Settings._parse_str_list(data.get("board_closing_status")),
+                board_priorities=Settings._parse_str_list(data.get("board_priorities")),
+                board_window_days=int(data.get("board_window_days", 90) or 0),
+                board_stale_days=int(data.get("board_stale_days", 180) or 0),
+                board_threshold_active=float(data.get("board_threshold_active", 20.0) or 0.0),
+                board_threshold_acceptance=float(
+                    data.get("board_threshold_acceptance", 10.0) or 0.0
+                ),
+                board_threshold_closing=float(data.get("board_threshold_closing", 0.0) or 0.0),
             )
         except Exception as exc:
             logger.warning("Settings konnten nicht aufgebaut werden: %s", exc)
             return Settings()
+
+    @staticmethod
+    def _parse_str_list(raw: object) -> list[str]:
+        """Liest eine Liste von Zeichenketten aus den gespeicherten Daten.
+
+        Akzeptiert auch eine Kommaliste, damit ein von Hand bearbeitetes
+        Einstellungsfile nicht zum Datenverlust fuehrt.
+
+        Args:
+            raw:
+                Der rohe Wert aus der JSON-Datei.
+
+        Returns:
+            Die bereinigte Liste, leere Eintraege entfallen.
+        """
+        if isinstance(raw, list):
+            return [str(x).strip() for x in raw if str(x).strip()]
+        if isinstance(raw, str):
+            return [part.strip() for part in raw.split(",") if part.strip()]
+        return []
 
     @staticmethod
     def legacy_available() -> bool:

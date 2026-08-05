@@ -15,7 +15,7 @@ from jira_timesheet_qt.ui.calendar_view import CalendarView
 from jira_timesheet_qt.ui.crash_guard import ErrorDialog, format_report
 from jira_timesheet_qt.ui.demo import demo_timesheet
 from jira_timesheet_qt.ui.export_service import ExportService
-from jira_timesheet_qt.ui.main_window import MainWindow
+from jira_timesheet_qt.ui.main_window import _VIEWS, MainWindow
 from jira_timesheet_qt.ui.theme import Mode
 from jira_timesheet_qt.ui.year_view import YearView
 
@@ -204,10 +204,14 @@ class TestCrashGuard:
 
 
 class TestViewsInWindow:
-    def test_all_three_views_are_reachable(self, qapp: QApplication) -> None:
+    def test_every_tab_reaches_its_own_view(self, qapp: QApplication) -> None:
+        # Die Zahl bewusst NICHT fest verdrahten: sie waechst mit den
+        # Ansichten mit, und ein Reiter, der die Seite eines anderen zeigt,
+        # ist genau der Fehler, den dieser Test finden soll.
         window = MainWindow(Settings(), Mode.DARK)
-        assert window._stack.count() == 3
-        for index in range(3):
+        assert window._tabs.count() == len(_VIEWS)
+        assert window._stack.count() == len(_VIEWS)
+        for index in range(window._tabs.count()):
             window._tabs.setCurrentIndex(index)
             assert window._stack.currentIndex() == index
 

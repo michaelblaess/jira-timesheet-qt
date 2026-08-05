@@ -126,8 +126,15 @@ class TestSettingsDialog:
         assert dialog.result_settings().accent == "gruen"
 
     def test_all_pages_are_reachable(self, qapp: QApplication) -> None:
+        # Die Zahl bewusst NICHT fest verdrahten - sie waechst mit den Seiten
+        # mit. Der Fehler, den dieser Test finden soll, ist ein
+        # Navigationseintrag ohne Seite (oder umgekehrt).
         dialog = SettingsDialog(Settings())
-        assert dialog._nav.count() == dialog._pages.count() == 6
+        assert dialog._nav.count() == dialog._pages.count()
+        assert dialog._nav.count() >= 6
+        for row in range(dialog._nav.count()):
+            dialog._nav.setCurrentRow(row)
+            assert dialog._pages.currentIndex() == row
 
     def test_detect_button_disabled_in_legacy_mode(self, qapp: QApplication) -> None:
         """Die Autoerkennung nutzt die Cloud-API - im Data-Center-Modus aus."""

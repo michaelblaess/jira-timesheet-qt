@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -278,6 +278,104 @@ class JiraClient:
                 matches.append((field_id, field_name))
 
         return matches
+
+    async def fetch_issues(
+        self,
+        build_jqls: Callable[[str], Sequence[str]],
+        fields: str,
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """Fuehrt mehrere JQL-Suchen in EINER Sitzung aus.
+
+        Fuer die Ticket-Ansichten. Der Client bleibt dabei ohne Kenntnis der
+        Auswertung: er liefert die Rohantworten, die Regeln liegen in
+        services.ticket_board.
+
+        Die Ausdruecke kommen ueber eine Fabrik statt als fertige Liste, weil
+        manche von ihnen die eigene accountId brauchen - und die steht erst
+        fest, wenn die Sitzung offen ist.
+
+        Args:
+            build_jqls:
+                Bekommt die eigene accountId und liefert die auszufuehrenden
+                Ausdruecke. Leere werden uebersprungen, damit eine nicht
+                konfigurierte Abfrage nichts kaputt macht.
+            fields:
+                Kommaliste der angeforderten Felder.
+
+        Returns:
+            Die eigene accountId und alle gefundenen Issues. Doppelte
+            Schluessel bleiben enthalten - das Zusammenfassen macht der Kern.
+        """
+        auth = None if self._legacy else (self._email, self._token)
+        issues: list[dict[str, Any]] = []
+        account_id = ""
+
+        async with httpx.AsyncClient(
+            verify=False,
+            timeout=60.0,
+            follow_redirects=True,
+            auth=auth,
+            proxy=self._proxy or None,
+        ) as client:
+            if not self._legacy:
+                account_id = await self._fetch_account_id(client)
+                self._account_id = account_id
+            for jql in build_jqls(account_id):
+                if not jql.strip():
+                    continue
+                self._log(t("jira.jql", jql=jql))
+                issues.extend(await self._search_issues(client, jql, fields))
+
+        self._log(t("jira.issues_found", count=len(issues)))
+        return account_id, issues
+
+    async def fetch_worklog_stats(self, keys: Sequence[str]) -> dict[str, tuple[int, str]]:
+        """Holt Anzahl und juengsten Startzeitpunkt der Buchungen je Ticket.
+
+        Kostet einen Abruf je Ticket - deshalb wird die Liste vom Kern
+        vorgefiltert und enthaelt nur die bereits auffaelligen Tickets.
+
+        Args:
+            keys:
+                Die Ticketschluessel.
+
+        Returns:
+            Je Schluessel ein Paar aus Anzahl und juengstem Startzeitpunkt
+            als ISO-Zeichenkette. Leer, wenn nie gebucht wurde. Tickets,
+            deren Abruf scheitert, fehlen im Ergebnis - dann bleibt der
+            Pile-of-Shame-Marker ungesetzt statt geraten.
+        """
+        if not keys:
+            return {}
+
+        api = "2" if self._legacy else "3"
+        auth = None if self._legacy else (self._email, self._token)
+        result: dict[str, tuple[int, str]] = {}
+
+        async with httpx.AsyncClient(
+            verify=False,
+            timeout=60.0,
+            follow_redirects=True,
+            auth=auth,
+            proxy=self._proxy or None,
+        ) as client:
+            for key in keys:
+                url = f"{self._host}/rest/api/{api}/issue/{key}/worklog"
+                try:
+                    response = await client.get(
+                        url, headers=self._headers(), params={"maxResults": 1000}
+                    )
+                except httpx.HTTPError as exc:
+                    logger.warning("Worklogs von %s nicht abrufbar: %s", key, exc)
+                    continue
+                if response.status_code != 200:
+                    logger.warning("Worklogs von %s: HTTP %s", key, response.status_code)
+                    continue
+                logs = response.json().get("worklogs", [])
+                started = sorted(str(w.get("started", "")) for w in logs if w.get("started"))
+                result[key] = (len(logs), started[-1] if started else "")
+
+        return result
 
     async def _fetch_account_id(self, client: httpx.AsyncClient) -> str:
         """Ermittelt die accountId des angemeldeten Benutzers (Cloud-Modus).

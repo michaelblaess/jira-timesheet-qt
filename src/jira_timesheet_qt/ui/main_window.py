@@ -26,6 +26,7 @@ from PySide6.QtCore import (
     QSize,
     QSortFilterProxyModel,
     Qt,
+    QThread,
     QTimer,
     Signal,
 )
@@ -62,6 +63,7 @@ from jira_timesheet_qt.services.anonymizer import (
 )
 from jira_timesheet_qt.services.holiday_service import HolidayService
 from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
+from jira_timesheet_qt.services.ticket_board import Board
 from jira_timesheet_qt.ui.about_dialog import AboutDialog
 from jira_timesheet_qt.ui.calendar_view import CalendarView, DayCell
 from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
@@ -76,12 +78,19 @@ from jira_timesheet_qt.ui.menu import Command, CommandRegistry, MenuBuilder, Men
 from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
 from jira_timesheet_qt.ui.summary_bar import SummaryBar
 from jira_timesheet_qt.ui.theme import SCALES, Mode, palette_for, set_accent, set_scale
+from jira_timesheet_qt.ui.ticket_board_view import TicketBoardView
+from jira_timesheet_qt.ui.ticket_board_worker import (
+    MODE_ASSIGNED,
+    MODE_RELEVANT,
+    TicketBoardWorker,
+    config_from,
+)
 from jira_timesheet_qt.ui.timesheet_model import ENTRY_ROLE, SORT_ROLE, TimesheetModel
 from jira_timesheet_qt.ui.timesheet_tree_model import TimesheetTreeModel
 from jira_timesheet_qt.ui.toast import Toast
 from jira_timesheet_qt.ui.year_view import YearView
 
-_VIEWS = ("Liste", "Kalender", "Jahr")
+_VIEWS = ("Liste", "Kalender", "Jahr", "Meine Tickets", "Relevante Tickets")
 
 _MONTHS = (
     "Januar", "Februar", "März", "April", "Mai", "Juni",
@@ -133,7 +142,11 @@ class MainWindow(QMainWindow):
         # Alle noch laufenden Faeden, auch die ueberholten. Beim Schliessen muss
         # auf jeden davon gewartet werden, sonst zerstoert Qt einen laufenden
         # Faden mitsamt dem Fenster.
-        self._running_workers: list[WorklogWorker] = []
+        self._running_workers: list[QThread] = []
+        # Je Ticket-Ansicht eine eigene Abruf-Nummer: beide laden
+        # unabhaengig voneinander, ein Ergebnis darf das andere nicht
+        # entwerten.
+        self._board_generation: dict[str, int] = {MODE_ASSIGNED: 0, MODE_RELEVANT: 0}
         # Angezeigter Stundenzettel (bei aktiver Anonymisierung die Dummy-Kopie).
         self._timesheet: Timesheet | None = None
         # Echte Rohdaten - bleiben erhalten, damit die Anonymisierung reversibel
@@ -260,10 +273,21 @@ class MainWindow(QMainWindow):
         # Klick auf eine Top-Ticketnummer in einer Jahreskachel oeffnet den Eintrag.
         self._year_view.ticket_activated.connect(self._show_detail)
 
+        self._assigned_board = TicketBoardView("Meine Tickets")
+        self._assigned_board.reload_requested.connect(
+            lambda: self._load_board(MODE_ASSIGNED)
+        )
+        self._relevant_board = TicketBoardView("Relevante Tickets")
+        self._relevant_board.reload_requested.connect(
+            lambda: self._load_board(MODE_RELEVANT)
+        )
+
         self._stack = QStackedWidget()
         self._stack.addWidget(self._list_stack)
         self._stack.addWidget(self._calendar)
         self._stack.addWidget(self._year_view)
+        self._stack.addWidget(self._assigned_board)
+        self._stack.addWidget(self._relevant_board)
         outer.addWidget(self._stack, 1)
 
         self._summary = SummaryBar(self._mode)
@@ -1054,6 +1078,86 @@ class MainWindow(QMainWindow):
             self._on_loaded,
             f"Lade {_month_name(self._month)} {self._year} ...",
         )
+
+    # --- Ticket-Ansichten -----------------------------------------------
+
+    def _board_view(self, mode: str) -> TicketBoardView:
+        """Liefert die Ansicht zu einem Abrufmodus."""
+        return self._assigned_board if mode == MODE_ASSIGNED else self._relevant_board
+
+    def _load_board(self, mode: str) -> None:
+        """Startet den Abruf einer Ticket-Ansicht.
+
+        Jede Ansicht fuehrt eine eigene Abruf-Nummer: beide laden unabhaengig
+        voneinander, und das Ergebnis der einen darf das der anderen nicht
+        entwerten. Ein ueberholter Faden laeuft zu Ende - ein QThread laesst
+        sich nicht abbrechen -, sein Ergebnis wird aber verworfen.
+
+        Args:
+            mode:
+                MODE_ASSIGNED oder MODE_RELEVANT.
+        """
+        view = self._board_view(mode)
+        if not self._settings_complete():
+            view.set_message("Zugangsdaten fehlen - bitte zuerst die Einstellungen ausfüllen.")
+            return
+
+        self._board_generation[mode] = self._board_generation.get(mode, 0) + 1
+        generation = self._board_generation[mode]
+
+        view.set_busy(True, "Wird geladen ...")
+        worker = TicketBoardWorker(self._settings, config_from(self._settings), mode, self)
+        worker.progress.connect(
+            lambda text, m=mode, g=generation: self._on_board_progress(text, m, g)
+        )
+        worker.finished_ok.connect(
+            lambda board, m=mode, g=generation: self._on_board_loaded(board, m, g)
+        )
+        worker.failed.connect(
+            lambda message, m=mode, g=generation: self._on_board_failed(message, m, g)
+        )
+        worker.finished.connect(worker.deleteLater)
+        self._running_workers.append(worker)
+        worker.start()
+
+    def _board_is_current(self, mode: str, generation: int) -> bool:
+        """Prueft, ob ein Ergebnis noch zur juengsten Anforderung gehoert."""
+        return generation == self._board_generation.get(mode, 0)
+
+    def _on_board_progress(self, text: str, mode: str, generation: int) -> None:
+        """Zwischenmeldung eines laufenden Abrufs."""
+        if not self._board_is_current(mode, generation):
+            return
+        self._board_view(mode).set_busy(True, text)
+        self._log.write(text, Level.INFO)
+
+    def _on_board_loaded(self, board: object, mode: str, generation: int) -> None:
+        """Uebernimmt ein fertiges Ergebnis."""
+        self._running_workers = [w for w in self._running_workers if w.isRunning()]
+        if not self._board_is_current(mode, generation):
+            return
+        view = self._board_view(mode)
+        view.set_busy(False)
+        if isinstance(board, Board):
+            view.set_board(board)
+            if board.unknown_status:
+                # Nicht zugeordnete Status duerfen nicht still in einem
+                # Sammeltopf verschwinden - sonst merkt niemand, dass die
+                # Konfiguration nachzuziehen ist.
+                self._log.write(
+                    "Status ohne Zuordnung: " + ", ".join(board.unknown_status),
+                    Level.WARNING,
+                )
+
+    def _on_board_failed(self, message: str, mode: str, generation: int) -> None:
+        """Meldet einen gescheiterten Abruf in der Ansicht und im Protokoll."""
+        self._running_workers = [w for w in self._running_workers if w.isRunning()]
+        if not self._board_is_current(mode, generation):
+            return
+        view = self._board_view(mode)
+        view.set_busy(False)
+        view.set_message(message)
+        self._log.write(message, Level.ERROR)
 
     def _start_worker(
         self,

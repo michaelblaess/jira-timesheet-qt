@@ -70,6 +70,11 @@ _STATES = (
 )
 
 
+def _split(raw: str) -> list[str]:
+    """Zerlegt eine Kommaliste, leere Eintraege entfallen."""
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
 class SettingsDialog(QDialog):
     """Dialog zum Bearbeiten der Einstellungen.
 
@@ -97,13 +102,16 @@ class SettingsDialog(QDialog):
         self._nav = QListWidget()
         self._nav.setObjectName("SettingsNav")
         self._nav.setFixedWidth(180)
-        self._nav.addItems(["Zugang", "Arbeitszeit", "Export", "Spalten", "Darstellung", "Speicherort"])
+        self._nav.addItems(
+            ["Zugang", "Arbeitszeit", "Tickets", "Export", "Spalten", "Darstellung", "Speicherort"]
+        )
         self._nav.setCurrentRow(0)
         body.addWidget(self._nav)
 
         self._pages = QStackedWidget()
         self._pages.addWidget(self._page_access())
         self._pages.addWidget(self._page_worktime())
+        self._pages.addWidget(self._page_tickets())
         self._pages.addWidget(self._page_export())
         self._pages.addWidget(self._page_columns())
         self._pages.addWidget(self._page_appearance())
@@ -351,6 +359,108 @@ class SettingsDialog(QDialog):
         form.addRow(self._label("Bundesland"), self.state)
         form.addRow(self._hint("Bestimmt, welche Feiertage als arbeitsfrei gelten."))
         return page
+
+    def _page_tickets(self) -> QWidget:
+        page, form = self._page("Ticket-Ansichten")
+
+        form.addRow(
+            self._hint(
+                "Welcher Status welche Rolle hat, weiß nur diese Jira-Instanz. Bleiben die "
+                "Felder leer, ordnet die Anwendung nach der Jira-Statuskategorie zu - das ist "
+                "gröber, funktioniert aber sofort. Mehrere Status durch Komma trennen."
+            )
+        )
+
+        self.board_active = self._wide_edit(self._settings.board_active_status)
+        form.addRow(self._label("Ich bin dran"), self.board_active)
+
+        self.board_backlog = self._wide_edit(self._settings.board_backlog_status)
+        form.addRow(self._label("Backlog"), self.board_backlog)
+
+        self.board_acceptance = self._wide_edit(self._settings.board_acceptance_status)
+        form.addRow(self._label("Andere sind dran"), self.board_acceptance)
+
+        self.board_handback = self._wide_edit(self._settings.board_handback_status)
+        form.addRow(self._label("Rückgabe"), self.board_handback)
+        form.addRow(
+            self._hint(
+                "Ausgeliefert, wartet auf Bewertung. Bei fremdem Autor gehört das Ticket "
+                "zurückgegeben; bist du selbst der Autor, bleibt es bei dir."
+            )
+        )
+
+        self.board_closing = self._wide_edit(self._settings.board_closing_status)
+        form.addRow(self._label("Abschluss offen"), self.board_closing)
+        form.addRow(
+            self._hint(
+                "Status, die Jira als fertig zählt, obwohl noch etwas zu tun ist. Ohne "
+                "diesen Eintrag fallen solche Tickets komplett aus der Ansicht."
+            )
+        )
+
+        self.board_priorities = self._wide_edit(self._settings.board_priorities)
+        form.addRow(self._label("Prioritäten"), self.board_priorities)
+        form.addRow(self._hint("Rangfolge, dringendstes zuerst. Leer = Reihenfolge aus Jira."))
+
+        self.board_window = QSpinBox()
+        self.board_window.setRange(0, 3650)
+        self.board_window.setSuffix(" Tage")
+        self.board_window.setValue(self._settings.board_window_days)
+        self.board_window.setFixedWidth(FIELD_WIDTH)
+        form.addRow(self._label("Zeitfenster"), self.board_window)
+        form.addRow(
+            self._hint(
+                "Nur für \"Relevante Tickets\". 0 = kein Fenster - dann wird die Liste "
+                "schnell zum Archiv statt zum Arbeitsvorrat."
+            )
+        )
+
+        self.board_stale = QSpinBox()
+        self.board_stale.setRange(0, 3650)
+        self.board_stale.setSuffix(" Tage")
+        self.board_stale.setValue(self._settings.board_stale_days)
+        self.board_stale.setFixedWidth(FIELD_WIDTH)
+        form.addRow(self._label("Verwaist ab"), self.board_stale)
+
+        self.board_threshold_active = self._threshold(self._settings.board_threshold_active)
+        form.addRow(self._label("Schwelle: ich dran"), self.board_threshold_active)
+
+        self.board_threshold_acceptance = self._threshold(
+            self._settings.board_threshold_acceptance
+        )
+        form.addRow(self._label("Schwelle: andere"), self.board_threshold_acceptance)
+
+        self.board_threshold_closing = self._threshold(self._settings.board_threshold_closing)
+        form.addRow(self._label("Schwelle: Abschluss"), self.board_threshold_closing)
+        form.addRow(
+            self._hint(
+                "Ab so vielen ARBEITSTAGEN ohne Änderung UND ohne gebuchte Stunde landet ein "
+                "Ticket im Pile of Shame. 0 schaltet die Rolle davon frei. Die Zahlen sind "
+                "eine Setzung, keine Messung - zu klein gewählt trifft der Hinweis alles und "
+                "sagt dann nichts mehr."
+            )
+        )
+        return page
+
+    def _wide_edit(self, values: list[str]) -> QLineEdit:
+        """Ein breites Eingabefeld fuer eine Kommaliste."""
+        edit = QLineEdit(", ".join(values))
+        # Bewusst ueber die einheitliche Feldbreite hinaus - eine Statusliste
+        # passt sonst nicht hinein.
+        edit.setObjectName("ExpandingField")
+        return edit
+
+    @staticmethod
+    def _threshold(value: float) -> QDoubleSpinBox:
+        """Ein Feld fuer eine Schwelle in Arbeitstagen."""
+        box = QDoubleSpinBox()
+        box.setRange(0.0, 999.0)
+        box.setSingleStep(5.0)
+        box.setDecimals(0)
+        box.setSuffix(" Arbeitstage")
+        box.setValue(value)
+        box.setFixedWidth(FIELD_WIDTH)
+        return box
 
     def _page_export(self) -> QWidget:
         page, form = self._page("Export")
@@ -724,6 +834,17 @@ class SettingsDialog(QDialog):
         s.show_target_hours_in_export = self.show_target.isChecked()
         s.show_ticket_links_in_export = self.show_ticket_links.isChecked()
         s.default_customer = self.default_customer.text().strip() or "Vertrieb"
+        s.board_active_status = _split(self.board_active.text())
+        s.board_backlog_status = _split(self.board_backlog.text())
+        s.board_acceptance_status = _split(self.board_acceptance.text())
+        s.board_handback_status = _split(self.board_handback.text())
+        s.board_closing_status = _split(self.board_closing.text())
+        s.board_priorities = _split(self.board_priorities.text())
+        s.board_window_days = self.board_window.value()
+        s.board_stale_days = self.board_stale.value()
+        s.board_threshold_active = self.board_threshold_active.value()
+        s.board_threshold_acceptance = self.board_threshold_acceptance.value()
+        s.board_threshold_closing = self.board_threshold_closing.value()
         s.customers = self._customers_from_input()
         s.export_columns = [
             ExportColumn(
