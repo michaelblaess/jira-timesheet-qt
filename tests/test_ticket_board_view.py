@@ -945,3 +945,136 @@ class TestDiagramme:
         chart = AgeChart()
         chart.set_statistics(self._stats())
         assert "Abschluss-Status" in chart.toolTip()
+
+
+class TestAnonymisierung:
+    """Screenshot-Modus: nichts Identifizierendes darf im Bild landen."""
+
+    def _echtes_board(self):
+        return board(
+            Group(
+                role=Role.ACTIVE,
+                tickets=[
+                    Ticket(
+                        key="GEHEIM-4711",
+                        # Die Rolle setzt sonst build_board - hier von Hand,
+                        # sonst prueft der Test an der Vorgabe vorbei.
+                        role=Role.ACTIVE,
+                        summary="Interner Vorgang beim Kunden",
+                        status="Zur Übergabe",
+                        reporter="Blaess, Michael",
+                        assignee="Koch, Luca",
+                        priority="Kritisch",
+                        issue_type="Bug",
+                        is_bug=True,
+                        idle_workdays=42.0,
+                        idle_days=60,
+                        markers=(Marker.PILE_OF_SHAME,),
+                        url="https://echt.example.invalid/browse/GEHEIM-4711",
+                    )
+                ],
+            )
+        )
+
+    def _anonym(self):
+        from jira_timesheet_qt.services.anonymizer import anonymize_board
+
+        return anonymize_board(self._echtes_board())
+
+    def test_ticketnummer_titel_und_personen_verschwinden(self, qapp: QApplication) -> None:
+        t = self._anonym().tickets[0]
+        assert t.key != "GEHEIM-4711"
+        assert t.summary != "Interner Vorgang beim Kunden"
+        assert t.reporter != "Blaess, Michael"
+        assert t.assignee != "Koch, Luca"
+
+    def test_der_statusname_verschwindet_auch(self, qapp: QApplication) -> None:
+        # Statusnamen sind interne Prozessbezeichner des Betreibers und
+        # haben in einem Screenshot nichts verloren.
+        t = self._anonym().tickets[0]
+        assert t.status != "Zur Übergabe"
+        assert t.status
+
+    def test_die_verweis_url_zeigt_nicht_mehr_auf_den_echten_host(
+        self, qapp: QApplication
+    ) -> None:
+        t = self._anonym().tickets[0]
+        assert "echt.example.invalid" not in t.url
+        assert t.key in t.url
+
+    def test_die_aussage_des_bildes_bleibt(self, qapp: QApplication) -> None:
+        # Liegezeit, Merkmale, Rolle, Prioritaet und Vorgangsart tragen keine
+        # Identitaet - ohne sie waere der Screenshot wertlos.
+        t = self._anonym().tickets[0]
+        assert t.idle_workdays == 42.0
+        assert t.idle_days == 60
+        assert t.has(Marker.PILE_OF_SHAME)
+        assert t.role is Role.ACTIVE
+        assert t.priority == "Kritisch"
+        assert t.is_bug is True
+
+    def test_gruppen_bleiben_erhalten(self, qapp: QApplication) -> None:
+        anonym = self._anonym()
+        assert [g.role for g in anonym.groups] == [Role.ACTIVE]
+        assert anonym.count == 1
+
+    def test_nicht_zugeordnete_status_werden_ebenfalls_ersetzt(
+        self, qapp: QApplication
+    ) -> None:
+        # Sie erscheinen im Hinweis der Statusleiste.
+        from jira_timesheet_qt.services.anonymizer import anonymize_board
+
+        echt = Board(unknown_status=["Zur Übergabe", "Freigabe Produktivsetzung"])
+        anonym = anonymize_board(echt)
+        assert "Zur Übergabe" not in anonym.unknown_status
+        assert len(anonym.unknown_status) == 2
+
+    def test_das_original_bleibt_unberuehrt(self, qapp: QApplication) -> None:
+        # Sonst liesse sich der Modus nicht zurueckschalten.
+        from jira_timesheet_qt.services.anonymizer import anonymize_board
+
+        echt = self._echtes_board()
+        anonymize_board(echt)
+        assert echt.tickets[0].key == "GEHEIM-4711"
+
+    def test_umschalten_baut_die_ansicht_aus_den_rohdaten_neu(
+        self, qapp: QApplication
+    ) -> None:
+        window = MainWindow(Settings(), Mode.DARK)
+        echt = self._echtes_board()
+        window._real_boards[MODE_ASSIGNED] = echt
+        window._assigned_board.set_board(echt)
+
+        window._toggle_anonymize()
+        assert window._assigned_board.board.tickets[0].key != "GEHEIM-4711"
+        # Zurueckschalten liefert die echten Daten wieder.
+        window._toggle_anonymize()
+        assert window._assigned_board.board.tickets[0].key == "GEHEIM-4711"
+
+    def test_absprung_und_analyse_sind_im_screenshot_modus_gesperrt(
+        self, qapp: QApplication
+    ) -> None:
+        # Die Nummern sind erfunden - beides liefe ins Leere.
+        view = TicketBoardView("Test")
+        view.set_board(self._anonym())
+        view.set_report_available(True)
+        view.set_anonymized(True)
+        eintraege = {
+            a.text(): a.isEnabled()
+            for a in view.build_menu(view.board.tickets[0]).actions()
+            if not a.isSeparator()
+        }
+        assert eintraege["Ticket im Browser öffnen"] is False
+        assert eintraege["Ticket-Analyse erstellen"] is False
+        # Details bleiben erreichbar - sie zeigen nur die Dummy-Werte.
+        assert eintraege["Details anzeigen"] is True
+
+    def test_die_dummy_namen_sind_erkennbar_erfunden(self, qapp: QApplication) -> None:
+        # An echten Daten aufgefallen: ein gaengiger Nachname als Dummy
+        # kollidiert frueher oder spaeter mit einer realen Person, und im
+        # Screenshot steht dann der Name eines Kollegen.
+        from jira_timesheet_qt.services.anonymizer import _FAKE_AUTHORS
+
+        assert all(
+            any(teil in name for teil in ("Muster", "Beispiel")) for name in _FAKE_AUTHORS
+        )

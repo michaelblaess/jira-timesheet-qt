@@ -134,6 +134,9 @@ class TicketBoardView(QWidget):
         # sichtbar, aber ausgegraut - so bleibt das Menue an jeder Zeile
         # gleich aufgebaut.
         self._report_available = False
+        # Im Screenshot-Modus sind die Ticketnummern erfunden. Ein Sprung
+        # in den Browser oder eine Analyse liefe damit ins Leere.
+        self._anonymized = False
         self._model = TicketBoardModel(self)
         self._proxy = TicketFilterProxy(self)
         self._proxy.setSourceModel(self._model)
@@ -301,6 +304,10 @@ class TicketBoardView(QWidget):
         """Schaltet den Menuepunkt fuer die Ticket-Analyse frei."""
         self._report_available = available
 
+    def set_anonymized(self, anonymized: bool) -> None:
+        """Merkt den Screenshot-Modus fuer die Menuepunkte."""
+        self._anonymized = anonymized
+
     def _fill_status_filter(self, board: Board | None) -> None:
         """Fuellt die Statusauswahl aus den tatsaechlich vorkommenden Werten.
 
@@ -380,12 +387,19 @@ class TicketBoardView(QWidget):
         menu.addAction(detail)
 
         open_action = QAction("Ticket im Browser öffnen", menu)
-        open_action.setEnabled(ticket is not None and bool(ticket.url))
+        open_action.setEnabled(
+            ticket is not None and bool(ticket.url) and not self._anonymized
+        )
         open_action.triggered.connect(lambda _=False, t=ticket: self._open(t))
         menu.addAction(open_action)
 
         report = QAction("Ticket-Analyse erstellen", menu)
-        report.setEnabled(ticket is not None and bool(ticket.key) and self._report_available)
+        report.setEnabled(
+            ticket is not None
+            and bool(ticket.key)
+            and self._report_available
+            and not self._anonymized
+        )
         report.triggered.connect(lambda _=False, t=ticket: self._emit_report(t))
         menu.addAction(report)
 

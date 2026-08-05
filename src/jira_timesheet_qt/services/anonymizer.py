@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 
 from jira_timesheet_qt.models.timesheet import Timesheet, TimesheetDay, WorklogEntry
+from jira_timesheet_qt.services.ticket_board import Board, Group, Role, Ticket
 
 # Zentrale Fake-Werte fuer den Anonymisierungs-Modus (Screenshots). Werden auch
 # vom ConfigPanel-Header, der Log-Zensur und dem Detail-Dialog verwendet.
@@ -46,12 +48,16 @@ _FAKE_SUMMARIES = [
     "Add health check endpoint",
 ]
 
+# Unmissverstaendlich erfundene Namen. Gaengige Nachnamen wie "Weber" oder
+# "Schmidt" kollidieren in einer echten Instanz frueher oder spaeter mit einer
+# realen Person - im Screenshot steht dann der Name eines Kollegen, obwohl
+# anonymisiert wurde. Genau das ist an echten Daten aufgefallen.
 _FAKE_AUTHORS = [
-    "Mueller, Thomas",
-    "Schmidt, Anna",
     "Mustermann, Max",
-    "Fischer, Laura",
-    "Wagner, Stefan",
+    "Musterfrau, Erika",
+    "Beispiel, Bernd",
+    "Muster, Martina",
+    "Beispiel, Berta",
 ]
 
 _FAKE_COMPONENTS = [
@@ -159,4 +165,88 @@ def anonymize_timesheet(timesheet: Timesheet) -> Timesheet:
         date_from=timesheet.date_from,
         date_to=timesheet.date_to,
         days=anon_days,
+    )
+
+
+# Neutrale Statusnamen je Rolle. Die echten Namen sind interne
+# Prozessbezeichner des Betreibers und haben in einem Screenshot nichts
+# verloren - anders als Stunden oder Liegezeiten, die nichts verraten.
+_FAKE_STATUS: dict[Role, tuple[str, ...]] = {
+    Role.ACTIVE: ("In Progress", "Implementing", "Analysing"),
+    Role.BACKLOG: ("To Do", "Refined", "Planned"),
+    Role.ACCEPTANCE: ("In Review", "In Acceptance", "Waiting"),
+    Role.HANDBACK: ("In Validation", "Deployed"),
+    Role.CLOSING: ("Closing", "Handover", "Approved"),
+    Role.UNKNOWN: ("Status A", "Status B", "Status C"),
+}
+
+
+def anonymize_board(board: Board) -> Board:
+    """Erzeugt eine anonymisierte Kopie einer Ticket-Ansicht.
+
+    Ersetzt werden Ticketnummer, Titel, Autor, Bearbeiter, Statusname und die
+    Verweis-URL. Erhalten bleibt alles, was keine Identitaet traegt und die
+    Aussage des Bildes ausmacht: Rolle, Merkmale, Liegezeit, Prioritaet,
+    Vorgangsart und die Gruppierung.
+
+    Args:
+        board:
+            Die echte Ansicht.
+
+    Returns:
+        Eine neue Ansicht mit Dummy-Werten. Das Original bleibt unberuehrt,
+        damit sich der Modus zurueckschalten laesst.
+    """
+    rng = random.Random(42)
+    ticket_map: dict[str, str] = {}
+    status_map: dict[str, str] = {}
+    people: dict[str, str] = {}
+    summary_index = 0
+
+    def fake_key(real: str) -> str:
+        if real not in ticket_map:
+            project = rng.choice(_FAKE_PROJECTS)
+            ticket_map[real] = f"{project}-{len(ticket_map) + 1001}"
+        return ticket_map[real]
+
+    def fake_status(real: str, role: Role) -> str:
+        if real not in status_map:
+            pool = _FAKE_STATUS.get(role) or _FAKE_STATUS[Role.UNKNOWN]
+            status_map[real] = pool[len(status_map) % len(pool)]
+        return status_map[real]
+
+    def fake_person(real: str) -> str:
+        if not real:
+            return ""
+        if real not in people:
+            people[real] = _FAKE_AUTHORS[len(people) % len(_FAKE_AUTHORS)]
+        return people[real]
+
+    def copy_ticket(ticket: Ticket) -> Ticket:
+        nonlocal summary_index
+        key = fake_key(ticket.key)
+        summary = _FAKE_SUMMARIES[summary_index % len(_FAKE_SUMMARIES)]
+        summary_index += 1
+        return replace(
+            ticket,
+            key=key,
+            summary=summary,
+            status=fake_status(ticket.status, ticket.role),
+            reporter=fake_person(ticket.reporter),
+            assignee=fake_person(ticket.assignee),
+            url=f"{FAKE_HOST}/browse/{key}" if ticket.url else "",
+        )
+
+    groups = [
+        Group(role=group.role, tickets=[copy_ticket(t) for t in group.tickets])
+        for group in board.groups
+    ]
+    return Board(
+        groups=groups,
+        tickets=[t for g in groups for t in g.tickets],
+        # Auch hier stehen echte Statusnamen - sie erscheinen im Hinweis der
+        # Statusleiste.
+        unknown_status=[
+            fake_status(name, Role.UNKNOWN) for name in board.unknown_status
+        ],
     )

@@ -59,6 +59,7 @@ from jira_timesheet_qt.models.settings import ACCESS_FIELDS, Settings, normalize
 from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
 from jira_timesheet_qt.services.anonymizer import (
     FAKE_HOST,
+    anonymize_board,
     anonymize_timesheet,
     log_censor_map,
 )
@@ -164,6 +165,13 @@ class MainWindow(QMainWindow):
         # geladen - wie in der Jahresansicht. Danach nur noch auf Zuruf
         # ueber die Werkzeugleiste.
         self._board_loaded: dict[str, bool] = {MODE_ASSIGNED: False, MODE_RELEVANT: False}
+        # Die echten Ergebnisse. Die Ansicht zeigt im Screenshot-Modus
+        # eine Dummy-Kopie - die Rohdaten bleiben hier, damit sich der
+        # Modus verlustfrei zurueckschalten laesst.
+        self._real_boards: dict[str, Board | None] = {
+            MODE_ASSIGNED: None,
+            MODE_RELEVANT: None,
+        }
         # Angezeigter Stundenzettel (bei aktiver Anonymisierung die Dummy-Kopie).
         self._timesheet: Timesheet | None = None
         # Echte Rohdaten - bleiben erhalten, damit die Anonymisierung reversibel
@@ -1194,8 +1202,9 @@ class MainWindow(QMainWindow):
         Funktion gibt.
         """
         available = bool(self._settings.jira_host and self._settings.jira_token)
-        self._assigned_board.set_report_available(available)
-        self._relevant_board.set_report_available(available)
+        for view in (self._assigned_board, self._relevant_board):
+            view.set_report_available(available)
+            view.set_anonymized(self._anonymize)
 
     def _invalidate_boards(self) -> None:
         """Verwirft die geladenen Ticket-Ansichten nach einer Aenderung.
@@ -1296,7 +1305,8 @@ class MainWindow(QMainWindow):
             return
         view = self._board_view(mode)
         if isinstance(board, Board):
-            view.set_board(board)
+            self._real_boards[mode] = board
+            view.set_board(self._display_board(board))
             self._board_loaded[mode] = True
             self._refresh_summary_bar()
             self._set_status(f"{board.count} Tickets geladen")
@@ -1402,6 +1412,12 @@ class MainWindow(QMainWindow):
             return timesheet
         return anonymize_timesheet(timesheet)
 
+    def _display_board(self, board: Board | None) -> Board | None:
+        """Liefert im Screenshot-Modus die Dummy-Kopie, sonst die Rohdaten."""
+        if board is None or not self._anonymize:
+            return board
+        return anonymize_board(board)
+
     def _toggle_anonymize(self) -> None:
         """Schaltet den Screenshot-Modus (Dummy-Daten) an oder aus.
 
@@ -1420,6 +1436,13 @@ class MainWindow(QMainWindow):
             self.set_timesheet(self._real_ts)
         if self._year_ts is not None and self._year_loaded_for == self._year:
             self._aggregate_year(self._display_ts(self._year_ts))
+        # Die Ticket-Ansichten ebenfalls aus den echten Rohdaten neu aufbauen.
+        for mode, real in self._real_boards.items():
+            view = self._board_view(mode)
+            view.set_anonymized(self._anonymize)
+            if real is not None:
+                view.set_board(self._display_board(real))
+        self._refresh_summary_bar()
         # Verbindungszustand mit dem nun ggf. verschleierten Host neu schreiben.
         if self._real_ts is not None or self._year_ts is not None:
             self._set_status(f"Verbunden mit {self._host_label()}")
