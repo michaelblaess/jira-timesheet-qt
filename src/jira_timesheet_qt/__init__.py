@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 __author__ = "Michael Blaess"
 __year__ = "2026"
 # Anzeigename der Anwendung. Bewusst der Werkzeugname und NICHT das deutsche
