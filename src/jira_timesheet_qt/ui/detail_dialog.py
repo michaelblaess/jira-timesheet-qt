@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
 )
 
 from jira_timesheet_qt.models.timesheet import WorklogEntry
+from jira_timesheet_qt.services.ticket_board import Ticket
+from jira_timesheet_qt.ui.ticket_board_model import GROUP_TITLES, MARKER_LABELS
 
 _WEEKDAYS = (
     "Montag",
@@ -37,11 +39,16 @@ _WEEKDAYS = (
 class TicketDetailDialog(QDialog):
     """Zeigt alle Felder eines Eintrags in einem eigenen Fenster."""
 
-    def __init__(self, entry: WorklogEntry, jira_host: str = "", parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        entry: WorklogEntry | Ticket,
+        jira_host: str = "",
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self._entry = entry
         self.setObjectName("TicketDetailDialog")
-        self.setWindowTitle(entry.ticket or "Eintrag")
+        self.setWindowTitle(self._window_title(entry))
         self.setModal(True)
         self.setMinimumWidth(520)
         self.setSizeGripEnabled(True)
@@ -110,19 +117,69 @@ class TicketDetailDialog(QDialog):
         body.addWidget(buttons)
 
     @staticmethod
-    def _header_parts(entry: WorklogEntry) -> tuple[str, str]:
+    def _window_title(entry: WorklogEntry | Ticket) -> str:
+        """Fenstertitel: die Ticketnummer, sonst ein Platzhalter."""
+        if isinstance(entry, Ticket):
+            return entry.key or "Ticket"
+        return entry.ticket or "Eintrag"
+
+    @staticmethod
+    def _header_parts(entry: WorklogEntry | Ticket) -> tuple[str, str]:
         """Kopfzeile und Untertitel: Ticket prominent, Beschreibung darunter.
 
         Ohne Ticket (manuelle Eintraege) traegt die Beschreibung den Kopf, der
         Untertitel bleibt leer.
         """
+        if isinstance(entry, Ticket):
+            return entry.key or entry.summary or "Ticket", entry.summary if entry.key else ""
         if entry.ticket and entry.summary:
             return entry.ticket, entry.summary
         return entry.ticket or entry.summary or "Ohne Vorgang", ""
 
     @staticmethod
-    def _rows(entry: WorklogEntry) -> list[tuple[str, str]]:
+    def _ticket_rows(ticket: Ticket) -> list[tuple[str, str]]:
+        """Felder eines Tickets aus den Ticket-Ansichten.
+
+        Bewusst andere Felder als beim Zeiteintrag: Datum, Stunden und
+        Kunde gibt es dort nicht, dafuer Liegezeit, Merkmale und Gruppe.
+        """
+        markers = ", ".join(MARKER_LABELS.get(m, m.value) for m in ticket.markers)
+        booked = "-"
+        if ticket.has_worklogs is not None:
+            booked = (
+                "keine Buchung"
+                if ticket.booking_workdays is None
+                else f"vor {ticket.booking_workdays:.0f} Arbeitstagen"
+            )
+        return [
+            ("Status", ticket.status),
+            ("Gruppe", GROUP_TITLES.get(ticket.role, ticket.role.value)),
+            ("Autor", ticket.reporter),
+            ("Bearbeiter", ticket.assignee),
+            ("Typ", ticket.issue_type),
+            ("Priorität", ticket.priority),
+            (
+                "Liegezeit",
+                f"{ticket.idle_workdays:.0f} Arbeitstage "
+                f"({ticket.idle_days} Kalendertage)",
+            ),
+            ("Letzte Buchung", booked),
+            (
+                "Erstellt",
+                ticket.created.strftime("%d.%m.%Y") if ticket.created else "-",
+            ),
+            (
+                "Aktualisiert",
+                ticket.updated.strftime("%d.%m.%Y %H:%M") if ticket.updated else "-",
+            ),
+            ("Merkmale", markers or "keine"),
+        ]
+
+    @staticmethod
+    def _rows(entry: WorklogEntry | Ticket) -> list[tuple[str, str]]:
         """Beschriftung und Wert je Feld, in der Reihenfolge der TUI."""
+        if isinstance(entry, Ticket):
+            return TicketDetailDialog._ticket_rows(entry)
         weekday = _WEEKDAYS[entry.date.weekday()]
         return [
             ("Datum", f"{entry.date.strftime('%d.%m.%Y')} ({weekday})"),
@@ -140,12 +197,17 @@ class TicketDetailDialog(QDialog):
             ("Quelle", "Manuell erfasst" if entry.manual else "Aus Jira"),
         ]
 
-    def _link_label(self, entry: WorklogEntry, jira_host: str) -> QLabel | None:
+    def _link_label(self, entry: WorklogEntry | Ticket, jira_host: str) -> QLabel | None:
         """Klickbarer Jira-Link, oder None fuer manuelle Eintraege ohne Host."""
-        host = jira_host.rstrip("/")
-        if not host or not entry.ticket or entry.manual:
-            return None
-        url = f"{host}/browse/{html.escape(entry.ticket)}"
+        if isinstance(entry, Ticket):
+            if not entry.url:
+                return None
+            url = html.escape(entry.url)
+        else:
+            host = jira_host.rstrip("/")
+            if not host or not entry.ticket or entry.manual:
+                return None
+            url = f"{host}/browse/{html.escape(entry.ticket)}"
         label = QLabel(f'<a href="{url}">{url}</a>')
         label.setObjectName("DetailDialogLink")
         label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)

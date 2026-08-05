@@ -55,12 +55,19 @@ MARKER_HINTS: dict[Marker, str] = {
     Marker.BLOCKED: "Ein Vorgänger ist noch offen.",
 }
 
+# Erklaerungen unter der Maus. Nur dort, wo die Ueberschrift allein nicht
+# reicht - eine Abkuerzung muss man einmal nachlesen koennen.
+HEADER_HINTS: dict[int, str] = {
+    4: "AT = Arbeitstage seit der letzten Änderung (Mo-Fr, 8-18 Uhr).",
+    5: "Handlungsbedarf. Ein Ticket kann mehrere Merkmale gleichzeitig tragen.",
+}
+
 COLUMNS: tuple[str, ...] = (
     "Ticket",
     "Status",
     "Priorität",
     "Art",
-    "Liegezeit",
+    "Liegezeit (AT)",
     "Merkmale",
     "Titel",
 )
@@ -162,8 +169,12 @@ class TicketBoardModel(QAbstractItemModel):
         role: int = Qt.ItemDataRole.DisplayRole,
     ) -> Any:
         """Spaltenueberschriften."""
-        if orientation is Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
+        if orientation is not Qt.Orientation.Horizontal:
+            return None
+        if role == Qt.ItemDataRole.DisplayRole:
             return COLUMNS[section] if 0 <= section < len(COLUMNS) else ""
+        if role == Qt.ItemDataRole.ToolTipRole:
+            return HEADER_HINTS.get(section)
         return None
 
     def data(  # noqa: C901 - eine Rolle je Zweig, Aufteilen wuerde es zerreissen
@@ -228,7 +239,9 @@ class TicketBoardModel(QAbstractItemModel):
         if column == 3:
             return ticket.issue_type
         if column == 4:
-            return f"{ticket.idle_workdays:.0f} At"
+            # Nur die Zahl - die Einheit steht im Spaltenkopf. Ein "At"
+            # hinter jedem Wert liest sich wie ein Teil der Zahl.
+            return f"{ticket.idle_workdays:.0f}"
         if column == 5:
             return ", ".join(MARKER_LABELS.get(m, m.value) for m in ticket.markers)
         if column == 6:

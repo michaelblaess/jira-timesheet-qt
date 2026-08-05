@@ -64,6 +64,7 @@ from jira_timesheet_qt.services.anonymizer import (
 from jira_timesheet_qt.services.holiday_service import HolidayService
 from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
 from jira_timesheet_qt.services.ticket_board import Board
+from jira_timesheet_qt.services.ticket_board import Ticket as BoardTicket
 from jira_timesheet_qt.ui.about_dialog import AboutDialog
 from jira_timesheet_qt.ui.calendar_view import CalendarView, DayCell
 from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
@@ -277,10 +278,15 @@ class MainWindow(QMainWindow):
         self._assigned_board.reload_requested.connect(
             lambda: self._load_board(MODE_ASSIGNED)
         )
+        self._assigned_board.detail_requested.connect(self._show_detail)
+        self._assigned_board.report_requested.connect(self.open_ticket_report)
         self._relevant_board = TicketBoardView("Relevante Tickets")
         self._relevant_board.reload_requested.connect(
             lambda: self._load_board(MODE_RELEVANT)
         )
+        self._relevant_board.detail_requested.connect(self._show_detail)
+        self._relevant_board.report_requested.connect(self.open_ticket_report)
+        self._apply_board_settings()
 
         self._stack = QStackedWidget()
         self._stack.addWidget(self._list_stack)
@@ -623,6 +629,11 @@ class MainWindow(QMainWindow):
         # Bei aktiver Suche die Gruppen aufklappen, damit Treffer sichtbar sind.
         if self._grouped and text:
             self._tree.expandAll()
+        # Die Suche gilt fuer die gerade sichtbare Ansicht - auch fuer die
+        # Ticket-Reiter. Beide werden gesetzt, damit der Filter beim
+        # Reiterwechsel nicht ueberraschend verschwindet.
+        self._assigned_board.set_search(text)
+        self._relevant_board.set_search(text)
 
     def _build_empty_state(self) -> QWidget:
         """Zustand ohne Daten - formatfuellendes Hintergrundbild, Inhalt in einer Karte.
@@ -1081,6 +1092,18 @@ class MainWindow(QMainWindow):
 
     # --- Ticket-Ansichten -----------------------------------------------
 
+    def _apply_board_settings(self) -> None:
+        """Meldet den Ticket-Ansichten, was die Zugangsdaten hergeben.
+
+        Die Ticket-Analyse braucht Host und Token. Fehlen sie, bleibt der
+        Menuepunkt sichtbar, aber ausgegraut - so ist das Menue an jeder
+        Zeile gleich aufgebaut und der Anwender sieht, dass es die
+        Funktion gibt.
+        """
+        available = bool(self._settings.jira_host and self._settings.jira_token)
+        self._assigned_board.set_report_available(available)
+        self._relevant_board.set_report_available(available)
+
     def _board_view(self, mode: str) -> TicketBoardView:
         """Liefert die Ansicht zu einem Abrufmodus."""
         return self._assigned_board if mode == MODE_ASSIGNED else self._relevant_board
@@ -1366,6 +1389,7 @@ class MainWindow(QMainWindow):
         self._apply_column_settings()
         self._apply_manual_color()
         self._apply_day_total_colors()
+        self._apply_board_settings()
         # Der Modell-Reset beim Anwenden klappt den Baum zu - gemerkten Zustand
         # wiederherstellen, sonst steht die gruppierte Liste voellig eingeklappt.
         self._apply_group_state()
@@ -1531,8 +1555,17 @@ class MainWindow(QMainWindow):
         if entry is not None:
             self._show_detail(entry)
 
-    def _show_detail(self, entry: WorklogEntry) -> None:
-        """Oeffnet den modalen Detail-Dialog fuer einen Eintrag."""
+    def _show_detail(self, entry: WorklogEntry | BoardTicket) -> None:
+        """Oeffnet den modalen Detail-Dialog.
+
+        Nimmt einen Zeiteintrag aus der Stundenliste ODER ein Ticket aus
+        den Ticket-Ansichten - der Dialog kennt beide Formen und zeigt je
+        die passenden Felder.
+
+        Args:
+            entry:
+                Der anzuzeigende Eintrag.
+        """
         TicketDetailDialog(entry, self._display_host(), self).exec()
 
     def _show_detail_current(self) -> None:

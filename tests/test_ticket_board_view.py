@@ -359,3 +359,195 @@ class TestEinstellungsseite:
         config = config_from(dialog.result_settings())
         assert config.role_of("Läuft", "new") is Role.ACTIVE
         assert config.threshold_of(Role.ACTIVE) == 9.0
+
+
+class TestSpalteLiegezeit:
+    """Die Einheit gehoert in den Kopf, nicht hinter jeden Wert."""
+
+    def test_kopf_traegt_die_einheit(self, qapp: QApplication) -> None:
+        from PySide6.QtCore import Qt
+
+        model = TicketBoardModel()
+        kopf = model.headerData(4, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole)
+        assert kopf == "Liegezeit (AT)"
+
+    def test_zelle_zeigt_nur_die_zahl(self, qapp: QApplication) -> None:
+        # "40 At" hinter jedem Wert liest sich wie ein Teil der Zahl.
+        model = TicketBoardModel()
+        model.set_board(board(Group(role=Role.ACTIVE, tickets=[ticket("A-1", idle=40)])))
+        zelle = model.index(0, 4, model.index(0, 0)).data()
+        assert zelle == "40"
+
+    def test_abkuerzung_wird_im_kopf_erklaert(self, qapp: QApplication) -> None:
+        from PySide6.QtCore import Qt
+
+        model = TicketBoardModel()
+        hinweis = model.headerData(4, Qt.Orientation.Horizontal, Qt.ItemDataRole.ToolTipRole)
+        assert hinweis is not None
+        assert "Arbeitstage" in hinweis
+
+
+class TestDetailfenster:
+    """Derselbe Dialog wie in der Stundenliste, mit passenden Feldern."""
+
+    def test_dialog_nimmt_ein_ticket_an(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
+
+        dialog = TicketDetailDialog(
+            ticket("A-1", status="In Arbeit", summary="Ein Titel"), "", None
+        )
+        assert dialog.windowTitle() == "A-1"
+
+    def test_ticketfelder_statt_zeitfelder(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
+
+        zeilen = dict(
+            TicketDetailDialog._rows(
+                ticket("A-1", status="In Arbeit", markers=(Marker.PILE_OF_SHAME,), idle=42)
+            )
+        )
+        assert zeilen["Status"] == "In Arbeit"
+        assert "42 Arbeitstage" in zeilen["Liegezeit"]
+        assert "Pile of Shame" in zeilen["Merkmale"]
+        # Stunden und Datum gibt es an einem Ticket nicht.
+        assert "Stunden" not in zeilen
+        assert "Datum" not in zeilen
+
+    def test_ohne_merkmale_steht_keine(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
+
+        zeilen = dict(TicketDetailDialog._rows(ticket("A-1")))
+        assert zeilen["Merkmale"] == "keine"
+
+    def test_zeiteintrag_funktioniert_unveraendert(self, qapp: QApplication) -> None:
+        # Der Dialog darf seine urspruengliche Aufgabe nicht verlieren.
+        import datetime as dt2
+
+        from jira_timesheet_qt.models.timesheet import WorklogEntry
+        from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
+
+        entry = WorklogEntry(
+            date=dt2.date(2026, 8, 4), ticket="A-9", summary="Titel", hours=4.0,
+            author="Wer", budget=""
+        )
+        zeilen = dict(TicketDetailDialog._rows(entry))
+        assert zeilen["Stunden"] == "4,00 h"
+        assert "04.08.2026" in zeilen["Datum"]
+
+
+class TestBedienung:
+    """Doppelklick und Kontextmenue."""
+
+    def _befuellt(self) -> TicketBoardView:
+        view = TicketBoardView("Test")
+        view.set_board(board(Group(role=Role.ACTIVE, tickets=[ticket("A-1")])))
+        return view
+
+    def _erste_zeile(self, view: TicketBoardView):
+        return view._proxy.index(0, 0, view._proxy.index(0, 0))
+
+    def test_doppelklick_auf_ticket_oeffnet_details(self, qapp: QApplication) -> None:
+        view = self._befuellt()
+        empfangen: list[object] = []
+        view.detail_requested.connect(empfangen.append)
+        view._on_double_click(self._erste_zeile(view))
+        assert len(empfangen) == 1
+        assert empfangen[0].key == "A-1"
+
+    def test_doppelklick_auf_gruppe_klappt_nur_um(self, qapp: QApplication) -> None:
+        view = self._befuellt()
+        empfangen: list[object] = []
+        view.detail_requested.connect(empfangen.append)
+        gruppe = view._proxy.index(0, 0)
+        view._tree.setExpanded(gruppe, True)
+        view._on_double_click(gruppe)
+        assert empfangen == []
+        assert view._tree.isExpanded(gruppe) is False
+
+    def test_analyse_bleibt_ohne_zugang_gesperrt(self, qapp: QApplication) -> None:
+        view = self._befuellt()
+        empfangen: list[str] = []
+        view.report_requested.connect(empfangen.append)
+        # Ohne freigeschalteten Zugang darf der Aufruf nichts ausloesen.
+        assert view._report_available is False
+        view.set_report_available(True)
+        view._emit_report(view._board.tickets[0])
+        assert empfangen == ["A-1"]
+
+    def test_suche_von_aussen_zieht_das_eigene_feld_mit(self, qapp: QApplication) -> None:
+        # Ein unerklaerlich leeres Ergebnis ist schlimmer als kein Filter.
+        view = self._befuellt()
+        view.set_search("A-1")
+        assert view._search.text() == "A-1"
+
+
+class TestSucheImFenster:
+    """Die Suche der Werkzeugleiste erreicht die Ticket-Reiter."""
+
+    def test_werkzeugleiste_filtert_die_ticket_ansicht(self, qapp: QApplication) -> None:
+        window = MainWindow(Settings(), Mode.DARK)
+        window._assigned_board.set_board(
+            board(Group(role=Role.ACTIVE, tickets=[ticket("A-1"), ticket("B-2")]))
+        )
+        window._search.setText("A-1")
+        proxy = window._assigned_board._proxy
+        sichtbar = [
+            proxy.index(r, 0, proxy.index(0, 0)).data(TICKET_ROLE).key
+            for r in range(proxy.rowCount(proxy.index(0, 0)))
+        ]
+        assert sichtbar == ["A-1"]
+
+
+class TestKontextmenue:
+    """Die Eintraege entsprechen denen der Stundenliste."""
+
+    def _view(self) -> TicketBoardView:
+        view = TicketBoardView("Test")
+        view.set_board(board(Group(role=Role.ACTIVE, tickets=[ticket("A-1")])))
+        return view
+
+    def _eintraege(self, view: TicketBoardView, t: object) -> list[tuple[str, bool]]:
+        menu = view.build_menu(t)
+        return [(a.text(), a.isEnabled()) for a in menu.actions() if not a.isSeparator()]
+
+    def test_alle_gewuenschten_eintraege_sind_da(self, qapp: QApplication) -> None:
+        view = self._view()
+        texte = [t for t, _ in self._eintraege(view, view._board.tickets[0])]
+        assert "Details anzeigen" in texte
+        assert "Ticket im Browser öffnen" in texte
+        assert "Ticket-Analyse erstellen" in texte
+        assert "Alles zuklappen" in texte
+        assert "Alles aufklappen" in texte
+
+    def test_auf_einer_gruppenzeile_bleibt_nur_das_umklappen(self, qapp: QApplication) -> None:
+        # Die Eintraege verschwinden nicht, sie sind nur ausgegraut - so ist
+        # das Menue an jeder Zeile gleich aufgebaut.
+        view = self._view()
+        eintraege = dict(self._eintraege(view, None))
+        assert eintraege["Details anzeigen"] is False
+        assert eintraege["Ticket im Browser öffnen"] is False
+        assert eintraege["Alles zuklappen"] is True
+
+    def test_analyse_braucht_zugangsdaten(self, qapp: QApplication) -> None:
+        view = self._view()
+        t = view._board.tickets[0]
+        assert dict(self._eintraege(view, t))["Ticket-Analyse erstellen"] is False
+        view.set_report_available(True)
+        assert dict(self._eintraege(view, t))["Ticket-Analyse erstellen"] is True
+
+    def test_details_loesen_das_signal_aus(self, qapp: QApplication) -> None:
+        view = self._view()
+        empfangen: list[object] = []
+        view.detail_requested.connect(empfangen.append)
+        menu = view.build_menu(view._board.tickets[0])
+        next(a for a in menu.actions() if a.text() == "Details anzeigen").trigger()
+        assert len(empfangen) == 1
+
+    def test_analyse_loest_das_signal_aus(self, qapp: QApplication) -> None:
+        view = self._view()
+        view.set_report_available(True)
+        empfangen: list[str] = []
+        view.report_requested.connect(empfangen.append)
+        menu = view.build_menu(view._board.tickets[0])
+        next(a for a in menu.actions() if a.text() == "Ticket-Analyse erstellen").trigger()
+        assert empfangen == ["A-1"]

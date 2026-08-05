@@ -108,12 +108,19 @@ class TicketBoardView(QWidget):
     """Eine der beiden Ticket-Ansichten."""
 
     reload_requested = Signal()
-    detail_requested = Signal(str)
+    # Traegt das Ticket-Objekt, nicht nur die Nummer: das Fenster soll die
+    # Felder anzeigen koennen, ohne sie erneut abzurufen.
+    detail_requested = Signal(object)
+    report_requested = Signal(str)
 
     def __init__(self, title: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._title = title
         self._board: Board | None = None
+        # Die Analyse braucht Zugangsdaten. Ohne sie bleibt der Eintrag
+        # sichtbar, aber ausgegraut - so bleibt das Menue an jeder Zeile
+        # gleich aufgebaut.
+        self._report_available = False
         self._model = TicketBoardModel(self)
         self._proxy = TicketFilterProxy(self)
         self._proxy.setSourceModel(self._model)
@@ -201,6 +208,26 @@ class TicketBoardView(QWidget):
         elif not busy:
             self._update_status_line()
 
+    def set_search(self, text: str) -> None:
+        """Uebernimmt einen Suchbegriff von aussen (Werkzeugleiste).
+
+        Das eigene Feld wird mitgezogen, damit sichtbar bleibt, warum die
+        Liste gefiltert ist - ein unerklaerlich leeres Ergebnis ist
+        schlimmer als gar kein Filter.
+
+        Args:
+            text:
+                Der Suchbegriff.
+        """
+        if self._search.text() != text:
+            self._search.setText(text)
+        if text:
+            self._tree.expandAll()
+
+    def set_report_available(self, available: bool) -> None:
+        """Schaltet den Menuepunkt fuer die Ticket-Analyse frei."""
+        self._report_available = available
+
     def set_message(self, text: str) -> None:
         """Zeigt eine Meldung in der Fusszeile der Ansicht."""
         self._status_line.setText(text)
@@ -266,25 +293,46 @@ class TicketBoardView(QWidget):
             self._open(self._ticket_at(index))
 
     def _on_double_click(self, index: QModelIndex) -> None:
-        """Doppelklick auf eine Gruppenzeile klappt sie zu oder auf."""
-        if self._ticket_at(index) is None:
+        """Doppelklick: Details eines Tickets, Umklappen einer Gruppe."""
+        ticket = self._ticket_at(index)
+        if ticket is None:
             self._tree.setExpanded(index, not self._tree.isExpanded(index))
+            return
+        self.detail_requested.emit(ticket)
 
-    def _on_context_menu(self, position: QPoint) -> None:
-        """Baut das Kontextmenue zur geklickten Zeile.
+    def build_menu(self, ticket: Ticket | None) -> QMenu:
+        """Baut das Rechtsklick-Menue zu einer Zeile.
+
+        Bewusst getrennt vom Anzeigen: ein exec() laesst sich nicht pruefen,
+        ein zurueckgegebenes Menue schon. Dieselbe Aufteilung nutzt das
+        Hauptfenster fuer die Stundenliste.
 
         Args:
-            position:
-                Klickpunkt, bereits in Koordinaten des Anzeigebereichs.
+            ticket:
+                Das Ticket der Zeile, oder None auf einer Gruppenzeile.
+
+        Returns:
+            Das fertige Menue. Eintraege ohne Ziel bleiben sichtbar, aber
+            ausgegraut - so ist das Menue ueberall gleich aufgebaut.
         """
-        index = self._tree.indexAt(position)
-        ticket = self._ticket_at(index)
         menu = QMenu(self)
 
-        open_action = QAction("Im Browser öffnen", menu)
+        detail = QAction("Details anzeigen", menu)
+        detail.setEnabled(ticket is not None)
+        detail.triggered.connect(lambda _=False, t=ticket: self._emit_detail(t))
+        menu.addAction(detail)
+
+        open_action = QAction("Ticket im Browser öffnen", menu)
         open_action.setEnabled(ticket is not None and bool(ticket.url))
         open_action.triggered.connect(lambda _=False, t=ticket: self._open(t))
         menu.addAction(open_action)
+
+        report = QAction("Ticket-Analyse erstellen", menu)
+        report.setEnabled(ticket is not None and bool(ticket.key) and self._report_available)
+        report.triggered.connect(lambda _=False, t=ticket: self._emit_report(t))
+        menu.addAction(report)
+
+        menu.addSeparator()
 
         copy_action = QAction("Ticketnummer kopieren", menu)
         copy_action.setEnabled(ticket is not None)
@@ -292,16 +340,36 @@ class TicketBoardView(QWidget):
         menu.addAction(copy_action)
 
         menu.addSeparator()
+
         expand = QAction("Alles aufklappen", menu)
         expand.triggered.connect(self._tree.expandAll)
         menu.addAction(expand)
-        collapse = QAction("Alles einklappen", menu)
+        collapse = QAction("Alles zuklappen", menu)
         collapse.triggered.connect(self._tree.collapseAll)
         menu.addAction(collapse)
+        return menu
 
+    def _on_context_menu(self, position: QPoint) -> None:
+        """Zeigt das Menue an der Mausposition.
+
+        Args:
+            position:
+                Klickpunkt, bereits in Koordinaten des Anzeigebereichs.
+        """
+        menu = self.build_menu(self._ticket_at(self._tree.indexAt(position)))
         viewport = self._tree.viewport()
         if viewport is not None:
             menu.exec(viewport.mapToGlobal(position))
+
+    def _emit_detail(self, ticket: Ticket | None) -> None:
+        """Bittet das Fenster, die Einzelheiten anzuzeigen."""
+        if ticket is not None:
+            self.detail_requested.emit(ticket)
+
+    def _emit_report(self, ticket: Ticket | None) -> None:
+        """Bittet das Fenster, die Ticket-Analyse zu erzeugen."""
+        if ticket is not None and ticket.key:
+            self.report_requested.emit(ticket.key)
 
     @staticmethod
     def _open(ticket: Ticket | None) -> None:
