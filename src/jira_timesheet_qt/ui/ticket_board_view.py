@@ -25,9 +25,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QLineEdit,
     QMenu,
-    QPushButton,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -107,7 +105,6 @@ class TicketFilterProxy(QSortFilterProxyModel):
 class TicketBoardView(QWidget):
     """Eine der beiden Ticket-Ansichten."""
 
-    reload_requested = Signal()
     # Traegt das Ticket-Objekt, nicht nur die Nummer: das Fenster soll die
     # Felder anzeigen koennen, ohne sie erneut abzurufen.
     detail_requested = Signal(object)
@@ -136,11 +133,6 @@ class TicketBoardView(QWidget):
         head = QHBoxLayout()
         head.setSpacing(8)
 
-        self._reload = QPushButton("Laden")
-        self._reload.setObjectName("BoardReload")
-        self._reload.clicked.connect(self.reload_requested.emit)
-        head.addWidget(self._reload)
-
         head.addWidget(QLabel("Status:"))
         self._status_box = QComboBox()
         self._status_box.setObjectName("BoardStatusFilter")
@@ -153,14 +145,6 @@ class TicketBoardView(QWidget):
         head.addWidget(self._actionable)
 
         head.addStretch(1)
-
-        self._search = QLineEdit()
-        self._search.setObjectName("BoardSearch")
-        self._search.setPlaceholderText("Ticketnummer oder Titel ...")
-        self._search.setClearButtonEnabled(True)
-        self._search.setMaximumWidth(280)
-        self._search.textChanged.connect(self._proxy.set_needle)
-        head.addWidget(self._search)
 
         outer.addLayout(head)
 
@@ -184,11 +168,12 @@ class TicketBoardView(QWidget):
         self._tree.clicked.connect(self._on_click)
         outer.addWidget(self._tree, 1)
 
-        self._status_line = QLabel("Noch nichts geladen.")
-        self._status_line.setObjectName("BoardStatus")
-        outer.addWidget(self._status_line)
-
     # --- Fuellen ---------------------------------------------------------
+
+    @property
+    def board(self) -> Board | None:
+        """Das zuletzt uebernommene Ergebnis, oder None."""
+        return self._board
 
     def set_board(self, board: Board | None) -> None:
         """Uebernimmt ein Ergebnis und baut die Anzeige neu auf."""
@@ -197,40 +182,25 @@ class TicketBoardView(QWidget):
         self._fill_status_filter(board)
         self._tree.expandAll()
         self._resize_columns()
-        self._reload.setText("Aktualisieren")
-        self._update_status_line()
-
-    def set_busy(self, busy: bool, text: str = "") -> None:
-        """Sperrt den Ladeknopf waehrend eines laufenden Abrufs."""
-        self._reload.setEnabled(not busy)
-        if text:
-            self._status_line.setText(text)
-        elif not busy:
-            self._update_status_line()
 
     def set_search(self, text: str) -> None:
-        """Uebernimmt einen Suchbegriff von aussen (Werkzeugleiste).
+        """Uebernimmt den Suchbegriff der Werkzeugleiste.
 
-        Das eigene Feld wird mitgezogen, damit sichtbar bleibt, warum die
-        Liste gefiltert ist - ein unerklaerlich leeres Ergebnis ist
-        schlimmer als gar kein Filter.
+        Die Ansicht hat bewusst KEIN eigenes Suchfeld: zwei Felder
+        nebeneinander, die dasselbe tun, sind eine Fehlerquelle und kein
+        Komfort.
 
         Args:
             text:
                 Der Suchbegriff.
         """
-        if self._search.text() != text:
-            self._search.setText(text)
+        self._proxy.set_needle(text)
         if text:
             self._tree.expandAll()
 
     def set_report_available(self, available: bool) -> None:
         """Schaltet den Menuepunkt fuer die Ticket-Analyse frei."""
         self._report_available = available
-
-    def set_message(self, text: str) -> None:
-        """Zeigt eine Meldung in der Fusszeile der Ansicht."""
-        self._status_line.setText(text)
 
     def _fill_status_filter(self, board: Board | None) -> None:
         """Fuellt die Statusauswahl aus den tatsaechlich vorkommenden Werten.
@@ -258,18 +228,6 @@ class TicketBoardView(QWidget):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
             self._tree.resizeColumnToContents(column)
         header.setStretchLastSection(True)
-
-    def _update_status_line(self) -> None:
-        """Schreibt die Kennzahlen unter die Liste."""
-        board = self._board
-        if board is None:
-            self._status_line.setText("Noch nichts geladen.")
-            return
-        shame = len(board.with_marker(Marker.PILE_OF_SHAME))
-        parts = [f"{board.count} Tickets", f"{shame} im Pile of Shame"]
-        if board.unknown_status:
-            parts.append("nicht zugeordnet: " + ", ".join(board.unknown_status))
-        self._status_line.setText(" · ".join(parts))
 
     # --- Bedienung -------------------------------------------------------
 

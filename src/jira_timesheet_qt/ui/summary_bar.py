@@ -271,6 +271,20 @@ class SummaryBar(QWidget):
         self._render(self._colour_ist(segments, actual, target))
         self._set_ratio(actual, target)
 
+    def show_board(self, segments: list[SummarySegment]) -> None:
+        """Ticket-Ansichten: freie Kennzahlen, kein Fortschrittsbalken.
+
+        Der Balken zeigt sonst Ist gegen Soll in Stunden - fuer eine
+        Ticketliste gibt es keine solche Groesse, und ein Balken ohne
+        Bedeutung ist schlimmer als keiner.
+
+        Args:
+            segments:
+                Die anzuzeigenden Kennzahlen.
+        """
+        self._render(segments)
+        self._bar.setVisible(False)
+
     def _colour_ist(self, segments: list[SummarySegment], actual: float, target: float) -> list[SummarySegment]:
         """Faerbt den Ist-Abschnitt nach der Soll-Ist-Ampel (gruen/rot)."""
         color = self._ist_color(actual, target)

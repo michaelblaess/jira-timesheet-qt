@@ -136,35 +136,42 @@ class TestAnsicht:
                     keys.append(data.key)
         return keys
 
-    def test_ohne_daten_steht_ein_hinweis(self, qapp: QApplication) -> None:
+    def test_ohne_daten_bleibt_die_liste_leer(self, qapp: QApplication) -> None:
         view = TicketBoardView("Test")
-        assert "Noch nichts geladen" in view._status_line.text()
-        assert view._reload.text() == "Laden"
+        assert view.board is None
+        assert view._proxy.rowCount() == 0
 
-    def test_nach_dem_laden_heisst_der_knopf_aktualisieren(self, qapp: QApplication) -> None:
+    def test_kein_eigener_ladeknopf_und_kein_eigenes_suchfeld(
+        self, qapp: QApplication
+    ) -> None:
+        # Beides gibt es in der Werkzeugleiste. Zwei Bedienelemente, die
+        # dasselbe tun, sind eine Fehlerquelle und kein Komfort.
+        from PySide6.QtWidgets import QLineEdit, QPushButton
+
         view = self._view()
-        assert view._reload.text() == "Aktualisieren"
+        assert view.findChildren(QPushButton) == []
+        assert view.findChildren(QLineEdit) == []
 
     def test_alle_tickets_sind_sichtbar(self, qapp: QApplication) -> None:
         assert self._sichtbare_schluessel(self._view()) == ["A-1", "A-2", "B-9"]
 
     def test_suche_trifft_nummer_und_titel(self, qapp: QApplication) -> None:
         view = self._view()
-        view._search.setText("B-9")
+        view.set_search("B-9")
         assert self._sichtbare_schluessel(view) == ["B-9"]
-        view._search.setText("Zweiter")
+        view.set_search("Zweiter")
         assert self._sichtbare_schluessel(view) == ["A-2"]
 
     def test_suche_ignoriert_gross_und_kleinschreibung(self, qapp: QApplication) -> None:
         view = self._view()
-        view._search.setText("erster")
+        view.set_search("erster")
         assert self._sichtbare_schluessel(view) == ["A-1"]
 
     def test_leere_gruppen_verschwinden_beim_filtern(self, qapp: QApplication) -> None:
         # Eine Gruppe ueberlebt nur, wenn ein Kind passt - sonst stuenden
         # leere Ueberschriften in der gefilterten Liste.
         view = self._view()
-        view._search.setText("B-9")
+        view.set_search("B-9")
         assert view._proxy.rowCount() == 1
 
     def test_statusfilter_kommt_aus_den_vorkommenden_werten(self, qapp: QApplication) -> None:
@@ -182,22 +189,13 @@ class TestAnsicht:
         view._actionable.setChecked(True)
         assert self._sichtbare_schluessel(view) == ["A-1"]
 
-    def test_fusszeile_nennt_den_pile_of_shame(self, qapp: QApplication) -> None:
+    def test_das_ergebnis_ist_von_aussen_lesbar(self, qapp: QApplication) -> None:
+        # Die Kennzahlen stehen in der Statusleiste des Fensters, nicht mehr
+        # unter der Liste - die Ansicht muss ihr Ergebnis dafuer hergeben.
         view = self._view()
-        text = view._status_line.text()
-        assert "3 Tickets" in text
-        assert "1 im Pile of Shame" in text
-
-    def test_nicht_zugeordnete_status_stehen_in_der_fusszeile(self, qapp: QApplication) -> None:
-        view = TicketBoardView("Test")
-        view.set_board(
-            Board(
-                groups=[Group(role=Role.UNKNOWN, tickets=[ticket("A-1")])],
-                tickets=[ticket("A-1")],
-                unknown_status=["Seltsam"],
-            )
-        )
-        assert "Seltsam" in view._status_line.text()
+        assert view.board is not None
+        assert view.board.count == 3
+        assert len(view.board.with_marker(Marker.PILE_OF_SHAME)) == 1
 
 
 class TestEinstellungsbruecke:
@@ -249,8 +247,8 @@ class TestImFenster:
         # besser gleich sagen, was fehlt.
         window = MainWindow(Settings(), Mode.DARK)
         window._load_board(MODE_ASSIGNED)
-        assert "Zugangsdaten" in window._assigned_board._status_line.text()
         assert window._board_generation[MODE_ASSIGNED] == 0
+        assert window._assigned_board.board is None
 
     def test_ueberholtes_ergebnis_wird_verworfen(self, qapp: QApplication) -> None:
         # Ein QThread laesst sich nicht abbrechen. Der ueberholte Faden laeuft
@@ -474,11 +472,12 @@ class TestBedienung:
         view._emit_report(view._board.tickets[0])
         assert empfangen == ["A-1"]
 
-    def test_suche_von_aussen_zieht_das_eigene_feld_mit(self, qapp: QApplication) -> None:
-        # Ein unerklaerlich leeres Ergebnis ist schlimmer als kein Filter.
+    def test_suche_von_aussen_filtert(self, qapp: QApplication) -> None:
         view = self._befuellt()
+        view.set_search("gibtesnicht")
+        assert view._proxy.rowCount() == 0
         view.set_search("A-1")
-        assert view._search.text() == "A-1"
+        assert view._proxy.rowCount() == 1
 
 
 class TestSucheImFenster:
@@ -551,3 +550,151 @@ class TestKontextmenue:
         menu = view.build_menu(view._board.tickets[0])
         next(a for a in menu.actions() if a.text() == "Ticket-Analyse erstellen").trigger()
         assert empfangen == ["A-1"]
+
+
+class TestAutomatischesLaden:
+    """Wie in der Jahresansicht: beim ersten Besuch laden, danach auf Zuruf."""
+
+    def _fenster(self, qapp: QApplication) -> tuple[MainWindow, list[str]]:
+        settings = Settings()
+        settings.jira_host = "https://example.invalid"
+        settings.email = "wer@example.invalid"
+        settings.jira_token = "geheim"
+        window = MainWindow(settings, Mode.DARK)
+        gerufen: list[str] = []
+        window._load_board = lambda mode: gerufen.append(mode)  # type: ignore[method-assign]
+        return window, gerufen
+
+    def test_erster_besuch_laedt(self, qapp: QApplication) -> None:
+        window, gerufen = self._fenster(qapp)
+        window._tabs.setCurrentIndex(_VIEWS.index("Meine Tickets"))
+        assert gerufen == [MODE_ASSIGNED]
+
+    def test_zweiter_besuch_laedt_nicht_erneut(self, qapp: QApplication) -> None:
+        # Sonst kostet jeder Reiterwechsel einen Abruf.
+        window, gerufen = self._fenster(qapp)
+        window._board_loaded[MODE_ASSIGNED] = True
+        window._tabs.setCurrentIndex(_VIEWS.index("Meine Tickets"))
+        assert gerufen == []
+
+    def test_ohne_zugangsdaten_wird_gar_nicht_erst_geladen(self, qapp: QApplication) -> None:
+        window = MainWindow(Settings(), Mode.DARK)
+        gerufen: list[str] = []
+        window._load_board = lambda mode: gerufen.append(mode)  # type: ignore[method-assign]
+        window._tabs.setCurrentIndex(_VIEWS.index("Meine Tickets"))
+        assert gerufen == []
+
+    def test_jede_ansicht_zaehlt_fuer_sich(self, qapp: QApplication) -> None:
+        window, gerufen = self._fenster(qapp)
+        window._board_loaded[MODE_ASSIGNED] = True
+        window._tabs.setCurrentIndex(_VIEWS.index("Relevante Tickets"))
+        assert gerufen == [MODE_RELEVANT]
+
+
+class TestAktualisieren:
+    """Der Befehl der Werkzeugleiste trifft die sichtbare Ansicht."""
+
+    def _fenster(self) -> tuple[MainWindow, list[str]]:
+        window = MainWindow(Settings(), Mode.DARK)
+        gerufen: list[str] = []
+        window._load_board = lambda mode: gerufen.append(f"board:{mode}")  # type: ignore[method-assign]
+        window.load_month = lambda: gerufen.append("monat")  # type: ignore[method-assign]
+        window.load_year = lambda: gerufen.append("jahr")  # type: ignore[method-assign]
+        return window, gerufen
+
+    def test_auf_der_liste_laedt_den_monat(self, qapp: QApplication) -> None:
+        window, gerufen = self._fenster()
+        window._stack.setCurrentIndex(_VIEWS.index("Liste"))
+        window.reload_current()
+        assert gerufen == ["monat"]
+
+    def test_auf_dem_jahr_laedt_das_jahr(self, qapp: QApplication) -> None:
+        window, gerufen = self._fenster()
+        window._stack.setCurrentIndex(_VIEWS.index("Jahr"))
+        window.reload_current()
+        assert gerufen == ["jahr"]
+
+    def test_auf_meinen_tickets_laedt_die_tickets(self, qapp: QApplication) -> None:
+        # Vorher lud der Befehl den Monat neu, waehrend man auf eine
+        # Ticketliste schaute.
+        window, gerufen = self._fenster()
+        window._stack.setCurrentIndex(_VIEWS.index("Meine Tickets"))
+        window.reload_current()
+        assert gerufen == [f"board:{MODE_ASSIGNED}"]
+
+    def test_auf_relevanten_tickets_laedt_diese(self, qapp: QApplication) -> None:
+        window, gerufen = self._fenster()
+        window._stack.setCurrentIndex(_VIEWS.index("Relevante Tickets"))
+        window.reload_current()
+        assert gerufen == [f"board:{MODE_RELEVANT}"]
+
+
+class TestStatusleiste:
+    """Die Leiste zeigt die Zahlen der SICHTBAREN Ansicht."""
+
+    def _fenster_mit_board(self) -> MainWindow:
+        window = MainWindow(Settings(), Mode.DARK)
+        window._assigned_board.set_board(
+            board(
+                Group(
+                    role=Role.ACTIVE,
+                    tickets=[
+                        ticket("A-1", markers=(Marker.PILE_OF_SHAME,), idle=99),
+                        ticket("A-2", markers=(Marker.ACCEPTANCE,)),
+                    ],
+                ),
+                Group(role=Role.BACKLOG, tickets=[ticket("B-1")]),
+            )
+        )
+        window._stack.setCurrentIndex(_VIEWS.index("Meine Tickets"))
+        return window
+
+    def _texte(self, window: MainWindow) -> str:
+        from PySide6.QtWidgets import QLabel
+
+        return " ".join(
+            label.text() for label in window._summary.findChildren(QLabel)
+        )
+
+    def test_zeigt_ticketzahlen_statt_stunden(self, qapp: QApplication) -> None:
+        # Ist, Soll und Umsatz haben mit einer Ticketliste nichts zu tun.
+        window = self._fenster_mit_board()
+        window._refresh_summary_bar()
+        text = self._texte(window)
+        assert "Tickets" in text
+        assert "Pile of Shame" in text
+        assert "Backlog" in text
+        assert "Soll" not in text
+        assert "Brutto" not in text
+
+    def test_aelteste_liegezeit_steht_drin(self, qapp: QApplication) -> None:
+        window = self._fenster_mit_board()
+        window._refresh_summary_bar()
+        assert "99 AT" in self._texte(window)
+
+    def test_kein_fortschrittsbalken(self, qapp: QApplication) -> None:
+        # Der Balken zeigt Ist gegen Soll in Stunden - dafuer gibt es hier
+        # keine Groesse, und ein Balken ohne Bedeutung ist schlimmer als
+        # keiner.
+        window = self._fenster_mit_board()
+        window._refresh_summary_bar()
+        assert window._summary._bar.isVisible() is False
+
+    def test_nicht_zugeordnete_status_werden_gemeldet(self, qapp: QApplication) -> None:
+        window = MainWindow(Settings(), Mode.DARK)
+        window._assigned_board.set_board(
+            Board(
+                groups=[Group(role=Role.UNKNOWN, tickets=[ticket("A-1")])],
+                tickets=[ticket("A-1")],
+                unknown_status=["Seltsam", "Merkwürdig"],
+            )
+        )
+        window._stack.setCurrentIndex(_VIEWS.index("Meine Tickets"))
+        window._refresh_summary_bar()
+        assert "ohne Zuordnung" in self._texte(window)
+
+    def test_ohne_daten_bleibt_die_leiste_leer(self, qapp: QApplication) -> None:
+        window = MainWindow(Settings(), Mode.DARK)
+        window._stack.setCurrentIndex(_VIEWS.index("Relevante Tickets"))
+        window._refresh_summary_bar()
+        assert "Tickets" not in self._texte(window)

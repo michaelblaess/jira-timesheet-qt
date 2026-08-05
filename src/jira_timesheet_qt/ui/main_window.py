@@ -63,7 +63,7 @@ from jira_timesheet_qt.services.anonymizer import (
 )
 from jira_timesheet_qt.services.holiday_service import HolidayService
 from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
-from jira_timesheet_qt.services.ticket_board import Board
+from jira_timesheet_qt.services.ticket_board import Board, Marker, Role
 from jira_timesheet_qt.services.ticket_board import Ticket as BoardTicket
 from jira_timesheet_qt.ui.about_dialog import AboutDialog
 from jira_timesheet_qt.ui.calendar_view import CalendarView, DayCell
@@ -77,7 +77,7 @@ from jira_timesheet_qt.ui.log_dock import Level, LogDock
 from jira_timesheet_qt.ui.manual_entry_dialog import ManualEntryDialog
 from jira_timesheet_qt.ui.menu import Command, CommandRegistry, MenuBuilder, MenuDefinition, missing_commands
 from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
-from jira_timesheet_qt.ui.summary_bar import SummaryBar
+from jira_timesheet_qt.ui.summary_bar import SummaryBar, SummarySegment
 from jira_timesheet_qt.ui.theme import SCALES, Mode, palette_for, set_accent, set_scale
 from jira_timesheet_qt.ui.ticket_board_view import TicketBoardView
 from jira_timesheet_qt.ui.ticket_board_worker import (
@@ -92,6 +92,16 @@ from jira_timesheet_qt.ui.toast import Toast
 from jira_timesheet_qt.ui.year_view import YearView
 
 _VIEWS = ("Liste", "Kalender", "Jahr", "Meine Tickets", "Relevante Tickets")
+
+# Welche Stapelseite welche Ticket-Ansicht ist. Aus _VIEWS abgeleitet,
+# damit eine neue Ansicht die Zuordnung nicht stillschweigend verschiebt.
+_BOARD_MODES: dict[int, str] = {
+    _VIEWS.index("Meine Tickets"): MODE_ASSIGNED,
+    _VIEWS.index("Relevante Tickets"): MODE_RELEVANT,
+}
+
+# Farbe des Pile-of-Shame-Werts in der Statusleiste (Hex ohne #).
+_SHAME_COLOR = "C0392B"
 
 _MONTHS = (
     "Januar", "Februar", "März", "April", "Mai", "Juni",
@@ -148,6 +158,10 @@ class MainWindow(QMainWindow):
         # unabhaengig voneinander, ein Ergebnis darf das andere nicht
         # entwerten.
         self._board_generation: dict[str, int] = {MODE_ASSIGNED: 0, MODE_RELEVANT: 0}
+        # Beim ersten Wechsel in einen Ticket-Reiter wird automatisch
+        # geladen - wie in der Jahresansicht. Danach nur noch auf Zuruf
+        # ueber die Werkzeugleiste.
+        self._board_loaded: dict[str, bool] = {MODE_ASSIGNED: False, MODE_RELEVANT: False}
         # Angezeigter Stundenzettel (bei aktiver Anonymisierung die Dummy-Kopie).
         self._timesheet: Timesheet | None = None
         # Echte Rohdaten - bleiben erhalten, damit die Anonymisierung reversibel
@@ -275,15 +289,9 @@ class MainWindow(QMainWindow):
         self._year_view.ticket_activated.connect(self._show_detail)
 
         self._assigned_board = TicketBoardView("Meine Tickets")
-        self._assigned_board.reload_requested.connect(
-            lambda: self._load_board(MODE_ASSIGNED)
-        )
         self._assigned_board.detail_requested.connect(self._show_detail)
         self._assigned_board.report_requested.connect(self.open_ticket_report)
         self._relevant_board = TicketBoardView("Relevante Tickets")
-        self._relevant_board.reload_requested.connect(
-            lambda: self._load_board(MODE_RELEVANT)
-        )
         self._relevant_board.detail_requested.connect(self._show_detail)
         self._relevant_board.report_requested.connect(self.open_ticket_report)
         self._apply_board_settings()
@@ -816,12 +824,81 @@ class MainWindow(QMainWindow):
     def _refresh_summary_bar(self) -> None:
         """Fuellt die Summenleiste passend zur aktiven Ansicht."""
         view = self._stack.currentIndex()
-        if view == 1:
+        mode = _BOARD_MODES.get(view)
+        if mode is not None:
+            self._summary_board(self._board_view(mode), mode)
+        elif view == 1:
             self._summary_calendar()
         elif view == 2:
             self._summary_year()
         else:
             self._summary_list()
+
+    def _summary_board(self, view: TicketBoardView, mode: str) -> None:
+        """Ticket-Ansicht: die Zahlen, die eine Entscheidung tragen.
+
+        Bewusst nicht die Summen der Stundenliste - Ist, Soll und Umsatz
+        haben mit einer Ticketliste nichts zu tun und waren dort schlicht
+        falsch.
+
+        Args:
+            view:
+                Die anzuzeigende Ansicht.
+            mode:
+                Welche der beiden Ansichten es ist.
+        """
+        board = view.board
+        if board is None:
+            self._summary.clear()
+            return
+
+        def zahl(marker: Marker) -> int:
+            return len(board.with_marker(marker))
+
+        backlog = sum(g.count for g in board.groups if g.role is Role.BACKLOG)
+        segments = [SummarySegment("Tickets", str(board.count))]
+
+        shame = zahl(Marker.PILE_OF_SHAME)
+        if mode == MODE_ASSIGNED:
+            segments.append(
+                SummarySegment(
+                    "Pile of Shame",
+                    str(shame),
+                    # Nur einfaerben, wenn es etwas zu faerben gibt - eine
+                    # rote Null ist ein Fehlalarm.
+                    _SHAME_COLOR if shame else None,
+                    "Status behauptet Aktivität, aber weder Änderung noch gebuchte Stunde.",
+                )
+            )
+        segments += [
+            SummarySegment("Rückgabe", str(zahl(Marker.HANDBACK)),
+                           tooltip="Ausgeliefert, fremder Autor - gehört zurückgegeben."),
+            SummarySegment("Nachhaken", str(zahl(Marker.ACCEPTANCE)),
+                           tooltip="Wartet auf Freigabe durch jemand anderen."),
+            SummarySegment("Backlog", str(backlog), tooltip="Bereit zum Ziehen."),
+        ]
+
+        oldest = max((t.idle_workdays for t in board.tickets), default=0.0)
+        segments.append(
+            SummarySegment("Älteste", f"{oldest:.0f} AT",
+                           tooltip="Arbeitstage seit der letzten Änderung.")
+        )
+        if mode == MODE_RELEVANT and self._settings.board_window_days > 0:
+            segments.append(
+                SummarySegment("Fenster", f"{self._settings.board_window_days} Tage")
+            )
+        if board.unknown_status:
+            # Sichtbar, aber knapp: die Namen stehen im Hinweis unter der Maus.
+            segments.append(
+                SummarySegment(
+                    "ohne Zuordnung",
+                    str(len(board.unknown_status)),
+                    tooltip="Status ohne Rollenzuordnung: "
+                    + ", ".join(board.unknown_status)
+                    + "\nZuordnen unter Einstellungen -> Tickets.",
+                )
+            )
+        self._summary.show_board(segments)
 
     def _summary_list(self) -> None:
         """Liste: volle Summenleiste, Fortschritt Ist gegen Soll des Zeitraums."""
@@ -1104,6 +1181,19 @@ class MainWindow(QMainWindow):
         self._assigned_board.set_report_available(available)
         self._relevant_board.set_report_available(available)
 
+    def _invalidate_boards(self) -> None:
+        """Verwirft die geladenen Ticket-Ansichten nach einer Aenderung.
+
+        Die Statuszuordnung kann sich geaendert haben - dann muss neu
+        gruppiert werden, und das geht nur ueber einen frischen Abruf.
+        Die gerade sichtbare Ansicht laedt sofort, die andere beim
+        naechsten Besuch.
+        """
+        self._board_loaded = {MODE_ASSIGNED: False, MODE_RELEVANT: False}
+        mode = _BOARD_MODES.get(self._stack.currentIndex())
+        if mode is not None and self._settings_complete():
+            self._load_board(mode)
+
     def _board_view(self, mode: str) -> TicketBoardView:
         """Liefert die Ansicht zu einem Abrufmodus."""
         return self._assigned_board if mode == MODE_ASSIGNED else self._relevant_board
@@ -1120,15 +1210,16 @@ class MainWindow(QMainWindow):
             mode:
                 MODE_ASSIGNED oder MODE_RELEVANT.
         """
-        view = self._board_view(mode)
         if not self._settings_complete():
-            view.set_message("Zugangsdaten fehlen - bitte zuerst die Einstellungen ausfüllen.")
+            self._set_status(
+                "Zugangsdaten fehlen - bitte zuerst die Einstellungen ausfüllen.", "error"
+            )
             return
 
         self._board_generation[mode] = self._board_generation.get(mode, 0) + 1
         generation = self._board_generation[mode]
 
-        view.set_busy(True, "Wird geladen ...")
+        self._set_status("Tickets werden geladen ...", "busy")
         worker = TicketBoardWorker(self._settings, config_from(self._settings), mode, self)
         worker.progress.connect(
             lambda text, m=mode, g=generation: self._on_board_progress(text, m, g)
@@ -1151,8 +1242,7 @@ class MainWindow(QMainWindow):
         """Zwischenmeldung eines laufenden Abrufs."""
         if not self._board_is_current(mode, generation):
             return
-        self._board_view(mode).set_busy(True, text)
-        self._log.write(text, Level.INFO)
+        self._set_status(text, "busy")
 
     def _on_board_loaded(self, board: object, mode: str, generation: int) -> None:
         """Uebernimmt ein fertiges Ergebnis."""
@@ -1160,9 +1250,11 @@ class MainWindow(QMainWindow):
         if not self._board_is_current(mode, generation):
             return
         view = self._board_view(mode)
-        view.set_busy(False)
         if isinstance(board, Board):
             view.set_board(board)
+            self._board_loaded[mode] = True
+            self._refresh_summary_bar()
+            self._set_status(f"{board.count} Tickets geladen")
             if board.unknown_status:
                 # Nicht zugeordnete Status duerfen nicht still in einem
                 # Sammeltopf verschwinden - sonst merkt niemand, dass die
@@ -1177,9 +1269,7 @@ class MainWindow(QMainWindow):
         self._running_workers = [w for w in self._running_workers if w.isRunning()]
         if not self._board_is_current(mode, generation):
             return
-        view = self._board_view(mode)
-        view.set_busy(False)
-        view.set_message(message)
+        self._set_status(message, "error")
         self._log.write(message, Level.ERROR)
 
     def _start_worker(
@@ -1345,12 +1435,22 @@ class MainWindow(QMainWindow):
         self._refresh_summary_bar()
 
     def reload_current(self) -> None:
-        """Laedt neu - je nach aktiver Ansicht den Monat oder das ganze Jahr."""
-        if self._stack.currentIndex() == 2:
+        """Laedt die AKTIVE Ansicht neu.
+
+        Der Befehl heisst "Aktualisieren" und muss deshalb das aktualisieren,
+        was der Anwender gerade sieht - sonst laedt er den Monat neu, waehrend
+        er auf eine Ticketliste schaut.
+        """
+        position = self._stack.currentIndex()
+        mode = _BOARD_MODES.get(position)
+        if mode is not None:
+            self._load_board(mode)
+            return
+        if position == 2:
             self._year_loaded_for = None
             self.load_year()
-        else:
-            self.load_month()
+            return
+        self.load_month()
 
     def _set_status(self, text: str, state: str = "") -> None:
         """Schreibt in Statuszeile und Meldungsfenster.
@@ -1491,6 +1591,10 @@ class MainWindow(QMainWindow):
         # zwoelf Monate in einem Bereichs-Abruf laden.
         if position == 2 and self._settings_complete() and self._year_loaded_for != self._year:
             self.load_year()
+        # Ticket-Reiter: beim ersten Besuch laden, danach nur auf Zuruf.
+        mode = _BOARD_MODES.get(position)
+        if mode is not None and not self._board_loaded[mode] and self._settings_complete():
+            self._load_board(mode)
 
     def _update_year_view(self, timesheet: Timesheet | None) -> None:
         """Traegt die Summen des geladenen Zeitraums in die Jahresansicht.
