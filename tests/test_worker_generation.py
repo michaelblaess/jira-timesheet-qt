@@ -29,6 +29,9 @@ class FakeWorker(QObject):
     """Ersetzt den echten Faden: meldet sich als laufend, tut aber nichts."""
 
     progress = Signal(str)
+    # Der Doppelgaenger muss die Schnittstelle des echten Fadens vollstaendig
+    # nachbilden - sonst prueft der Test eine Verdrahtung, die es so nicht gibt.
+    log = Signal(str)
     finished_ok = Signal(object)
     failed = Signal(str)
     finished = Signal()

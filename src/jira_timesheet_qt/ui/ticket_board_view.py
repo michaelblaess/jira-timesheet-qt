@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QMenu,
+    QStackedWidget,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -166,7 +167,19 @@ class TicketBoardView(QWidget):
         self._tree.customContextMenuRequested.connect(self._on_context_menu)
         self._tree.doubleClicked.connect(self._on_double_click)
         self._tree.clicked.connect(self._on_click)
-        outer.addWidget(self._tree, 1)
+
+        # Waehrend des Abrufs steht hier ein Hinweis statt einer leeren
+        # Tabelle. Ein Abruf kann eine Minute dauern, und eine weisse Flaeche
+        # ohne jedes Lebenszeichen sieht aus wie ein Absturz.
+        self._placeholder = QLabel("Noch nichts geladen.")
+        self._placeholder.setObjectName("BoardPlaceholder")
+        self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._placeholder.setWordWrap(True)
+
+        self._pages = QStackedWidget()
+        self._pages.addWidget(self._placeholder)
+        self._pages.addWidget(self._tree)
+        outer.addWidget(self._pages, 1)
 
     # --- Fuellen ---------------------------------------------------------
 
@@ -182,6 +195,32 @@ class TicketBoardView(QWidget):
         self._fill_status_filter(board)
         self._tree.expandAll()
         self._resize_columns()
+        if board is not None and board.count == 0:
+            self._show_placeholder("Keine Tickets gefunden.")
+        else:
+            self._pages.setCurrentWidget(self._tree)
+
+    def set_loading(self, text: str = "Tickets werden geladen ...") -> None:
+        """Zeigt waehrend des Abrufs einen Hinweis statt einer leeren Tabelle.
+
+        Args:
+            text:
+                Der anzuzeigende Hinweis.
+        """
+        # Ein bereits geladenes Ergebnis stehen lassen: beim Aktualisieren
+        # ist die alte Liste besser als eine leere Flaeche.
+        if self._board is None:
+            self._show_placeholder(text)
+
+    def set_failed(self, text: str) -> None:
+        """Zeigt eine Fehlermeldung, wenn noch nichts geladen ist."""
+        if self._board is None:
+            self._show_placeholder(text)
+
+    def _show_placeholder(self, text: str) -> None:
+        """Blendet die Hinweisflaeche mit dem gegebenen Text ein."""
+        self._placeholder.setText(text)
+        self._pages.setCurrentWidget(self._placeholder)
 
     def set_search(self, text: str) -> None:
         """Uebernimmt den Suchbegriff der Werkzeugleiste.

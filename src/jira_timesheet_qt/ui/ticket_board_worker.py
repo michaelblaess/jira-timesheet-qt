@@ -87,7 +87,12 @@ class TicketBoardWorker(QThread):
 
     finished_ok = Signal(object)
     failed = Signal(str)
+    # Zwei Kanaele, bewusst getrennt: die Statuszeile hat Platz fuer einen
+    # kurzen Satz, das Meldungsfenster fuer alles. Die JQL-Ausdruecke gehoeren
+    # ins Meldungsfenster - dort kann man sie zum Nachvollziehen kopieren, in
+    # der Statuszeile schoben sie nur alles andere weg.
     progress = Signal(str)
+    log = Signal(str)
 
     def __init__(
         self,
@@ -135,10 +140,23 @@ class TicketBoardWorker(QThread):
         # und brauchen deshalb eine zweite Abfrage.
         return [assigned_jql(), closing_jql(self._config.closing_status)]
 
+    def _phase(self, text: str) -> None:
+        """Meldet einen Zwischenstand in beide Kanaele.
+
+        Die eigenen Phasentexte sind kurz genug fuer die Statuszeile und
+        gehoeren zugleich in den Verlauf.
+
+        Args:
+            text:
+                Der Zwischenstand.
+        """
+        self.progress.emit(text)
+        self.log.emit(text)
+
     async def _fetch(self) -> Board:
         """Holt die Rohantworten und baut daraus die Ansicht."""
         settings = self._settings
-        self.progress.emit("Verbinde mit Jira ...")
+        self._phase("Verbinde mit Jira ...")
 
         client = JiraClient(
             host=settings.jira_host,
@@ -147,7 +165,8 @@ class TicketBoardWorker(QThread):
             budget_field=settings.budget_field,
             legacy=settings.use_legacy_api,
             proxy=settings.proxy_url,
-            on_log=self.progress.emit,
+            # Der Client meldet ausfuehrlich, inklusive der Ausdruecke.
+            on_log=self.log.emit,
         )
 
         account_id, issues = await client.fetch_issues(self._jqls, FIELDS)
@@ -159,7 +178,7 @@ class TicketBoardWorker(QThread):
             account_id=account_id,
             browse_base=settings.jira_host,
         )
-        self.progress.emit(f"{board.count} Tickets aufbereitet")
+        self._phase(f"{board.count} Tickets aufbereitet")
 
         if self._mode != MODE_ASSIGNED:
             # Fremde Tickets gehoeren nicht in den eigenen Pile of Shame -
@@ -170,7 +189,7 @@ class TicketBoardWorker(QThread):
         if not keys:
             return board
 
-        self.progress.emit(f"Buchungslage von {len(keys)} auffälligen Tickets wird geprüft ...")
+        self._phase(f"Buchungslage von {len(keys)} auffälligen Tickets wird geprüft ...")
         stats = await client.fetch_worklog_stats(keys)
         worklogs = {
             key: WorklogInfo(count=count, last=parse_ts(started))

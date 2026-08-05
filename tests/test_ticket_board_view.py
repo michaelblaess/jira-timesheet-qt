@@ -678,7 +678,7 @@ class TestStatusleiste:
         # keiner.
         window = self._fenster_mit_board()
         window._refresh_summary_bar()
-        assert window._summary._bar.isVisible() is False
+        assert window._summary._bar.isHidden() is True
 
     def test_nicht_zugeordnete_status_werden_gemeldet(self, qapp: QApplication) -> None:
         window = MainWindow(Settings(), Mode.DARK)
@@ -698,3 +698,95 @@ class TestStatusleiste:
         window._stack.setCurrentIndex(_VIEWS.index("Relevante Tickets"))
         window._refresh_summary_bar()
         assert "Tickets" not in self._texte(window)
+
+
+class TestLadeanzeige:
+    """Ein Abruf dauert bis zu einer Minute - das muss man sehen."""
+
+    def test_balken_erscheint_bei_busy(self, qapp: QApplication) -> None:
+        window = MainWindow(Settings(), Mode.DARK)
+        window._set_status("Lädt ...", "busy")
+        assert window._busy.isHidden() is False
+
+    def test_balken_verschwindet_danach(self, qapp: QApplication) -> None:
+        window = MainWindow(Settings(), Mode.DARK)
+        window._set_status("Lädt ...", "busy")
+        window._set_status("Fertig")
+        assert window._busy.isHidden() is True
+
+    def test_balken_verschwindet_auch_bei_fehler(self, qapp: QApplication) -> None:
+        window = MainWindow(Settings(), Mode.DARK)
+        window._set_status("Lädt ...", "busy")
+        window._set_status("Kaputt", "error")
+        assert window._busy.isHidden() is True
+
+    def test_balken_ist_unbestimmt(self, qapp: QApplication) -> None:
+        # Eine Prozentzahl wäre erfunden - wir wissen nicht, wie lange es
+        # dauert. Bereich 0..0 heisst genau das.
+        window = MainWindow(Settings(), Mode.DARK)
+        assert window._busy.minimum() == 0
+        assert window._busy.maximum() == 0
+
+    def test_ansicht_zeigt_hinweis_statt_leerer_flaeche(self, qapp: QApplication) -> None:
+        view = TicketBoardView("Test")
+        view.set_loading()
+        assert view._pages.currentWidget() is view._placeholder
+        assert "geladen" in view._placeholder.text()
+
+    def test_geladene_liste_bleibt_beim_aktualisieren_stehen(self, qapp: QApplication) -> None:
+        # Beim Aktualisieren ist die alte Liste besser als eine leere Fläche.
+        view = TicketBoardView("Test")
+        view.set_board(board(Group(role=Role.ACTIVE, tickets=[ticket("A-1")])))
+        view.set_loading()
+        assert view._pages.currentWidget() is view._tree
+
+    def test_leeres_ergebnis_sagt_das_auch(self, qapp: QApplication) -> None:
+        view = TicketBoardView("Test")
+        view.set_board(Board())
+        assert view._pages.currentWidget() is view._placeholder
+        assert "Keine Tickets" in view._placeholder.text()
+
+    def test_fehler_steht_in_der_ansicht(self, qapp: QApplication) -> None:
+        view = TicketBoardView("Test")
+        view.set_failed("Zugang fehlt")
+        assert view._placeholder.text() == "Zugang fehlt"
+
+
+class TestMeldungskanaele:
+    """JQL gehört ins Meldungsfenster, nicht in die Statuszeile."""
+
+    def test_worker_trennt_die_kanaele(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.ui.ticket_board_worker import TicketBoardWorker
+
+        worker = TicketBoardWorker(Settings(), BoardConfig(), MODE_ASSIGNED)
+        kurz: list[str] = []
+        lang: list[str] = []
+        worker.progress.connect(kurz.append)
+        worker.log.connect(lang.append)
+        worker._phase("Verbinde ...")
+        assert kurz == ["Verbinde ..."]
+        # Der Zwischenstand gehört in beides, der Verlauf verliert nichts.
+        assert lang == ["Verbinde ..."]
+
+    def test_client_meldungen_gehen_nur_ins_log(self, qapp: QApplication) -> None:
+        # Der Client meldet den vollen JQL-Ausdruck. In der Statuszeile schob
+        # er alles andere weg - dort darf er nicht mehr ankommen.
+        from jira_timesheet_qt.ui.ticket_board_worker import TicketBoardWorker
+
+        worker = TicketBoardWorker(Settings(), BoardConfig(), MODE_ASSIGNED)
+        kurz: list[str] = []
+        lang: list[str] = []
+        worker.progress.connect(kurz.append)
+        worker.log.connect(lang.append)
+        # Genau so haengt der Client am Faden.
+        worker.log.emit('JQL: assignee = currentUser() AND statusCategory != Done')
+        assert kurz == []
+        assert len(lang) == 1
+
+    def test_fenster_schreibt_den_langen_kanal_ins_meldungsfenster(
+        self, qapp: QApplication
+    ) -> None:
+        window = MainWindow(Settings(), Mode.DARK)
+        vorher = window._log.line_count
+        window.log_message("JQL: irgendwas")
+        assert window._log.line_count == vorher + 1

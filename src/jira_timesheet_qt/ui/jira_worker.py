@@ -31,7 +31,11 @@ class WorklogWorker(QThread):
 
     finished_ok = Signal(object)
     failed = Signal(str)
+    # Kurzer Stand fuer die Statuszeile, ausfuehrliches fuer das
+    # Meldungsfenster. Ohne die Trennung landet ein JQL-Ausdruck in der
+    # Statuszeile und schiebt alles andere weg.
     progress = Signal(str)
+    log = Signal(str)
 
     def __init__(
         self,
@@ -68,7 +72,7 @@ class WorklogWorker(QThread):
             budget_field=settings.budget_field,
             legacy=settings.use_legacy_api,
             proxy=settings.proxy_url,
-            on_log=self.progress.emit,
+            on_log=self.log.emit,
         )
         entries = await client.get_worklogs(self._from, self._to)
         self.progress.emit(f"{len(entries)} Einträge aus Jira erhalten")
@@ -96,7 +100,11 @@ class TicketReportWorker(QThread):
 
     finished_ok = Signal(object)
     failed = Signal(str)
+    # Kurzer Stand fuer die Statuszeile, ausfuehrliches fuer das
+    # Meldungsfenster. Ohne die Trennung landet ein JQL-Ausdruck in der
+    # Statuszeile und schiebt alles andere weg.
     progress = Signal(str)
+    log = Signal(str)
 
     def __init__(self, settings: Settings, key: str, parent: QObject | None = None) -> None:
         """Merkt sich Zugang und Ticket.
@@ -135,7 +143,7 @@ class TicketReportWorker(QThread):
             token=settings.jira_token,
             legacy=settings.use_legacy_api,
             proxy=settings.proxy_url,
-            on_log=self.progress.emit,
+            on_log=self.log.emit,
         )
         daten = await client.get_ticket_lifecycle(self._key)
 

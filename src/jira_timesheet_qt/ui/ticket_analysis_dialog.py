@@ -143,6 +143,7 @@ class TicketAnalysisDialog(QDialog):
 
         worker = TicketReportWorker(self._settings, key, self)
         worker.progress.connect(self._status.setText)
+        worker.log.connect(self._forward_log)
         worker.finished_ok.connect(self._on_data)
         worker.failed.connect(self._on_failed)
         worker.finished.connect(lambda: self._set_busy(False))
@@ -160,6 +161,21 @@ class TicketAnalysisDialog(QDialog):
         QMessageBox.critical(self, t("ticket_report.title"), message)
 
     # -- Ergebnis -------------------------------------------------------
+    def _forward_log(self, text: str) -> None:
+        """Reicht ausfuehrliche Meldungen ans Meldungsfenster weiter.
+
+        Der Dialog hat nur eine einzeilige Anzeige. Die JQL-Ausdruecke des
+        Clients gehoeren in den Verlauf des Hauptfensters, wo man sie zum
+        Nachvollziehen kopieren kann.
+
+        Args:
+            text:
+                Die Meldung.
+        """
+        writer = getattr(self.parent(), "log_message", None)
+        if callable(writer):
+            writer(text)
+
     def _on_data(self, data: TicketLifecycleData) -> None:
         """Baut den Bericht und fragt nach dem Speicherort."""
         self._data = data

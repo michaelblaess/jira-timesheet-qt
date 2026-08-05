@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QSizePolicy,
     QStackedWidget,
@@ -320,10 +321,22 @@ class MainWindow(QMainWindow):
         self._anon_badge.setObjectName("AnonBadge")
         self._anon_badge.setContentsMargins(10, 3, 10, 3)
         self._anon_badge.setVisible(False)
+        # Unbestimmter Fortschrittsbalken: ein Abruf kann je nach Leitung
+        # und Ticketzahl eine Minute dauern, und eine leere Maske ohne jedes
+        # Lebenszeichen sieht aus wie ein Absturz. Bereich 0..0 heisst "laeuft,
+        # Dauer unbekannt" - eine Prozentzahl waere hier erfunden.
+        self._busy = QProgressBar()
+        self._busy.setObjectName("BusyBar")
+        self._busy.setRange(0, 0)
+        self._busy.setTextVisible(False)
+        self._busy.setFixedWidth(120)
+        self._busy.setVisible(False)
+
         status_bar = QStatusBar()
         status_bar.setSizeGripEnabled(True)
         status_bar.addWidget(self._summary, 1)
         status_bar.addPermanentWidget(self._anon_badge)
+        status_bar.addPermanentWidget(self._busy)
         status_bar.addPermanentWidget(self._status)
         self.setStatusBar(status_bar)
 
@@ -1220,10 +1233,15 @@ class MainWindow(QMainWindow):
         generation = self._board_generation[mode]
 
         self._set_status("Tickets werden geladen ...", "busy")
+        self._board_view(mode).set_loading()
         worker = TicketBoardWorker(self._settings, config_from(self._settings), mode, self)
         worker.progress.connect(
             lambda text, m=mode, g=generation: self._on_board_progress(text, m, g)
         )
+        # Die JQL-Ausdruecke gehoeren ins Meldungsfenster: dort lassen sie sich
+        # kopieren und nachvollziehen. In der Statuszeile schoben sie alles
+        # andere weg.
+        worker.log.connect(self._log.write)
         worker.finished_ok.connect(
             lambda board, m=mode, g=generation: self._on_board_loaded(board, m, g)
         )
@@ -1270,6 +1288,7 @@ class MainWindow(QMainWindow):
         if not self._board_is_current(mode, generation):
             return
         self._set_status(message, "error")
+        self._board_view(mode).set_failed(message)
         self._log.write(message, Level.ERROR)
 
     def _start_worker(
@@ -1294,6 +1313,8 @@ class MainWindow(QMainWindow):
         self._set_status(status, "busy")
         worker = WorklogWorker(self._settings, first, last, self)
         worker.progress.connect(lambda text, g=generation: self._on_progress(text, g))
+        # Ausfuehrliches (die JQL-Ausdruecke) nur ins Meldungsfenster.
+        worker.log.connect(self._log.write)
         worker.finished_ok.connect(lambda ts, g=generation: on_ok(ts, g))
         worker.failed.connect(lambda msg, g=generation: self._on_failed(msg, g))
         worker.finished.connect(lambda g=generation: self._on_worker_done(g))
@@ -1457,13 +1478,38 @@ class MainWindow(QMainWindow):
 
         Die Statuszeile zeigt nur den letzten Stand, das Meldungsfenster den
         ganzen Verlauf - bei einem fehlgeschlagenen Abruf braucht man beides.
+
+        Der Zustand "busy" blendet zugleich den Fortschrittsbalken ein. Das
+        haengt bewusst hier und nicht an den einzelnen Ladepfaden: so bekommt
+        JEDER Abruf - Monat, Jahr und die Ticket-Ansichten - dieselbe Anzeige,
+        auch ein spaeter hinzukommender.
+
+        Args:
+            text:
+                Der anzuzeigende Stand.
+            state:
+                "busy", "error" oder leer.
         """
         self._log.write(text, _LEVELS.get(state, Level.INFO))
+        self._busy.setVisible(state == "busy")
         self._status.setText(text)
         self._status.setProperty("state", state)
         style = self._status.style()
         style.unpolish(self._status)
         style.polish(self._status)
+
+    def log_message(self, text: str) -> None:
+        """Schreibt eine Meldung ins Meldungsfenster, ohne die Statuszeile.
+
+        Fuer ausfuehrliche Ausgaben aus Dialogen - etwa die JQL-Ausdruecke
+        der Ticket-Analyse. Sie gehoeren in den Verlauf, aber nicht in
+        eine einzeilige Anzeige.
+
+        Args:
+            text:
+                Die Meldung.
+        """
+        self._log.write(text)
 
     def show_toast(self, text: str) -> None:
         """Zeigt eine kurze, selbst verschwindende Benachrichtigung unten rechts."""
