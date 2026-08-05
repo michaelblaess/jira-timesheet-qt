@@ -49,6 +49,12 @@ from jira_timesheet_qt.ui.theme import ACCENT_LABELS, SCALES
 # nach seinem Inhalt, und die rechte Kante wirkt zerfranst.
 FIELD_WIDTH = 240
 
+# Kommalisten brauchen mehr Platz: "Fertig fuer Entwicklung, Offen" passt in
+# ein Feld von 240 Pixeln nicht einmal zur Haelfte hinein. Die Ticket-Seite
+# nimmt deshalb bewusst zwei Kanten in Kauf - schmale Zahlenfelder, breite
+# Textfelder - statt Listen anzuzeigen, die man nicht lesen kann.
+WIDE_FIELD_WIDTH = 2 * FIELD_WIDTH
+
 # Bundeslaender fuer die Feiertagsberechnung.
 _STATES = (
     ("BW", "Baden-Württemberg"),
@@ -88,7 +94,10 @@ class SettingsDialog(QDialog):
         # Faden fuer die Budget-Feld-Autoerkennung (ein Netzwerkaufruf).
         self._detect_worker: BudgetFieldWorker | None = None
         self.setWindowTitle("Einstellungen")
-        self.setMinimumSize(720, 520)
+        # Die Breite folgt dem breitesten Feld: Seitenleiste, Beschriftung und
+        # ein Textfeld von WIDE_FIELD_WIDTH muessen nebeneinander passen. Bei
+        # 720 lief die Ticket-Seite rechts aus dem Dialog heraus.
+        self.setMinimumSize(820, 520)
         self.setSizeGripEnabled(True)
 
         outer = QVBoxLayout(self)
@@ -472,9 +481,12 @@ class SettingsDialog(QDialog):
         """
         edit = QLineEdit(", ".join(values))
         edit.setPlaceholderText(placeholder)
-        # Bewusst ueber die einheitliche Feldbreite hinaus - eine Statusliste
-        # passt sonst nicht hinein.
+        # Der Objektname allein reichte NICHT: die Seite steht auf
+        # FieldsStayAtSizeHint, also bleibt das Feld ohne ausdrueckliche Breite
+        # auf seiner Wunschbreite stehen - schmaler noch als die Zahlenfelder
+        # darunter. Die Mindestbreite ist deshalb die eigentliche Wirkung.
         edit.setObjectName("ExpandingField")
+        edit.setMinimumWidth(WIDE_FIELD_WIDTH)
         return edit
 
     @staticmethod

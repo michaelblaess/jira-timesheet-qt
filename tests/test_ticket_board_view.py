@@ -327,6 +327,45 @@ class TestEinstellungsseite:
     springt nach dem Speichern wortlos auf den alten Wert zurueck.
     """
 
+    def test_statusfelder_sind_breiter_als_die_zahlenfelder(self, qapp: QApplication) -> None:
+        # Eine Statusliste ist eine Kommaliste. Stand das Feld auf der
+        # Wunschbreite, war es schmaler als die Zahlenfelder darunter und
+        # zeigte von "Fertig für Entwicklung, Offen" gerade das erste Wort.
+        from jira_timesheet_qt.ui.settings_dialog import FIELD_WIDTH, SettingsDialog
+
+        dialog = SettingsDialog(Settings())
+        for feld in (
+            dialog.board_active,
+            dialog.board_backlog,
+            dialog.board_acceptance,
+            dialog.board_handback,
+            dialog.board_closing,
+            dialog.board_priorities,
+        ):
+            assert feld.minimumWidth() > FIELD_WIDTH
+
+    def test_das_breiteste_feld_passt_in_den_kleinsten_dialog(
+        self, qapp: QApplication
+    ) -> None:
+        # Ein breiteres Feld nuetzt nichts, wenn es rechts aus dem Dialog
+        # laeuft. Gemessen wurde genau das: Feldkante 748 bei 720 Pixeln
+        # Dialogbreite.
+        from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(Settings())
+        dialog.resize(dialog.minimumSize())
+        dialog.show()
+        # Erst die sichtbare Seite wird ausgelegt - ohne den Wechsel steht das
+        # Feld noch auf Position 0 und der Test misst nichts.
+        dialog._nav.setCurrentRow(2)
+        qapp.processEvents()
+        try:
+            feld = dialog.board_priorities
+            assert feld.parentWidget() is dialog._pages.currentWidget()
+            assert feld.x() + feld.width() <= dialog.width()
+        finally:
+            dialog.close()
+
     def test_jedes_statusfeld_zeigt_ein_beispiel(self, qapp: QApplication) -> None:
         # Die Felder heissen "Ich bin dran" oder "Rueckgabe" - ohne ein
         # Beispiel im leeren Feld ist nicht zu erraten, dass dort Statusnamen
