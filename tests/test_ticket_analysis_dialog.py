@@ -133,7 +133,11 @@ class TestDialog:
         assert gestartet == []
 
     def test_schreibt_die_datei_und_merkt_den_ordner(
-        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        qapp: QApplication,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        blockierte_browser_aufrufe: list[str],
     ) -> None:
         ziel = tmp_path / "berichte" / "ABC-1.html"
         ziel.parent.mkdir()
@@ -153,6 +157,9 @@ class TestDialog:
         assert "Testticket" in inhalt
         # Der naechste Bericht soll im selben Ordner vorgeschlagen werden.
         assert einstellungen.last_export_dir == str(ziel.parent)
+        # Der Bericht wird zum Ansehen geoeffnet - im Test aber nur vorgemerkt,
+        # nie wirklich (siehe Fixture blockierte_browser_aufrufe).
+        assert blockierte_browser_aufrufe == [ziel.resolve().as_uri()]
 
     def test_abbruch_im_speichern_dialog_schreibt_nichts(
         self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

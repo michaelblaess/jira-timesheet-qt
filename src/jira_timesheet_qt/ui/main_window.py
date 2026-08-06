@@ -69,10 +69,10 @@ from jira_timesheet_qt.services.ticket_board import Board, Marker, Role
 from jira_timesheet_qt.services.ticket_board import Ticket as BoardTicket
 from jira_timesheet_qt.ui.about_dialog import AboutDialog
 from jira_timesheet_qt.ui.calendar_view import CalendarView, DayCell
+from jira_timesheet_qt.ui.cell_delegate import CellDelegate
 from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
 from jira_timesheet_qt.ui.export_service import ExportService
 from jira_timesheet_qt.ui.hero_background import HeroBackground
-from jira_timesheet_qt.ui.highlight_delegate import HighlightDelegate
 from jira_timesheet_qt.ui.icons import app_icon, load_icon
 from jira_timesheet_qt.ui.jira_worker import WorklogWorker
 from jira_timesheet_qt.ui.log_dock import Level, LogDock
@@ -543,8 +543,8 @@ class MainWindow(QMainWindow):
         table.doubleClicked.connect(self._on_row_activated)
 
         # Hebt den aktuellen Suchbegriff in den Zellen hervor.
-        self._highlight = HighlightDelegate(table)
-        table.setItemDelegate(self._highlight)
+        self._cell_delegate = CellDelegate(table)
+        table.setItemDelegate(self._cell_delegate)
 
         self._table = table
         return table
@@ -565,7 +565,7 @@ class MainWindow(QMainWindow):
         tree.setWordWrap(False)
         tree.setFrameShape(QTreeView.Shape.NoFrame)
         # Derselbe Delegate wie die flache Liste - hebt den Suchbegriff hervor.
-        tree.setItemDelegate(self._highlight)
+        tree.setItemDelegate(self._cell_delegate)
 
         header = tree.header()
         header.setHighlightSections(False)
@@ -654,7 +654,7 @@ class MainWindow(QMainWindow):
         """Filtert beide Ansichten und hebt den Suchbegriff in den Zellen hervor."""
         self._proxy.setFilterFixedString(text)
         self._tree_proxy.setFilterFixedString(text)
-        self._highlight.set_needle(text)
+        self._cell_delegate.set_needle(text)
         # Neu zeichnen, damit die Hervorhebung sofort erscheint bzw. verschwindet.
         self._table.viewport().update()
         self._tree.viewport().update()

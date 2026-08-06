@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from jira_timesheet_qt.services.ticket_board import Board, Marker, Ticket
+from jira_timesheet_qt.ui.cell_delegate import CellDelegate
 
 from .theme import Mode
 from .ticket_board_model import SORT_ROLE, TICKET_ROLE, TicketBoardModel
@@ -185,6 +186,10 @@ class TicketBoardView(QWidget):
         # weg, die der Kern bewusst gesetzt hat (im Backlog etwa Fehler
         # zuerst, sonst das Aelteste oben).
         self._tree.sortByColumn(-1, Qt.SortOrder.AscendingOrder)
+        # Derselbe Delegate wie in der Liste, hier ohne Suchbegriff - er sorgt
+        # allein fuer den Innenabstand. Ohne ihn stoesst die rechtsbuendige
+        # Liegezeit unmittelbar an die Merkmale der Nachbarspalte.
+        self._tree.setItemDelegate(CellDelegate(self._tree))
         self._tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._tree.customContextMenuRequested.connect(self._on_context_menu)
         self._tree.doubleClicked.connect(self._on_double_click)

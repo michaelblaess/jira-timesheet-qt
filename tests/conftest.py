@@ -15,6 +15,35 @@ from PySide6.QtCore import QSettings  # noqa: E402 - muss nach der Zeile oben st
 
 
 @pytest.fixture(autouse=True)
+def blockierte_browser_aufrufe(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Haelt jeden Test davon ab, einen echten Browser oder Viewer zu oeffnen.
+
+    Belegt am 06.08.2026: der Test des Analyse-Dialogs hat den geschriebenen
+    Bericht jedes Mal wirklich aufgemacht - bei jedem Testlauf ging ein
+    Browser-Tab auf eine Datei im pytest-Temp-Verzeichnis auf. Der Test hatte
+    Speichern-Dialog und Meldungsfenster ersetzt, das Oeffnen aber uebersehen.
+
+    Die Sperre liegt deshalb hier und nicht im einzelnen Test: Ein neuer Test,
+    der wieder einen Pfad ueber webbrowser oder QDesktopServices nimmt, ist
+    damit von vornherein abgedeckt. Wer den Aufruf pruefen will, laesst sich
+    die Fixture geben - sie sammelt die Ziele.
+    """
+    import webbrowser
+
+    from PySide6.QtGui import QDesktopServices
+
+    ziele: list[str] = []
+
+    def _merken(target: object, *_args: object, **_kwargs: object) -> bool:
+        ziele.append(str(target))
+        return True
+
+    monkeypatch.setattr(webbrowser, "open", _merken)
+    monkeypatch.setattr(QDesktopServices, "openUrl", _merken)
+    return ziele
+
+
+@pytest.fixture(autouse=True)
 def _isolated_qsettings(
     tmp_path_factory: pytest.TempPathFactory,
     monkeypatch: pytest.MonkeyPatch,
