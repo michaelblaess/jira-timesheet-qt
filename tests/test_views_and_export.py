@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -201,6 +202,67 @@ class TestCrashGuard:
     def test_dialog_shows_the_report(self, qapp: QApplication) -> None:
         dialog = ErrorDialog("Zeile eins\nZeile zwei")
         assert "Zeile zwei" in dialog._view.toPlainText()
+
+    @pytest.mark.parametrize("art", [KeyboardInterrupt, SystemExit])
+    def test_abbruchsignal_ist_kein_absturz(
+        self,
+        qapp: QApplication,
+        monkeypatch: pytest.MonkeyPatch,
+        art: type[BaseException],
+    ) -> None:
+        # Strg+C in der startenden Konsole trifft den Interpreter an einer
+        # beliebigen Stelle. Ein Absturzbericht zeigt dann auf voellig
+        # unschuldigen Code - am 06.08.2026 auf paintEvent in ticket_charts.
+        from jira_timesheet_qt.ui import crash_guard
+
+        gebaut: list[str] = []
+        beendet: list[bool] = []
+        monkeypatch.setattr(
+            crash_guard,
+            "ErrorDialog",
+            lambda *a, **k: gebaut.append("dialog"),  # type: ignore[arg-type,return-value]
+        )
+        monkeypatch.setattr(qapp, "quit", lambda: beendet.append(True))
+        vorher = sys.excepthook
+        try:
+            crash_guard.install()
+            sys.excepthook(art, art(), None)
+        finally:
+            sys.excepthook = vorher
+
+        assert gebaut == []
+        assert beendet == [True]
+
+    def test_echter_fehler_zeigt_weiterhin_den_dialog(
+        self,
+        qapp: QApplication,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Gegenprobe: die Ausnahme oben darf nicht den ganzen Haken abschalten.
+        from jira_timesheet_qt.ui import crash_guard
+
+        gezeigt: list[str] = []
+
+        class _Attrappe:
+            def __init__(self, report: str, parent: object = None) -> None:
+                gezeigt.append(report)
+
+            def setWindowModality(self, _mode: object) -> None:  # noqa: N802
+                pass
+
+            def exec(self) -> int:
+                return 0
+
+        monkeypatch.setattr(crash_guard, "ErrorDialog", _Attrappe)
+        vorher = sys.excepthook
+        try:
+            crash_guard.install()
+            sys.excepthook(ValueError, ValueError("kaputt"), None)
+        finally:
+            sys.excepthook = vorher
+
+        assert len(gezeigt) == 1
+        assert "kaputt" in gezeigt[0]
 
 
 class TestViewsInWindow:

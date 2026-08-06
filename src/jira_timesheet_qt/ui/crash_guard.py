@@ -125,6 +125,21 @@ def install(parent: QWidget | None = None) -> None:
         value: BaseException,
         tb: TracebackType | None,
     ) -> None:
+        if issubclass(exc_type, (KeyboardInterrupt, SystemExit)):
+            # Kein Absturz, sondern eine Aufforderung zu beenden. SIGINT kommt
+            # von aussen (Strg+C in der startenden Konsole, geschlossenes
+            # Konsolenfenster, Abmelden/Herunterfahren) und trifft den
+            # Interpreter an einer beliebigen Stelle - unter Qt fast immer in
+            # einem paintEvent, weil dort die meiste Zeit verbracht wird. Ein
+            # Absturzbericht mit dieser zufaelligen Zeilennummer zeigt auf
+            # unschuldigen Code und schickt jeden Leser in die Irre.
+            sys.stderr.write(f"{exc_type.__name__} - Anwendung wird beendet.\n")
+            app = QApplication.instance()
+            if app is not None:
+                # Ueber quit() statt hartem Abbruch, damit closeEvent laeuft:
+                # Einstellungen sichern und auf laufende Faeden warten.
+                app.quit()
+            return
         if busy["value"]:
             previous(exc_type, value, tb)
             return
