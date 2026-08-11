@@ -98,8 +98,8 @@
     <div class="gallery-cat" data-cat="4">
       <div class="gallery-card"><img src="screenshots/board-assigned-dark.png" alt="Meine Tickets (dunkel)"><div class="gallery-caption">Meine Tickets: gruppiert danach, wer am Zug ist - dunkel</div></div>
       <div class="gallery-card"><img src="screenshots/board-assigned-light.png" alt="Meine Tickets (hell)"><div class="gallery-caption">Meine Tickets: gruppiert danach, wer am Zug ist - hell</div></div>
-      <div class="gallery-card"><img src="screenshots/board-relevant-dark.png" alt="Relevante Tickets (dunkel)"><div class="gallery-caption">Relevante Tickets: alles, woran Du mitgewirkt hast - dunkel</div></div>
-      <div class="gallery-card"><img src="screenshots/board-relevant-light.png" alt="Relevante Tickets (hell)"><div class="gallery-caption">Relevante Tickets: alles, woran Du mitgewirkt hast - hell</div></div>
+      <div class="gallery-card"><img src="screenshots/board-relevant-dark.png" alt="Meine Aktivitäten (dunkel)"><div class="gallery-caption">Meine Aktivitäten: alles, woran Du mitgewirkt hast - dunkel</div></div>
+      <div class="gallery-card"><img src="screenshots/board-relevant-light.png" alt="Meine Aktivitäten (hell)"><div class="gallery-caption">Meine Aktivitäten: alles, woran Du mitgewirkt hast - hell</div></div>
     </div>
 
     <div class="gallery-cat" data-cat="5">
@@ -167,12 +167,17 @@
       <div class="feature-card">
         <div class="feature-icon">🎯</div>
         <h3>Meine Tickets</h3>
-        <p>Alle Dir zugewiesenen Tickets, gruppiert danach, <strong>wer am Zug ist</strong>: ich bin dran, andere sind dran, Backlog, Rückläufer, Abschluss offen. Dazu Merkmale für Handlungsbedarf, die Liegezeit in Arbeitstagen und drei Diagramme.</p>
+        <p>Alle Dir zugewiesenen Tickets, gruppiert danach, <strong>wer am Zug ist</strong>: ich bin dran, andere sind dran, Backlog, live und wartet auf Test, Übergabe, abgeschlossen. Dazu Merkmale für Handlungsbedarf, die Liegezeit in Arbeitstagen und drei Diagramme.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon">💬</div>
-        <h3>Relevante Tickets</h3>
+        <h3>Meine Aktivitäten</h3>
         <p>Tickets, an denen Du mitgewirkt hast, auch wenn sie jemand anderem gehören: kommentiert, erwähnt, bearbeitet oder bebucht - in einem einstellbaren Zeitfenster.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">👥</div>
+        <h3>Mein Team</h3>
+        <p>Derselbe Blick auf den Ticketstand von Kolleginnen und Kollegen, ohne dass die etwas installieren müssen. Gesucht wird über den <strong>Namen</strong> - eine Person kann mehrere Jira-Konten führen, und viele Konten geben ihre Mailadresse gar nicht heraus. Bewusst ohne Diagramme: Durchsatz je Monat wäre über eine andere Person eine Leistungskennzahl.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon">🔥</div>
@@ -233,7 +238,7 @@
   <section class="section" id="tickets">
     <div class="section-label">Einrichtung</div>
     <h2 class="section-title">Ticket-Ansichten einrichten</h2>
-    <p class="section-description" style="max-width: 760px;">Die Reiter <strong>Meine Tickets</strong> und <strong>Relevante Tickets</strong> gruppieren nicht nach Statusnamen, sondern nach der Frage <strong>wer ist am Zug</strong>. Weil jede Jira-Instanz ihre Status anders nennt, wird diese Zuordnung einmal eingetragen: Einstellungen (<code>Strg+,</code>), Seite <em>Tickets</em>. Bleiben die Felder leer, ordnet die Anwendung nach Jiras eigener Statuskategorie zu - das funktioniert sofort, ist aber grob.</p>
+    <p class="section-description" style="max-width: 760px;">Die Reiter <strong>Meine Tickets</strong>, <strong>Meine Aktivitäten</strong> und <strong>Mein Team</strong> gruppieren nicht nach Statusnamen, sondern nach der Frage <strong>wer ist am Zug</strong>. Weil jede Jira-Instanz ihre Status anders nennt, wird diese Zuordnung einmal eingetragen: Einstellungen (<code>Strg+,</code>), Seite <em>Tickets</em>. Bleiben die Felder leer, ordnet die Anwendung nach Jiras eigener Statuskategorie zu - das funktioniert sofort, ist aber grob.</p>
     <div class="cli-table-wrap">
       <table class="cli-table">
         <thead><tr><th>Gruppe</th><th>Was dort hingehört</th><th>Beispiel</th></tr></thead>
@@ -241,12 +246,13 @@
           <tr><td>Ich bin dran</td><td>Der Ball liegt bei Dir, es wird gerade gearbeitet</td><td><code>In Bearbeitung, Im Review</code></td></tr>
           <tr><td>Backlog</td><td>Fertig verfeinert, wartet darauf, gezogen zu werden</td><td><code>Bereit, Eingeplant</code></td></tr>
           <tr><td>Andere sind dran</td><td>Wartet auf Freigabe durch jemand anderen</td><td><code>Wartet auf Freigabe</code></td></tr>
-          <tr><td>Rückgabe</td><td>Ausgeliefert, wartet auf Bewertung durch den Autor</td><td><code>Ausgeliefert, Zur Bewertung</code></td></tr>
-          <tr><td>Abschluss offen</td><td>Status, die Jira als <strong>fertig</strong> zählt, obwohl noch etwas zu tun ist</td><td><code>Zur Abnahme, Übergabe</code></td></tr>
+          <tr><td>Live, wartet auf Test</td><td>Produktiv gesetzt, muss auf PROD noch getestet werden</td><td><code>Ausgeliefert, Zur Bewertung</code></td></tr>
+          <tr><td>Übergabe</td><td>Status, die Jira als <strong>fertig</strong> zählt, obwohl das Ticket noch auf die Live-Setzung wartet</td><td><code>Zur Übergabe, Deployment offen</code></td></tr>
+          <tr><td>Abgeschlossen</td><td>Wirklich fertig - reiner Kontrollblick, ohne Handlungsbedarf</td><td><code>Erledigt, Abgeschlossen</code></td></tr>
         </tbody>
       </table>
     </div>
-    <p class="section-description" style="max-width: 760px;">Das Feld <strong>Abschluss offen</strong> ist das wichtigste. Ein Status wie "Deployment offen" oder "Zur Übergabe" liegt in Jira in der Kategorie <em>Done</em>. Solche Tickets fallen durch jeden normalen Filter und werden ohne diesen Eintrag gar nicht erst abgefragt - sie fehlen dann vollständig, ohne dass es auffällt.</p>
+    <p class="section-description" style="max-width: 760px;">Das Feld <strong>Übergabe</strong> ist das wichtigste. Ein Status wie "Deployment offen" oder "Zur Übergabe" liegt in Jira in der Kategorie <em>Done</em>. Solche Tickets fallen durch jeden normalen Filter und werden ohne diesen Eintrag gar nicht erst abgefragt - sie fehlen dann vollständig, ohne dass es auffällt.</p>
     <p class="section-description" style="max-width: 760px;">Gerechnet wird in <strong>Arbeitstagen</strong> (Mo-Fr, 8-18 Uhr), nicht in Kalendertagen. Ein Ticket, das über ein langes Wochenende liegt, ist nicht drei Tage vernachlässigt worden. Die Schwellen für den Pile of Shame sind eine Setzung, keine Messung: zu klein gewählt trifft der Hinweis alles und sagt dann nichts mehr.</p>
   </section>
 

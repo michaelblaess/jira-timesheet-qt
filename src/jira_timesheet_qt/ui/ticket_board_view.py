@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from jira_timesheet_qt.services.ticket_board import Board, Marker, Ticket
+from jira_timesheet_qt.services.ticket_board import Board, Marker, Role, Ticket
 from jira_timesheet_qt.ui.cell_delegate import CellDelegate
 
 from .theme import Mode
@@ -277,11 +277,26 @@ class TicketBoardView(QWidget):
         self._model.set_board(board)
         self._fill_status_filter(board)
         self._tree.expandAll()
+        self._collapse_done()
         self._resize_columns()
         if board is not None and board.count == 0:
             self._show_placeholder("Keine Tickets gefunden.")
         else:
             self._pages.setCurrentWidget(self._tree)
+
+    def _collapse_done(self) -> None:
+        """Klappt die Gruppe "Abgeschlossen" zu.
+
+        Dort ist nichts mehr zu tun. Aufgeklappt schiebt sie - je nach
+        Instanz die groesste Gruppe - alles darueber aus dem Bild, und der
+        erste Blick faellt auf Erledigtes statt auf Offenes.
+        """
+        board = self._board
+        if board is None:
+            return
+        for row, group in enumerate(board.groups):
+            if group.role is Role.DONE:
+                self._tree.setExpanded(self._proxy.index(row, 0, QModelIndex()), False)
 
     def set_statistics(self, stats: object) -> None:
         """Reicht die ausgewerteten Zahlen an die Diagramme weiter."""

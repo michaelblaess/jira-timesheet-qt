@@ -274,3 +274,145 @@ class TestReiter:
         window = MainWindow(self._settings("Reiner Beispiel"), Mode.DARK)
         assert not window._team_board._with_charts
         assert window._assigned_board._with_charts
+
+
+class TestGruppen:
+    """Titel, Hinweise und der Startzustand der Gruppen."""
+
+    def _board(self) -> object:
+        """Eine Ansicht mit je einem Ticket in Übergabe und Abgeschlossen."""
+        from jira_timesheet_qt.services.ticket_board import BoardConfig, build_board
+
+        alt = (dt.datetime.now(dt.UTC) - dt.timedelta(days=30)).strftime(
+            "%Y-%m-%dT%H:%M:%S.000+0000"
+        )
+        issues = [
+            {
+                "key": f"BSP-{i}",
+                "fields": {
+                    "summary": "Beispiel",
+                    "status": {"name": status, "statusCategory": {"key": "done"}},
+                    "priority": {"name": "Medium"},
+                    "issuetype": {"name": "Task"},
+                    "reporter": {"accountId": ID_A, "displayName": "Autor"},
+                    "created": alt,
+                    "updated": alt,
+                },
+            }
+            for i, status in enumerate(("Zur Übergabe", "Erledigt"))
+        ]
+        return build_board(
+            issues,
+            BoardConfig(closing_status=("Zur Übergabe",), done_status=("Erledigt",)),
+            account_id=ID_A,
+        )
+
+    def test_titel_treffen_die_statusbedeutung(self, qapp: QApplication) -> None:
+        # "Rückläufer" war falsch: ein Rückläufer geht aus dem Review zurück
+        # in die Arbeit. Der gemeinte Status heißt dagegen: produktiv gesetzt,
+        # muss auf PROD noch getestet werden.
+        from jira_timesheet_qt.services.ticket_board import Role
+        from jira_timesheet_qt.ui.ticket_board_model import GROUP_TITLES
+
+        assert GROUP_TITLES[Role.HANDBACK] == "Live, wartet auf Test"
+        assert GROUP_TITLES[Role.CLOSING] == "Übergabe"
+        assert GROUP_TITLES[Role.DONE] == "Abgeschlossen"
+
+    def test_jede_rolle_hat_titel_und_hinweis(self, qapp: QApplication) -> None:
+        # Eine neue Rolle ohne Eintrag faellt sonst auf ihren technischen
+        # Namen zurueck ("done") und steht so in der Oberflaeche.
+        from jira_timesheet_qt.services.ticket_board import Role
+        from jira_timesheet_qt.ui.ticket_board_model import GROUP_HINTS, GROUP_TITLES
+
+        for role in Role:
+            assert role in GROUP_TITLES, f"Titel fehlt: {role}"
+            assert role in GROUP_HINTS, f"Hinweis fehlt: {role}"
+
+    def test_erklaerung_steht_im_hinweis_nicht_im_titel(self, qapp: QApplication) -> None:
+        # Im Titel las sie sich wie ein Teil des Statusnamens.
+        from PySide6.QtCore import Qt
+
+        from jira_timesheet_qt.ui.ticket_board_model import TicketBoardModel
+
+        model = TicketBoardModel()
+        model.set_board(self._board())
+        index = model.index(0, 0)
+        titel = model.data(index, Qt.ItemDataRole.DisplayRole)
+        hinweis = model.data(index, Qt.ItemDataRole.ToolTipRole)
+        assert " - " not in str(titel).split("(")[0].strip()
+        assert hinweis, "Die Gruppenzeile hat keinen Hinweis"
+
+    def test_abgeschlossen_startet_zugeklappt(self, qapp: QApplication) -> None:
+        # Dort ist nichts mehr zu tun. Aufgeklappt schiebt die Gruppe alles
+        # darüber aus dem Bild.
+        from PySide6.QtCore import QModelIndex
+
+        from jira_timesheet_qt.services.ticket_board import Role
+        from jira_timesheet_qt.ui.ticket_board_view import TicketBoardView
+
+        view = TicketBoardView("Test")
+        board = self._board()
+        view.set_board(board)
+
+        zustand = {}
+        for row, group in enumerate(board.groups):
+            index = view._proxy.index(row, 0, QModelIndex())
+            zustand[group.role] = view._tree.isExpanded(index)
+
+        assert zustand[Role.DONE] is False
+        # Gegenprobe: die übrigen Gruppen stehen offen - sonst belegte der
+        # Test nur, dass gar nichts aufgeklappt wird.
+        assert zustand[Role.CLOSING] is True
+
+
+class TestLadenUndAktualisieren:
+    """Wann von selbst geladen wird und was "Aktualisieren" trifft."""
+
+    def _zugang(self) -> Settings:
+        return Settings(
+            jira_host="https://beispiel.invalid",
+            email="ich@example.invalid",
+            jira_token="geheim",
+        )
+
+    def test_ohne_zugang_laedt_der_start_nichts(self, qapp: QApplication) -> None:
+        # Ein Abruf ohne Token endet in einer Fehlermeldung, und die als
+        # Begrüßung ist schlechter als ein Hinweis, was zu tun ist.
+        from jira_timesheet_qt.ui.main_window import MainWindow
+        from jira_timesheet_qt.ui.theme import Mode
+
+        window = MainWindow(Settings(), Mode.DARK)
+        gerufen: list[str] = []
+        window.load_month = lambda: gerufen.append("monat")  # type: ignore[method-assign]
+        window.start_initial_load()
+        assert gerufen == []
+
+    def test_mit_zugang_laedt_der_start_von_selbst(self, qapp: QApplication) -> None:
+        # Gegenprobe zum Test darüber - ohne sie belegte er nur, dass beim
+        # Start nie geladen wird.
+        from jira_timesheet_qt.ui.main_window import MainWindow
+        from jira_timesheet_qt.ui.theme import Mode
+
+        window = MainWindow(self._zugang(), Mode.DARK)
+        gerufen: list[str] = []
+        window.load_month = lambda: gerufen.append("monat")  # type: ignore[method-assign]
+        window.start_initial_load()
+        assert gerufen == ["monat"]
+
+    def test_aktualisieren_trifft_die_sichtbare_ansicht(self, qapp: QApplication) -> None:
+        # Ein Aktualisieren, das den Monat neu holt, während man auf eine
+        # Ticketliste schaut, sieht wie ein Ausfall aus.
+        from jira_timesheet_qt.ui.main_window import _VIEWS, MODE_TEAM, MainWindow
+        from jira_timesheet_qt.ui.theme import Mode
+
+        window = MainWindow(self._zugang(), Mode.DARK)
+        geladen: list[str] = []
+        window.load_month = lambda: geladen.append("monat")  # type: ignore[method-assign]
+        window._load_board = lambda mode: geladen.append(mode)  # type: ignore[method-assign]
+
+        window._stack.setCurrentIndex(_VIEWS.index("Stundenzettel"))
+        window.reload_current()
+        window._stack.setCurrentIndex(_VIEWS.index("Mein Team"))
+        window.reload_current()
+
+        assert geladen == ["monat", MODE_TEAM]

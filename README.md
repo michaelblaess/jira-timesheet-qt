@@ -73,11 +73,11 @@ The application follows the light or dark theme and a configurable accent colour
   <img src="docs/screenshots/board-assigned-light.png" width="49%" alt="My tickets (light)">
 </p>
 
-### Relevant tickets - everything you had a hand in
+### My activity - everything you had a hand in
 
 <p align="center">
-  <img src="docs/screenshots/board-relevant-dark.png" width="49%" alt="Relevant tickets (dark)">
-  <img src="docs/screenshots/board-relevant-light.png" width="49%" alt="Relevant tickets (light)">
+  <img src="docs/screenshots/board-relevant-dark.png" width="49%" alt="My activity (dark)">
+  <img src="docs/screenshots/board-relevant-light.png" width="49%" alt="My activity (light)">
 </p>
 
 ### Ticket details
@@ -135,8 +135,13 @@ The application follows the light or dark theme and a configurable accent colour
 - **My tickets** - Every ticket assigned to you, grouped by whose move it is: mine, someone
   else's, backlog, handback, closing. Plus markers for what needs attention, the idle time in
   working days and three charts (inflow against outflow, stock, age distribution)
-- **Relevant tickets** - Tickets you had a hand in even though they belong to someone else:
+- **My activity** - Tickets you had a hand in even though they belong to someone else:
   commented, mentioned, edited or logged work on, within a configurable time window
+- **My team** - The same view onto a colleague's tickets, without them having to install
+  anything. You keep a short list of people in the settings; the search goes by **name** - one
+  person may run several Jira accounts, and many accounts do not reveal their mail address at
+  all. Deliberately **without charts**: throughput per month would be a performance metric
+  about somebody else, and that is not what this is for
 - **Pile of Shame** - Marks tickets whose status claims activity although there has been
   neither a change nor a logged hour since the threshold. The second half is the trick: a
   long-running ticket deliberately kept open, with regular bookings, stays out - no exception
@@ -204,7 +209,7 @@ a manual entry can be edited directly in the table.
 
 ### Setting up the ticket views
 
-The **My tickets** and **Relevant tickets** tabs load on their own the first time you look at
+The **My tickets**, **My activity** and **My team** tabs load on their own the first time you look at
 them, and `F5` fetches them again. Neither groups by status name. They group by the question
 **whose move is it**. Because every Jira instance names its statuses differently, that mapping
 has to be entered once: Settings (`Ctrl+,`), page **Tickets**.
@@ -217,14 +222,15 @@ right away but is coarse - Jira only knows "new", "in progress" and "done".
 | Mine | The ball is in your court, work is happening | `In Progress, In Review` |
 | Backlog | Refined and ready to be pulled | `Ready, Planned` |
 | Someone else's | Waiting for approval by another person - this is where you chase | `Waiting for approval` |
-| Handback | Delivered, waiting to be assessed by the reporter | `Delivered, For assessment` |
-| Closing open | Statuses Jira counts as **done** although work remains | `For acceptance, Handover` |
+| Live, awaiting test | Deployed to production, still needs to be tested there | `Delivered, For assessment` |
+| Handover | Statuses Jira counts as **done** although the ticket is still waiting to go live | `For handover, Deployment pending` |
+| Done | Truly finished - a plain check, no action needed and no threshold | `Resolved, Closed` |
 
-**The "closing open" field matters most.** A status like "Deployment pending" or "For handover"
+**The "handover" field matters most.** A status like "Deployment pending" or "For handover"
 sits in Jira's *Done* category. Such tickets slip through every ordinary filter and without
 this entry they are **never even queried** - they are simply missing, and nothing says so.
 
-**Handback** has a special rule: if the reporter is somebody else, the ticket should be handed
+**Live, awaiting test** has a special rule: if the reporter is somebody else, the ticket should be handed
 back rather than worked on. If you are the reporter yourself, there is nobody to hand it back
 to, so it moves to "Mine" instead of gathering dust in a group labelled "do not work on this".
 
@@ -239,7 +245,7 @@ drawer could file each ticket only once.
 | Marker | Meaning |
 | --- | --- |
 | Pile of Shame | The status claims activity, but there has been neither a change nor a logged hour since the threshold |
-| Handback | Delivered, foreign reporter - hand it back, do not work on it |
+| Handback | Live, foreign reporter - the test is theirs, not yours |
 | Stale | Untouched for a very long time (default: 180 days) |
 | Priority | Priority within the upper part of the ranking |
 | Chase | Waiting for approval by somebody else |
@@ -249,7 +255,7 @@ drawer could file each ticket only once.
 
 | Setting | What for | Default |
 | --- | --- | --- |
-| Time window | Only for "Relevant tickets". 0 = no window, which turns the list into an archive instead of a work stock | 90 days |
+| Time window | Only for "My activity". 0 = no window, which turns the list into an archive instead of a work stock | 90 days |
 | Stale after | When the *stale* marker is set | 180 days |
 | Threshold: mine | Working days until the Pile of Shame in your own group | 20 |
 | Threshold: others | The same for tickets waiting for approval | 10 |
@@ -260,6 +266,28 @@ then says nothing - pick a threshold that leaves a handful of tickets, not half 
 
 The maths runs in **working days** (Mon-Fri, 8 am to 6 pm), not calendar days. A ticket sitting
 over a long weekend has not been neglected for three days.
+
+### Setting up "My team"
+
+The **My team** tab shows a colleague's tickets - same grouping as your own, just from their
+point of view. Who shows up there is kept in a short list: settings (`Ctrl+,`), page
+**My team**.
+
+The search goes by **name**, not by mail address. That is not a stylistic choice but a
+measurement: in a real instance, an account that did expose its address held zero tickets,
+while a second account of the same person, without a visible address, held a hundred and
+twenty. Not readable does not mean not there - it is a question of profile visibility.
+
+The result list shows open tickets and last contact per account, most recently used first.
+**The date decides which account is current, not the count**: in that same measurement the
+active account carried two tickets and a retired one eighteen. If a person runs several
+accounts, select them all with `Ctrl` and take them over as one person. An account found later
+goes in under the same display name.
+
+Deliberately left out: **the charts**. They show throughput per month, which about another
+person would be a performance metric. Worklog timestamps are not even requested for foreign
+tickets, so no Pile of Shame appears there either. The yardstick is simple: whatever the Jira
+board shows anyway, this view may show too.
 
 ### Anonymizing for screenshots
 
@@ -322,7 +350,7 @@ Settings are stored in `~/.jira-timesheet-qt/settings.json`:
 | Status "handback" | Status names for delivered tickets awaiting assessment | empty |
 | Status "closing open" | Statuses Jira counts as done but with work remaining | empty |
 | Priorities | Ranking, most urgent first | empty (Jira order) |
-| Time window | Look-back for "Relevant tickets" | 90 days |
+| Time window | Look-back for "My activity" | 90 days |
 | Stale after | Threshold for the *stale* marker | 180 days |
 | Pile of Shame thresholds | Working days per group, 0 disables | 20 / 10 / 0 |
 | Theme / accent / zoom | Appearance | system / orange / 100 % |

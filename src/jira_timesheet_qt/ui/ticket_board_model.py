@@ -23,13 +23,32 @@ SORT_ROLE = Qt.ItemDataRole.UserRole + 2
 
 # Ueberschriften der Gruppen. Bewusst als Handlungsanweisung formuliert -
 # "Rueckläufer" allein sagt nicht, was zu tun ist.
+# Der Titel bleibt kurz. Was die Gruppe bedeutet, steht im Hinweis darunter
+# und erscheint unter der Maus - im Titel las es sich wie ein Teil des Namens
+# ("Backlog - zum Ziehen" klingt nach einem Status, der so heisst).
 GROUP_TITLES: dict[Role, str] = {
     Role.ACTIVE: "Ich bin dran",
-    Role.ACCEPTANCE: "Andere sind dran - nachhaken",
-    Role.BACKLOG: "Backlog - zum Ziehen",
-    Role.HANDBACK: "Rückläufer - zurückgeben, nicht bearbeiten",
-    Role.CLOSING: "Abschluss offen",
-    Role.UNKNOWN: "Status nicht zugeordnet",
+    Role.ACCEPTANCE: "Andere sind dran",
+    Role.BACKLOG: "Backlog",
+    Role.HANDBACK: "Live, wartet auf Test",
+    Role.CLOSING: "Übergabe",
+    Role.DONE: "Abgeschlossen",
+    Role.UNKNOWN: "Nicht zugeordnet",
+}
+
+# Was die Gruppe bedeutet. Wortgleich mit der Textual-Fassung.
+#
+# "Rueckläufer" war fuer HANDBACK falsch: ein Ruecklaeufer waere ein Ticket,
+# das aus dem Review zurueck in die Arbeit geht. Der gemeinte Status heisst
+# dagegen: ist produktiv gesetzt und muss auf PROD noch getestet werden.
+GROUP_HINTS: dict[Role, str] = {
+    Role.ACTIVE: "es wird gerade gearbeitet",
+    Role.ACCEPTANCE: "wartet auf Freigabe - nachhaken",
+    Role.BACKLOG: "bereit zum Ziehen, noch nicht begonnen",
+    Role.HANDBACK: "produktiv gesetzt, wartet auf den Test durch den Autor",
+    Role.CLOSING: "von Jira als fertig gezählt, wartet auf die Live-Setzung",
+    Role.DONE: "fertig - steht nur noch zur Kontrolle hier",
+    Role.UNKNOWN: "Status ohne Eintrag in den Einstellungen",
 }
 
 # Kurzzeichen der Marker fuer die Spalte. Kurz, damit die Spalte schmal
@@ -201,6 +220,8 @@ class TicketBoardModel(QAbstractItemModel):
             if column == 0:
                 return f"{GROUP_TITLES.get(group.role, group.role.value)}  ({group.count})"
             return ""
+        if role == Qt.ItemDataRole.ToolTipRole:
+            return GROUP_HINTS.get(group.role, "")
         if role == Qt.ItemDataRole.FontRole:
             font = QFont()
             font.setBold(True)

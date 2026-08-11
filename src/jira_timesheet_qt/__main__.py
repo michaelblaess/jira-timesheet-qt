@@ -123,6 +123,8 @@ def main() -> int:
         window.set_timesheet(None)
 
     window.show()
+    if not args.demo:
+        window.start_initial_load()
     return app.exec()
 
 

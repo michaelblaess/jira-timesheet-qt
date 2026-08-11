@@ -1581,6 +1581,21 @@ class MainWindow(QMainWindow):
         )
         self._refresh_summary_bar()
 
+    def start_initial_load(self) -> None:
+        """Laedt beim Start, sobald der Zugang vollstaendig ist.
+
+        Wer den Zugang hinterlegt hat, will die Zahlen sehen und nicht erst
+        einen Knopf suchen. Ohne vollstaendigen Zugang bleibt es beim
+        Leerzustand - ein Abruf ohne Token endet in einer Fehlermeldung, und
+        die als Begruessung ist schlechter als ein leeres Fenster mit einem
+        Hinweis, was zu tun ist.
+
+        Bewusst erst NACH show(): das Fenster soll sofort stehen, der Abruf
+        laeuft danach im Hintergrund an.
+        """
+        if self._settings_complete():
+            self.load_month()
+
     def reload_current(self) -> None:
         """Laedt die AKTIVE Ansicht neu.
 

@@ -75,11 +75,11 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   <img src="docs/screenshots/board-assigned-light.png" width="49%" alt="Meine Tickets (hell)">
 </p>
 
-### Relevante Tickets - alles, woran Du mitgewirkt hast
+### Meine Aktivitäten - alles, woran Du mitgewirkt hast
 
 <p align="center">
-  <img src="docs/screenshots/board-relevant-dark.png" width="49%" alt="Relevante Tickets (dunkel)">
-  <img src="docs/screenshots/board-relevant-light.png" width="49%" alt="Relevante Tickets (hell)">
+  <img src="docs/screenshots/board-relevant-dark.png" width="49%" alt="Meine Aktivitäten (dunkel)">
+  <img src="docs/screenshots/board-relevant-light.png" width="49%" alt="Meine Aktivitäten (hell)">
 </p>
 
 ### Ticket-Details
@@ -135,11 +135,16 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   jeweils ihren Beleg mitbringen. Ergebnis ist eine einzelne HTML-Datei, die offline läuft
   und sich weitergeben lässt (`Strg+T`) Auffällig lange Liegezeiten werden rot markiert, verwandte Tickets zeigen ihren Titel, und der fertige Bericht öffnet sich gleich im Browser.
 - **Meine Tickets** - Alle Tickets, die Dir zugewiesen sind, gruppiert danach, wer am Zug ist:
-  ich bin dran, andere sind dran, Backlog, Rückläufer, Abschluss offen. Dazu Merkmale für
+  ich bin dran, andere sind dran, Backlog, live und wartet auf Test, Übergabe, abgeschlossen. Dazu Merkmale für
   Handlungsbedarf, die Liegezeit in Arbeitstagen und drei Diagramme (Zulauf gegen Abgang,
   Bestand, Altersverteilung)
-- **Relevante Tickets** - Tickets, an denen Du mitgewirkt hast, auch wenn sie jemand anderem
+- **Meine Aktivitäten** - Tickets, an denen Du mitgewirkt hast, auch wenn sie jemand anderem
   gehören: kommentiert, erwähnt, bearbeitet oder bebucht, in einem einstellbaren Zeitfenster
+- **Mein Team** - Derselbe Blick auf den Ticketstand von Kolleginnen und Kollegen, ohne dass
+  die etwas installieren müssen. Gepflegt wird eine Merkliste in den Einstellungen, die Suche
+  läuft über den **Namen** - eine Person kann mehrere Jira-Konten führen, und viele Konten
+  geben ihre Mailadresse gar nicht heraus. Bewusst **ohne Diagramme**: Durchsatz je Monat wäre
+  über eine andere Person eine Leistungskennzahl, und darum geht es hier nicht
 - **Pile of Shame** - Markiert Tickets, deren Status Aktivität behauptet, obwohl es seit der
   Schwelle weder eine Änderung noch eine gebuchte Stunde gab. Die zweite Hälfte ist der
   Trick: ein bewusst offengehaltenes Dauerticket mit regelmäßigen Buchungen bleibt draußen,
@@ -207,10 +212,10 @@ Beschreibung und Aufwand eines manuellen Eintrags lassen sich direkt in der Tabe
 
 ### Ticket-Ansichten einrichten
 
-Die Reiter **Meine Tickets** und **Relevante Tickets** laden beim ersten Hinschauen von
-selbst, `F5` holt sie neu. Beide gruppieren nicht nach Statusnamen, sondern nach der Frage
-**wer ist am Zug**. Weil jede Jira-Instanz ihre Status anders nennt, muss diese Zuordnung
-einmal eingetragen werden: Einstellungen (`Strg+,`), Seite **Tickets**.
+Die Reiter **Meine Tickets**, **Meine Aktivitäten** und **Mein Team** laden beim ersten
+Hinschauen von selbst, `F5` holt sie neu. Alle drei gruppieren nicht nach Statusnamen, sondern
+nach der Frage **wer ist am Zug**. Weil jede Jira-Instanz ihre Status anders nennt, muss diese
+Zuordnung einmal eingetragen werden: Einstellungen (`Strg+,`), Seite **Tickets**.
 
 Bleiben die Felder leer, ordnet die Anwendung nach Jiras eigener Statuskategorie zu. Das
 funktioniert sofort, ist aber grob - Jira kennt nur "neu", "in Arbeit" und "fertig".
@@ -220,15 +225,16 @@ funktioniert sofort, ist aber grob - Jira kennt nur "neu", "in Arbeit" und "fert
 | Ich bin dran | Der Ball liegt bei Dir, es wird gerade gearbeitet | `In Bearbeitung, Im Review` |
 | Backlog | Fertig verfeinert, wartet darauf, gezogen zu werden | `Bereit, Eingeplant` |
 | Andere sind dran | Wartet auf Freigabe durch jemand anderen - hier hakt man nach | `Wartet auf Freigabe` |
-| Rückgabe | Ausgeliefert, wartet auf Bewertung durch den Autor | `Ausgeliefert, Zur Bewertung` |
-| Abschluss offen | Status, die Jira als **fertig** zählt, obwohl noch etwas zu tun ist | `Zur Abnahme, Übergabe` |
+| Live, wartet auf Test | Produktiv gesetzt, muss auf PROD noch getestet werden | `Ausgeliefert, Zur Bewertung` |
+| Übergabe | Status, die Jira als **fertig** zählt, obwohl das Ticket noch auf die Live-Setzung wartet | `Zur Übergabe, Deployment offen` |
+| Abgeschlossen | Wirklich fertig - reiner Kontrollblick, ohne Handlungsbedarf und ohne Schwelle | `Erledigt, Abgeschlossen` |
 
-**Das Feld "Abschluss offen" ist das wichtigste.** Ein Status wie "Deployment offen" oder "Zur
+**Das Feld "Übergabe" ist das wichtigste.** Ein Status wie "Deployment offen" oder "Zur
 Übergabe" liegt in Jira in der Kategorie *Done*. Solche Tickets fallen durch jeden normalen
 Filter und werden ohne diesen Eintrag **gar nicht erst abgefragt** - sie fehlen dann
 vollständig, ohne dass es auffällt.
 
-Bei **Rückgabe** gilt eine Sonderregel: Ist der Autor jemand anderes, gehört das Ticket
+Bei **Live, wartet auf Test** gilt eine Sonderregel: Ist der Autor jemand anderes, gehört das Ticket
 zurückgegeben und nicht bearbeitet. Bist Du selbst der Autor, gibt es niemanden, dem man es
 zurückgeben könnte - dann wandert es zu "Ich bin dran", damit es nicht in einer Gruppe
 verstaubt, die "nicht bearbeiten" heißt.
@@ -255,7 +261,7 @@ Gruppen. Eine Schublade könnte jedes Ticket nur einmal einsortieren.
 
 | Einstellung | Wofür | Standard |
 | --- | --- | --- |
-| Zeitfenster | Nur für "Relevante Tickets". 0 = kein Fenster, dann wird die Liste zum Archiv statt zum Arbeitsvorrat | 90 Tage |
+| Zeitfenster | Nur für "Meine Aktivitäten". 0 = kein Fenster, dann wird die Liste zum Archiv statt zum Arbeitsvorrat | 90 Tage |
 | Verwaist ab | Ab wann das Merkmal *verwaist* gesetzt wird | 180 Tage |
 | Schwelle: ich dran | Arbeitstage bis zum Pile of Shame in der eigenen Gruppe | 20 |
 | Schwelle: andere | Dasselbe für Tickets, die auf Freigabe warten | 10 |
@@ -267,6 +273,29 @@ bleibt, nicht die halbe Liste.
 
 Gerechnet wird in **Arbeitstagen** (Mo-Fr, 8-18 Uhr), nicht in Kalendertagen. Ein Ticket, das
 über ein langes Wochenende liegt, ist nicht drei Tage vernachlässigt worden.
+
+### Mein Team einrichten
+
+Der Reiter **Mein Team** zeigt den Ticketstand von Kolleginnen und Kollegen - dieselbe
+Gruppierung wie bei den eigenen, nur aus deren Sicht. Wer dort erscheint, steht in einer
+Merkliste: Einstellungen (`Strg+,`), Seite **Mein Team**.
+
+Gesucht wird über den **Namen**, nicht über die Mailadresse. Das ist kein Schönheitsfehler,
+sondern gemessen: In einer echten Instanz gab ein Konto mit hinterlegter Adresse null Tickets
+her, ein zweites Konto derselben Person ohne sichtbare Adresse dagegen einhundertzwanzig.
+Nicht auslesbar heißt eben nicht, dass keine Adresse da ist - es ist eine Frage der
+Profil-Sichtbarkeit.
+
+Die Trefferliste zeigt je Konto die Zahl offener Tickets und den letzten Kontakt, das zuletzt
+benutzte Konto steht oben. **Über das aktuelle Konto entscheidet das Datum, nicht die Menge**:
+in derselben Messung trug das aktive Konto zwei Tickets, ein stillgelegtes achtzehn. Führt eine
+Person mehrere Konten, markierst Du sie mit `Strg` alle zusammen und übernimmst sie als eine
+Person. Ein später gefundenes Konto legst Du unter demselben Anzeigenamen dazu.
+
+Bewusst weggelassen: **die Auswertung**. Die Diagramme zeigen Durchsatz je Monat, und das wäre
+über eine andere Person eine Leistungskennzahl. Auch die Buchungszeiten werden für fremde
+Tickets gar nicht erst abgefragt, weshalb dort kein Pile of Shame entsteht. Der Maßstab ist
+einfach: Was das Kanban-Board in Jira ohnehin zeigt, darf diese Ansicht auch zeigen.
 
 ### Anonymisieren für Screenshots
 
@@ -328,9 +357,10 @@ Die Einstellungen liegen in `~/.jira-timesheet-qt/settings.json`:
 | Status "Backlog" | Statusnamen für den Arbeitsvorrat | leer |
 | Status "Andere sind dran" | Statusnamen für Tickets in fremder Hand | leer |
 | Status "Rückgabe" | Statusnamen für ausgelieferte Tickets zur Bewertung | leer |
-| Status "Abschluss offen" | Von Jira als fertig gezählte Status mit Restarbeit | leer |
+| Status "Übergabe" | Von Jira als fertig gezählte Status, die noch auf die Live-Setzung warten | leer |
+| Status "Abgeschlossen" | Wirklich fertige Status - reiner Kontrollblick | leer |
 | Prioritäten | Rangfolge, dringendstes zuerst | leer (Reihenfolge aus Jira) |
-| Zeitfenster | Rückblick für "Relevante Tickets" | 90 Tage |
+| Zeitfenster | Rückblick für "Meine Aktivitäten" | 90 Tage |
 | Verwaist ab | Schwelle für das Merkmal *verwaist* | 180 Tage |
 | Pile-of-Shame-Schwellen | Arbeitstage je Gruppe, 0 schaltet ab | 20 / 10 / 0 |
 | Theme / Akzent / Zoom | Erscheinungsbild | System / Orange / 100 % |
