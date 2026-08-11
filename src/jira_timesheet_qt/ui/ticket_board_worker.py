@@ -18,6 +18,7 @@ from PySide6.QtCore import QObject, QThread, Signal
 
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.services.jira_client import JiraClient, JiraClientError
+from jira_timesheet_qt.services.team import TeamMember
 from jira_timesheet_qt.services.ticket_board import (
     DEFAULT_PRIORITIES,
     FIELDS,
@@ -38,10 +39,11 @@ from jira_timesheet_qt.services.ticket_board import (
     relevant_jql,
 )
 
-# Die beiden Ansichten. Der Wert wandert unveraendert in die Einstellungen,
+# Die Ansichten. Der Wert wandert unveraendert in die Einstellungen,
 # deshalb sind es Zeichenketten und keine Aufzaehlung.
 MODE_ASSIGNED = "assigned"
 MODE_RELEVANT = "relevant"
+MODE_TEAM = "team"
 
 
 def config_from(settings: Settings) -> BoardConfig:
@@ -75,6 +77,7 @@ def config_from(settings: Settings) -> BoardConfig:
         handback_status=tuple(settings.board_handback_status),
         acceptance_status=tuple(settings.board_acceptance_status),
         closing_status=tuple(settings.board_closing_status),
+        done_status=tuple(settings.board_done_status),
         priorities=(
             tuple(settings.board_priorities)
             if settings.board_priorities
@@ -104,11 +107,38 @@ class TicketBoardWorker(QThread):
         config: BoardConfig,
         mode: str,
         parent: QObject | None = None,
+        member: TeamMember | None = None,
     ) -> None:
+        """Baut den Faden fuer eine Ansicht.
+
+        Args:
+            settings:
+                Die geladenen Benutzereinstellungen.
+            config:
+                Die Kern-Konfiguration.
+            mode:
+                MODE_ASSIGNED, MODE_RELEVANT oder MODE_TEAM.
+            parent:
+                Das Qt-Elternobjekt.
+            member:
+                Bei MODE_TEAM die gemeinte Person, sonst ohne Bedeutung.
+
+        Raises:
+            ValueError:
+                Bei MODE_TEAM ohne Person mit Kennung. Ohne Kennung faellt die
+                Abfrage auf currentUser() zurueck - dann staenden die eigenen
+                Tickets unter fremdem Namen in der Ansicht. Ein stiller
+                Fehler, der wie ein Ergebnis aussieht, ist schlimmer als ein
+                Abbruch.
+        """
         super().__init__(parent)
+        if mode == MODE_TEAM and (member is None or not member.account_ids):
+            raise ValueError("MODE_TEAM braucht ein Mitglied mit mindestens einer Kennung")
         self._settings = settings
         self._config = config
         self._mode = mode
+        self._member = member
+        self._ids: Sequence[str] = member.account_ids if mode == MODE_TEAM and member else ()
 
     def run(self) -> None:
         """Laeuft im Hintergrund-Thread."""
@@ -142,7 +172,13 @@ class TicketBoardWorker(QThread):
             return [relevant_jql(account_id, self._config.window_days)]
         # Die Abschluss-Status fallen durch "statusCategory != Done" hindurch
         # und brauchen deshalb eine zweite Abfrage.
-        return [assigned_jql(), closing_jql(self._config.closing_status)]
+        # Beide Listen in EINER Abfrage: Jira zaehlt sie gleichermassen als
+        # "Done", sie fallen also gemeinsam durch statusCategory != Done. In
+        # welche Gruppe ein Ticket danach kommt, entscheidet der Kern.
+        # Ohne Kennungen bleibt es bei currentUser(), mit Kennungen wird die
+        # gemeinte Person gefragt.
+        jira_done = (*self._config.closing_status, *self._config.done_status)
+        return [assigned_jql(self._ids), closing_jql(jira_done, self._ids)]
 
     def _phase(self, text: str) -> None:
         """Meldet einen Zwischenstand in beide Kanaele.
@@ -175,12 +211,23 @@ class TicketBoardWorker(QThread):
 
         account_id, issues = await client.fetch_issues(self._jqls, FIELDS)
         now = dt.datetime.now(dt.UTC)
+        # In der Fremdsicht wird die Ansicht aus Sicht der gemeinten Person
+        # gebaut, nicht aus der eigenen: sonst gilt jedes Ticket als fremd
+        # gemeldet, und die halbe Liste traegt einen Rueckgabe-Marker.
+        #
+        # Traegt: account_ids weiter unten. Am 11.08.2026 nachgemessen - der
+        # Kern bildet aus account_id und account_ids EINE Menge, diese Zeile
+        # allein ist also redundant, solange die Liste mitgegeben wird. Sie
+        # bleibt als zweite Sicherung stehen, weil ein kuenftiger Aufruf ohne
+        # Liste sonst lautlos die eigene Kennung einsetzen wuerde.
+        own_id = self._ids[0] if self._ids else account_id
         board = build_board(
             issues,
             self._config,
             now,
-            account_id=account_id,
+            account_id=own_id,
             browse_base=settings.jira_host,
+            account_ids=self._ids,
         )
         self._phase(f"{board.count} Tickets aufbereitet")
 
@@ -203,9 +250,10 @@ class TicketBoardWorker(QThread):
             issues,
             self._config,
             now,
-            account_id=account_id,
+            account_id=own_id,
             browse_base=settings.jira_host,
             worklogs=worklogs,
+            account_ids=self._ids,
         )
 
 

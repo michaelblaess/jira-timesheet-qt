@@ -1,4 +1,4 @@
-"""Ticket-Ansichten "Meine Tickets" und "Relevante Tickets".
+"""Ticket-Ansichten "Meine Tickets" und "Meine Aktivitaeten".
 
 Der Kern ist bewusst abhaengigkeitsfrei (reine Standardbibliothek) und kennt
 keinen Jira-Client: die aufrufende Anwendung holt die Antworten der API
@@ -41,9 +41,11 @@ from .queries import (
     STATS_FIELDS,
     AccountIdError,
     assigned_jql,
+    assignee_clause,
     check_account_id,
     closing_jql,
     history_jql,
+    last_touch_jql,
     relevant_jql,
 )
 from .rules import (
@@ -80,12 +82,14 @@ __all__ = [
     "Ticket",
     "WorklogInfo",
     "assigned_jql",
+    "assignee_clause",
     "build_board",
     "build_statistics",
     "check_account_id",
     "closing_jql",
     "history_jql",
     "is_blocked",
+    "last_touch_jql",
     "markers_for",
     "parse_ts",
     "pending_worklog_keys",

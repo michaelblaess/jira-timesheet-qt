@@ -40,7 +40,7 @@ DEFAULT_HIGH_PRIORITY_RANKS = 4
 # Uebernommen aus dem Morgen-Briefing (morning.py, STALE_DAYS).
 DEFAULT_STALE_DAYS = 180
 
-# Zeitfenster der Ansicht "Relevante Tickets", in Kalendertagen. Ohne Fenster
+# Zeitfenster der Ansicht "Meine Aktivitaeten", in Kalendertagen. Ohne Fenster
 # ist die Liste ein Archiv und kein Arbeitsvorrat.
 DEFAULT_WINDOW_DAYS = 90
 
@@ -58,6 +58,8 @@ DEFAULT_WINDOW_DAYS = 90
 #   BACKLOG  - Vorrat ist keine Schuld, ein altes Backlog-Ticket ist normal.
 #   HANDBACK - dort liegt der Ball bei jemand anderem. Die Handlung heisst
 #              "zurueckgeben", nicht "aufholen", und hat einen eigenen Marker.
+#   DONE     - dort ist nichts mehr zu tun. Eine Schwelle wuerde Tickets
+#              anmahnen, die fertig sind.
 DEFAULT_THRESHOLDS: dict[Role, float] = {
     Role.ACTIVE: 5.0,
     Role.ACCEPTANCE: 5.0,
@@ -71,6 +73,7 @@ GROUP_ORDER: tuple[Role, ...] = (
     Role.BACKLOG,
     Role.HANDBACK,
     Role.CLOSING,
+    Role.DONE,
     Role.UNKNOWN,
 )
 
@@ -100,6 +103,7 @@ class BoardConfig:
     handback_status: tuple[str, ...] = ()
     acceptance_status: tuple[str, ...] = ()
     closing_status: tuple[str, ...] = ()
+    done_status: tuple[str, ...] = ()
 
     priorities: tuple[str, ...] = DEFAULT_PRIORITIES
     high_priority_ranks: int = DEFAULT_HIGH_PRIORITY_RANKS
@@ -132,6 +136,9 @@ class BoardConfig:
             (self.handback_status, Role.HANDBACK),
             (self.acceptance_status, Role.ACCEPTANCE),
             (self.closing_status, Role.CLOSING),
+            # Nach CLOSING geprueft: steht ein Status versehentlich in beiden
+            # Feldern, gewinnt die Gruppe mit der offenen Handlung.
+            (self.done_status, Role.DONE),
         )
         for names, role in configured:
             if any(needle == n.strip().casefold() for n in names):
@@ -148,6 +155,7 @@ class BoardConfig:
             self.handback_status,
             self.acceptance_status,
             self.closing_status,
+            self.done_status,
         ):
             if any(needle == n.strip().casefold() for n in names):
                 return True

@@ -12,6 +12,7 @@ nichts geschaetzt und niemand bewertet.
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Sequence
 from typing import Any
 
 from ..ticket_report.viewmodel import (
@@ -115,6 +116,7 @@ def to_ticket(
     now: dt.datetime,
     account_id: str = "",
     browse_base: str = "",
+    account_ids: Sequence[str] = (),
 ) -> Ticket:
     """Baut aus einem Jira-Issue eine Zeile der Ansicht.
 
@@ -126,9 +128,14 @@ def to_ticket(
         now:
             Bezugszeitpunkt fuer die Liegezeit.
         account_id:
-            Eigene accountId, um fremde Autoren zu erkennen.
+            accountId der Person, aus deren Sicht die Ansicht gebaut wird.
         browse_base:
             Basis-URL fuer den Absprung, ohne abschliessenden Schraegstrich.
+        account_ids:
+            Weitere Kennungen derselben Person. Wer mehrere Konten fuehrt,
+            meldet ein Ticket unter dem einen und bearbeitet es unter dem
+            anderen - ohne die vollstaendige Liste gilt der eigene Vorgang
+            dann faelschlich als fremder.
 
     Returns:
         Das gefuellte Ticket, noch ohne Marker.
@@ -144,10 +151,11 @@ def to_ticket(
     key = str(issue.get("key", ""))
 
     reporter_id = str(reporter_field.get("accountId", "")) if isinstance(reporter_field, dict) else ""
-    foreign = bool(account_id) and bool(reporter_id) and reporter_id != account_id
+    own_ids = {value for value in (account_id, *account_ids) if value}
+    foreign = bool(own_ids) and bool(reporter_id) and reporter_id not in own_ids
 
     role = config.role_of(status, category)
-    if role is Role.HANDBACK and account_id and not foreign:
+    if role is Role.HANDBACK and own_ids and not foreign:
         # Ein Rueckgabe-Status mit EIGENEM Autor heisst: ich bin selbst der
         # Adressat der Bewertung. Es gibt niemanden, dem man das Ticket
         # zurueckgeben koennte - der Ball liegt bei mir. Ohne diese
@@ -203,8 +211,17 @@ def markers_for(
             Bezugszeitpunkt fuer die Buchungs-Liegezeit.
 
     Returns:
-        Die gesetzten Marker, in stabiler Reihenfolge.
+        Die gesetzten Marker, in stabiler Reihenfolge. Fuer abgeschlossene
+        Tickets ist das Ergebnis IMMER leer.
     """
+    if ticket.role is Role.DONE:
+        # Ein abgeschlossenes Ticket ist endgueltig - es kann nicht verwaisen,
+        # nicht blockiert sein und keine Prioritaet mehr haben, die zu etwas
+        # auffordert. Jeder Marker hier waere eine Aufforderung ohne Adressat,
+        # und die rote Einfaerbung stiehlt die Aufmerksamkeit den Gruppen, in
+        # denen tatsaechlich etwas zu tun ist.
+        return ()
+
     found: list[Marker] = []
 
     if ticket.role is Role.HANDBACK and ticket.foreign_reporter:
@@ -281,6 +298,7 @@ def build_board(
     account_id: str = "",
     browse_base: str = "",
     worklogs: dict[str, WorklogInfo] | None = None,
+    account_ids: Sequence[str] = (),
 ) -> Board:
     """Baut aus einer Suchantwort die fertige Ansicht.
 
@@ -292,11 +310,14 @@ def build_board(
         now:
             Bezugszeitpunkt, None nimmt die aktuelle Zeit.
         account_id:
-            Eigene accountId, um fremde Autoren zu erkennen.
+            accountId der Person, aus deren Sicht die Ansicht gebaut wird.
         browse_base:
             Basis-URL fuer den Absprung.
         worklogs:
-            Buchungslage je Ticketschluessel, soweit nachgeladen.
+            Buchungslage je Ticketschluessel, soweit nachgeladen. Fuer fremde
+            Personen bleibt das leer, siehe ``load_board``.
+        account_ids:
+            Weitere Kennungen derselben Person.
 
     Returns:
         Das Board mit Gruppen, Tickets und den nicht zugeordneten Status.
@@ -317,7 +338,9 @@ def build_board(
             continue
         seen.add(key)
 
-        ticket = to_ticket(issue, settings, moment, account_id, browse_base)
+        ticket = to_ticket(
+            issue, settings, moment, account_id, browse_base, account_ids
+        )
         fields = issue.get("fields") or {}
         booking = bookings.get(key)
         ticket.markers = markers_for(ticket, fields, settings, booking, moment)

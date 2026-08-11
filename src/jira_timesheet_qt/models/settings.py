@@ -163,10 +163,12 @@ class Settings:
     board_handback_status: list[str] = field(default_factory=list)
     board_acceptance_status: list[str] = field(default_factory=list)
     board_closing_status: list[str] = field(default_factory=list)
+    # Wirklich fertig - reiner Kontrollblick, ohne Handlungsbedarf.
+    board_done_status: list[str] = field(default_factory=list)
     # Rangfolge der Prioritaeten, dringendstes zuerst. Leer = die von Jira
     # gelieferte Reihenfolge.
     board_priorities: list[str] = field(default_factory=list)
-    # Zeitfenster der Ansicht "Relevante Tickets" in Kalendertagen.
+    # Zeitfenster der Ansicht "Meine Aktivitaeten" in Kalendertagen.
     board_window_days: int = 90
     # Ab so vielen Kalendertagen ohne Aenderung gilt ein Ticket als verwaist.
     board_stale_days: int = 180
@@ -175,6 +177,14 @@ class Settings:
     board_threshold_active: float = 20.0
     board_threshold_acceptance: float = 10.0
     board_threshold_closing: float = 0.0
+
+    # --- Mein Team ----------------------------------------------------
+    # Die Merkliste in ihrer Speicherform, so wie services.team sie liest.
+    # Bewusst als rohe Abbildungen und nicht als TeamMember: die
+    # Einstellungen sollen den Kern nicht kennen und der Kern nicht die
+    # Einstellungen. Je Eintrag stehen darin display_name und account_ids,
+    # letzteres als LISTE - eine Person kann mehrere Konten fuehren.
+    team_members: list[dict[str, object]] = field(default_factory=list)
 
     SETTINGS_DIR: Path = Path.home() / ".jira-timesheet-qt"
     SETTINGS_FILE: Path = SETTINGS_DIR / "settings.json"
@@ -220,12 +230,14 @@ class Settings:
         "board_handback_status",
         "board_acceptance_status",
         "board_closing_status",
+        "board_done_status",
         "board_priorities",
         "board_window_days",
         "board_stale_days",
         "board_threshold_active",
         "board_threshold_acceptance",
         "board_threshold_closing",
+        "team_members",
     )
 
     def to_dict(self) -> dict[str, object]:
@@ -332,6 +344,7 @@ class Settings:
                     data.get("board_acceptance_status")
                 ),
                 board_closing_status=Settings._parse_str_list(data.get("board_closing_status")),
+                board_done_status=Settings._parse_str_list(data.get("board_done_status")),
                 board_priorities=Settings._parse_str_list(data.get("board_priorities")),
                 board_window_days=int(data.get("board_window_days", 90) or 0),
                 board_stale_days=int(data.get("board_stale_days", 180) or 0),
@@ -340,10 +353,52 @@ class Settings:
                     data.get("board_threshold_acceptance", 10.0) or 0.0
                 ),
                 board_threshold_closing=float(data.get("board_threshold_closing", 0.0) or 0.0),
+                team_members=Settings._parse_team(data.get("team_members")),
             )
         except Exception as exc:
             logger.warning("Settings konnten nicht aufgebaut werden: %s", exc)
             return Settings()
+
+    @staticmethod
+    def _parse_team(raw: object) -> list[dict[str, object]]:
+        """Liest die Merkliste "Mein Team" defensiv aus dem JSON.
+
+        Geprueft wird hier nur die Form, nicht der Inhalt: ob eine Kennung
+        brauchbar ist, entscheidet services.team beim Aufbau der Liste. Was
+        hier durchkommt, ist eine Abbildung mit Namen und mindestens einer
+        Kennung - alles andere waere ein Eintrag, der spaeter als leere
+        Ansicht erscheint und wie "nichts zu tun" aussieht.
+
+        Args:
+            raw:
+                Der rohe Wert aus der Datei.
+
+        Returns:
+            Die brauchbaren Eintraege in der Speicherform.
+        """
+        if not isinstance(raw, list):
+            return []
+        members: list[dict[str, object]] = []
+        for entry in raw:
+            if not isinstance(entry, dict):
+                continue
+            name = str(entry.get("display_name") or "").strip()
+            ids = [
+                str(value).strip()
+                for value in (entry.get("account_ids") or [])
+                if str(value).strip()
+            ]
+            if not name or not ids:
+                continue
+            members.append(
+                {
+                    "display_name": name,
+                    "account_ids": ids,
+                    "email": str(entry.get("email") or ""),
+                    "avatar_url": str(entry.get("avatar_url") or ""),
+                }
+            )
+        return members
 
     @staticmethod
     def _parse_str_list(raw: object) -> list[str]:

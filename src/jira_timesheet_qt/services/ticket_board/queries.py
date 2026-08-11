@@ -23,6 +23,7 @@ aus der Dokumentation abgeschrieben. Die Fallstricke im Einzelnen:
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 
 # Felder, die beide Ansichten brauchen. issuelinks nur fuer die
 # Blockiert-Erkennung, die client-seitig laeuft.
@@ -67,16 +68,51 @@ def check_account_id(account_id: str) -> str:
     return value
 
 
-def assigned_jql() -> str:
-    """Alle offenen Tickets, die dem angemeldeten Benutzer zugewiesen sind.
+def assignee_clause(account_ids: Sequence[str] = ()) -> str:
+    """Baut die Bedingung auf den Bearbeiter.
+
+    Ohne Kennungen bleibt es bei ``currentUser()``. Mit Kennungen wird ``IN``
+    verwendet, und zwar auch bei einer einzigen - eine Person kann in einer
+    Instanz mehrere Konten fuehren. Gemessen am 10.08.2026: ein Kollege hatte
+    drei aktive Konten, deren Einzelsummen sich in der IN-Abfrage exakt
+    addierten (1 + 3 + 10 = 14).
+
+    Args:
+        account_ids:
+            Kennungen der gemeinten Person. Leer = der angemeldete Benutzer.
+
+    Returns:
+        Die fertige Bedingung.
+
+    Raises:
+        AccountIdError:
+            Wenn eine der Kennungen unbrauchbar ist. Bewusst ein Abbruch und
+            keine stille Auslassung - eine uebersprungene Kennung liefert ein
+            unvollstaendiges Ergebnis, das wie ein vollstaendiges aussieht.
+    """
+    if not account_ids:
+        return "assignee = currentUser()"
+    names = ", ".join(f'"{check_account_id(a)}"' for a in account_ids)
+    return f"assignee IN ({names})"
+
+
+def assigned_jql(account_ids: Sequence[str] = ()) -> str:
+    """Alle offenen Tickets, die einer Person zugewiesen sind.
+
+    Args:
+        account_ids:
+            Kennungen der gemeinten Person. Leer = der angemeldete Benutzer.
 
     Returns:
         Der JQL-Ausdruck.
     """
-    return "assignee = currentUser() AND statusCategory != Done ORDER BY updated ASC"
+    return (
+        f"{assignee_clause(account_ids)} AND statusCategory != Done "
+        "ORDER BY updated ASC"
+    )
 
 
-def closing_jql(statuses: tuple[str, ...]) -> str:
+def closing_jql(statuses: tuple[str, ...], account_ids: Sequence[str] = ()) -> str:
     """Tickets in Status, die Jira als fertig zaehlt, obwohl Restarbeit bleibt.
 
     Diese Tickets faellt ein reiner Filter auf ``statusCategory != Done``
@@ -86,6 +122,8 @@ def closing_jql(statuses: tuple[str, ...]) -> str:
     Args:
         statuses:
             Die konfigurierten Abschluss-Status.
+        account_ids:
+            Kennungen der gemeinten Person. Leer = der angemeldete Benutzer.
 
     Returns:
         Der JQL-Ausdruck, oder ein leerer String ohne konfigurierte Status.
@@ -95,7 +133,10 @@ def closing_jql(statuses: tuple[str, ...]) -> str:
     names = ", ".join(f'"{s}"' for s in statuses if '"' not in s)
     if not names:
         return ""
-    return f"assignee = currentUser() AND status IN ({names}) ORDER BY updated ASC"
+    return (
+        f"{assignee_clause(account_ids)} AND status IN ({names}) "
+        "ORDER BY updated ASC"
+    )
 
 
 def relevant_jql(account_id: str, window_days: int = 0) -> str:
@@ -136,7 +177,33 @@ def relevant_jql(account_id: str, window_days: int = 0) -> str:
 def history_jql() -> str:
     """Alle Tickets des Benutzers fuer die Auswertung, offen wie erledigt.
 
+    Bewusst OHNE Parameter fuer fremde Kennungen. Die Auswertung zeigt
+    Durchsatz je Monat, und das ist ueber eine andere Person eine
+    Leistungskennzahl. Die Ansicht "Mein Team" zeigt deshalb keine Diagramme.
+    Siehe auch ``last_touch_jql`` fuer den erlaubten Blick auf Fremde.
+
     Returns:
         Der JQL-Ausdruck.
     """
     return "assignee = currentUser() ORDER BY created ASC"
+
+
+def last_touch_jql(account_id: str) -> str:
+    """Zuletzt geaendertes Ticket eines Kontos, fuer die Kontoauswahl.
+
+    Fuehrt eine Person mehrere Konten, entscheidet das Datum, welches das
+    aktuelle ist - nicht die Anzahl der Tickets. Gemessen am 10.08.2026: das
+    aktuelle Konto eines Kollegen trug zwei Tickets, ein stillgelegtes achtzehn.
+
+    Args:
+        account_id:
+            Die zu pruefende Kennung.
+
+    Returns:
+        Der JQL-Ausdruck. Es genuegt, den ersten Treffer zu lesen.
+
+    Raises:
+        AccountIdError:
+            Bei einer unbrauchbaren Kennung.
+    """
+    return f'assignee = "{check_account_id(account_id)}" ORDER BY updated DESC'

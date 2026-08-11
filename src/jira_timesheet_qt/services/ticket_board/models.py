@@ -31,7 +31,11 @@ class Role(StrEnum):
     """Wartet auf Freigabe durch jemand anderen."""
 
     CLOSING = "closing"
-    """Von Jira als fertig gezaehlt, aber mit Restarbeit."""
+    """Von Jira als fertig gezaehlt, wartet aber noch auf die Live-Setzung."""
+
+    DONE = "done"
+    """Wirklich fertig. Steht nur noch als Kontrollblick in der Liste - hier
+    ist nichts mehr zu tun, und deshalb entsteht hier auch keine Schwelle."""
 
     UNKNOWN = "unknown"
     """Status ist keiner Rolle zugeordnet - faellt auf die Jira-Kategorie zurueck."""
@@ -41,7 +45,7 @@ class Marker(StrEnum):
     """Handlungsbedarf eines Tickets. Mehrere gleichzeitig sind moeglich."""
 
     HANDBACK = "handback"
-    """Ausgeliefert, fremder Autor - gehoert zurueckgegeben, nicht bearbeitet."""
+    """Ausgeliefert und live, wartet auf den Test durch den Autor."""
 
     PILE_OF_SHAME = "pile_of_shame"
     """Status behauptet Aktivitaet, aber weder Aenderung noch gebuchte Stunde."""
