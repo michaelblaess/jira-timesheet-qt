@@ -416,3 +416,110 @@ class TestLadenUndAktualisieren:
         window.reload_current()
 
         assert geladen == ["monat", MODE_TEAM]
+
+
+class TestBeschriftungen:
+    """Einstellungsfelder und Gruppentitel muessen zusammenpassen.
+
+    Am 11.08.2026 aufgefallen: die Gruppentitel im Board waren umbenannt, die
+    Feldbeschriftungen im Einstellungsdialog nicht. Wer die Gruppe "Live,
+    wartet auf Test" befuellen wollte, suchte ein Feld namens "Rueckgabe" -
+    und in der Textual-Fassung hiess dasselbe Feld schon "Live, Test offen".
+    Drei Namen fuer eine Sache.
+    """
+
+    # Beschriftung im Dialog je Rolle. Bewusst kuerzer als der Gruppentitel,
+    # aber erkennbar dieselbe Sache. Wortgleich mit der Textual-Fassung.
+    ERWARTET = {
+        "board_active": "Ich bin dran",
+        "board_backlog": "Backlog",
+        "board_acceptance": "Andere sind dran",
+        "board_handback": "Live, Test offen",
+        "board_closing": "Übergabe",
+        "board_done": "Abgeschlossen",
+    }
+
+    def _labels(self, dialog: object) -> dict[str, str]:
+        """Liest zu jedem Board-Feld die Beschriftung aus dem Formular."""
+        from PySide6.QtWidgets import QFormLayout, QLabel
+
+        # Ueber ALLE Formulare des Dialogs, nicht ueber das Elternwidget: die
+        # Felder sitzen in verschachtelten Seiten, deren layout() nicht das
+        # QFormLayout ist.
+        formulare = dialog.findChildren(QFormLayout)
+        gefunden: dict[str, str] = {}
+        for name in self.ERWARTET:
+            feld = getattr(dialog, name)
+            for form in formulare:
+                beschriftung = form.labelForField(feld)
+                if isinstance(beschriftung, QLabel):
+                    gefunden[name] = beschriftung.text()
+                    break
+        return gefunden
+
+    def test_jedes_feld_traegt_die_erwartete_beschriftung(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(Settings())
+        gefunden = self._labels(dialog)
+        assert gefunden, "Keine Beschriftung gefunden - der Test misst nichts"
+        for name, erwartet in self.ERWARTET.items():
+            assert gefunden.get(name) == erwartet, (
+                f"{name}: erwartet {erwartet!r}, gefunden {gefunden.get(name)!r}"
+            )
+
+    def test_alte_bezeichnungen_sind_verschwunden(self, qapp: QApplication) -> None:
+        # Die Gegenprobe zum Test darüber: er würde auch bestehen, wenn eine
+        # alte Bezeichnung an anderer Stelle stehen bliebe.
+        from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(Settings())
+        texte = " ".join(
+            kind.text() for kind in dialog.findChildren(type(dialog.team_status))
+        )
+        for veraltet in ("Rückgabe", "Abschluss offen", "Rückläufer", "Relevante Tickets"):
+            assert veraltet not in texte, f"Alte Bezeichnung noch da: {veraltet}"
+
+
+class TestSuchfeldNachUebernahme:
+    """Was nach dem Übernehmen im Dialog stehen bleibt und was nicht."""
+
+    def test_suchbegriff_wird_geleert(self, qapp: QApplication) -> None:
+        # Der Begriff ist verbraucht. Bleibt er stehen, muss man ihn vor
+        # jedem weiteren Namen erst von Hand löschen.
+        from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(Settings())
+        dialog.team_query.setText("beispiel")
+        dialog._team_hits_ready([_hit(ID_A, "Reiner Beispiel")])
+        dialog.team_hits.selectRow(0)
+        dialog._team_add()
+
+        assert dialog.team_query.text() == ""
+        assert dialog.team_name.text() == ""
+
+    def test_trefferliste_bleibt_stehen(self, qapp: QApplication) -> None:
+        # Bewusst NICHT geleert: fällt hinterher auf, dass ein weiteres Konto
+        # zu derselben Person gehört, ist es noch da.
+        from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(Settings())
+        dialog._team_hits_ready([_hit(ID_A, "Erstes"), _hit(ID_B, "Zweites")])
+        dialog.team_hits.selectRow(0)
+        dialog._team_add()
+
+        assert dialog.team_hits.rowCount() == 2
+
+    def test_gescheiterte_uebernahme_behaelt_den_begriff(self, qapp: QApplication) -> None:
+        # Ohne Auswahl passiert nichts - dann darf auch nichts weggeräumt
+        # werden, sonst ist die Eingabe weg und der Grund unklar.
+        from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(Settings())
+        dialog.team_query.setText("beispiel")
+        dialog._team_hits_ready([_hit(ID_A, "Reiner Beispiel")])
+        dialog.team_hits.clearSelection()
+        dialog._team_add()
+
+        assert dialog.team_query.text() == "beispiel"
+        assert dialog._roster.members == []

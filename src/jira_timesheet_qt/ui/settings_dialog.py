@@ -435,11 +435,12 @@ class SettingsDialog(QDialog):
         self.board_handback = self._wide_edit(
             self._settings.board_handback_status, "Ausgeliefert, Zur Bewertung"
         )
-        form.addRow(self._label("Rückgabe"), self.board_handback)
+        form.addRow(self._label("Live, Test offen"), self.board_handback)
         form.addRow(
             self._hint(
-                "Ausgeliefert, wartet auf Bewertung. Bei fremdem Autor gehört das Ticket "
-                "zurückgegeben; bist du selbst der Autor, bleibt es bei dir."
+                "Produktiv gesetzt und wartet auf den Test durch den Autor. Ist der Autor "
+                "jemand anderes, gehört das Ticket zurückgegeben - bist du es selbst, liegt "
+                "der Ball bei dir, und die Ansicht sortiert es zu \"Ich bin dran\"."
             )
         )
 
@@ -502,7 +503,7 @@ class SettingsDialog(QDialog):
         form.addRow(self._label("Schwelle: andere"), self.board_threshold_acceptance)
 
         self.board_threshold_closing = self._threshold(self._settings.board_threshold_closing)
-        form.addRow(self._label("Schwelle: Abschluss"), self.board_threshold_closing)
+        form.addRow(self._label("Schwelle: Übergabe"), self.board_threshold_closing)
         form.addRow(
             self._hint(
                 "Ab so vielen ARBEITSTAGEN ohne Änderung UND ohne gebuchte Stunde landet ein "
@@ -769,6 +770,12 @@ class SettingsDialog(QDialog):
 
         self._refresh_roster()
         self.team_name.clear()
+        # Suchbegriff ist verbraucht, der Fokus geht zurueck ins Feld: der
+        # naechste Name laesst sich sofort tippen. Die Trefferliste bleibt
+        # bewusst stehen - faellt einem hinterher auf, dass ein weiteres Konto
+        # zu derselben Person gehoert, ist es noch da.
+        self.team_query.clear()
+        self.team_query.setFocus()
         konten = "1 Konto" if len(member.account_ids) == 1 else f"{len(member.account_ids)} Konten"
         self.team_status.setText(f"{member.display_name} übernommen ({konten}).")
 
