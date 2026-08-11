@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Von Hand ausloesbar. Am 06.08.2026 hat GitHub zu einem Push der
+  # Textual-Fassung gar keinen CI-Lauf gestartet (der Pages-Job desselben
+  # Commits meldete "The job was not acquired by Runner of type hosted"). Ohne
+  # diesen Eintrag bleibt als Ausweg nur ein Leer-Commit.
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Ohne das cancelt ein Fehler auf einem OS die uebrigen Jobs, und deren
+      # Ergebnis bleibt unbekannt.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.12"]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Qt laeuft in den Tests headless (QT_QPA_PLATFORM=offscreen, gesetzt in
+      # tests/conftest.py). Das Plattform-Plugin braucht trotzdem die
+      # X-/EGL-Systemlibs - ohne sie bricht der erste Qt-Import mit "Could not
+      # load the Qt platform plugin" ab, und zwar bevor ein einziger Test
+      # laeuft. Dieselbe Liste steht im Release-Workflow.
+      - name: Install Qt system deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-cursor0 libxcb-xinerama0 \
+            libxkbcommon-x11-0 libegl1 libgl1 libfontconfig1 libdbus-1-3
+
+      - name: Sync dependencies (uv)
+        run: uv sync --extra dev
+
+      - name: Lint (ruff)
+        run: uv run poe lint
+
+      - name: Tests (pytest)
+        run: uv run poe test
+
+  # Bewusst NICHT Teil der CI: der Kern-Abgleich (poe core-sync). Er vergleicht
+  # gegen ein zweites Repo, das auf dem Runner nicht liegt, und meldet bekannte
+  # gewollte Abweichungen mit Exit 1. Als Gate waere er dauerhaft rot und damit
+  # wertlos - er bleibt ein lokales Werkzeug vor dem Uebernehmen von Aenderungen.

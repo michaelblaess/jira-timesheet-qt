@@ -208,7 +208,7 @@ def demo_board(*, relevant: bool = False) -> Board:
 
     Args:
         relevant:
-            True liefert die Ansicht "Relevante Tickets", sonst die eigenen.
+            True liefert die Ansicht "Meine Aktivitäten", sonst die eigenen.
 
     Returns:
         Die fertige Ansicht mit Gruppen und Markern.

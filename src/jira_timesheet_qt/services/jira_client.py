@@ -377,6 +377,135 @@ class JiraClient:
 
         return result
 
+    async def fetch_people(self, query: str) -> list[dict[str, Any]]:
+        """Sucht Personen nach Name oder Mailadresse.
+
+        Die Antwort wird nicht ausgewertet - was ein brauchbares Konto ist,
+        entscheidet services.team. Der Client bleibt ohne Kenntnis der
+        Auswertung.
+
+        Args:
+            query:
+                Suchbegriff. Ein Nachname ist zuverlaessiger als eine
+                Mailadresse: Konten geben ihre Adresse nur heraus, wenn das
+                Profil es zulaesst, und ein Mensch kann mehrere Konten fuehren.
+
+        Returns:
+            Die rohen Treffer. Leer im Legacy-Modus und bei jedem Fehler -
+            eine gescheiterte Suche darf die Oberflaeche nicht anhalten.
+        """
+        if self._legacy or not query.strip():
+            return []
+
+        url = f"{self._host}/rest/api/3/user/search"
+        async with httpx.AsyncClient(
+            verify=False,
+            timeout=60.0,
+            follow_redirects=True,
+            auth=(self._email, self._token),
+            proxy=self._proxy or None,
+        ) as client:
+            try:
+                response = await client.get(
+                    url,
+                    headers=self._headers(),
+                    params={"query": query.strip(), "maxResults": 20},
+                )
+            except httpx.HTTPError as exc:
+                logger.warning("Personensuche gescheitert: %s", exc)
+                return []
+            if response.status_code != 200:
+                logger.warning("Personensuche: HTTP %s", response.status_code)
+                return []
+            found: list[dict[str, Any]] = response.json()
+            return found
+
+    async def fetch_account_facts(
+        self,
+        account_ids: Sequence[str],
+        open_jql: Callable[[str], str],
+        last_jql: Callable[[str], str],
+    ) -> dict[str, tuple[int, list[dict[str, Any]]]]:
+        """Ermittelt je Konto die Zahl offener Tickets und das juengste davon.
+
+        Beides zusammen, weil beides zusammen gebraucht wird: bei mehreren
+        Konten einer Person entscheidet das Datum, welches das aktuelle ist,
+        und die Anzahl sagt, ob sich der Blick lohnt.
+
+        Args:
+            account_ids:
+                Die zu pruefenden Kennungen.
+            open_jql:
+                Baut zur Kennung den Ausdruck fuer die offenen Tickets.
+            last_jql:
+                Baut zur Kennung den Ausdruck fuer das juengste Ticket.
+
+        Returns:
+            Je Kennung ein Paar aus Anzahl und der Antwort auf die
+            Juengstes-Abfrage. Konten, deren Abruf scheitert, fehlen im
+            Ergebnis - dann bleibt die Spalte leer statt geraten.
+        """
+        if self._legacy or not account_ids:
+            return {}
+
+        result: dict[str, tuple[int, list[dict[str, Any]]]] = {}
+        async with httpx.AsyncClient(
+            verify=False,
+            timeout=60.0,
+            follow_redirects=True,
+            auth=(self._email, self._token),
+            proxy=self._proxy or None,
+        ) as client:
+            for account_id in account_ids:
+                try:
+                    offen = await self._search_issues(client, open_jql(account_id), "key")
+                    juengst = await self._search_first_page(
+                        client, last_jql(account_id), "updated", limit=1
+                    )
+                except (httpx.HTTPError, JiraClientError) as exc:
+                    logger.warning("Konto %s nicht abrufbar: %s", account_id, exc)
+                    continue
+                result[account_id] = (len(offen), juengst)
+
+        return result
+
+    async def _search_first_page(
+        self,
+        client: httpx.AsyncClient,
+        jql: str,
+        fields: str,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """Holt nur die erste Seite einer Suche.
+
+        Fuer Abfragen, bei denen der juengste Treffer genuegt. Der
+        gewoehnliche Weg blaettert bis zum Ende - bei einem Konto mit
+        hunderten Tickets waeren das hunderte Antworten fuer eine einzige
+        Zeitangabe.
+
+        Args:
+            client:
+                Der HTTP-Client.
+            jql:
+                Die JQL-Abfrage, sinnvollerweise bereits sortiert.
+            fields:
+                Komma-separierte Feldliste.
+            limit:
+                Hoechstzahl der Treffer.
+
+        Returns:
+            Die Issues der ersten Seite, hoechstens ``limit`` viele.
+        """
+        url = f"{self._host}/rest/api/3/search/jql"
+        response = await client.get(
+            url,
+            params={"jql": jql, "fields": fields, "maxResults": limit},
+            headers=self._headers(),
+        )
+        self._check_response(response, url)
+        issues: list[dict[str, Any]] = response.json().get("issues", [])
+        return issues
+
     async def _fetch_account_id(self, client: httpx.AsyncClient) -> str:
         """Ermittelt die accountId des angemeldeten Benutzers (Cloud-Modus).
 

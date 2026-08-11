@@ -250,7 +250,7 @@ class TestImFenster:
     def test_beide_reiter_sind_da(self, qapp: QApplication) -> None:
         window = MainWindow(Settings(), Mode.DARK)
         assert "Meine Tickets" in _VIEWS
-        assert "Relevante Tickets" in _VIEWS
+        assert "Meine Aktivitäten" in _VIEWS
         assert isinstance(window._assigned_board, TicketBoardView)
         assert isinstance(window._relevant_board, TicketBoardView)
 
@@ -258,7 +258,7 @@ class TestImFenster:
         window = MainWindow(Settings(), Mode.DARK)
         window._tabs.setCurrentIndex(_VIEWS.index("Meine Tickets"))
         assert window._stack.currentWidget() is window._assigned_board
-        window._tabs.setCurrentIndex(_VIEWS.index("Relevante Tickets"))
+        window._tabs.setCurrentIndex(_VIEWS.index("Meine Aktivitäten"))
         assert window._stack.currentWidget() is window._relevant_board
 
     def test_ohne_zugangsdaten_wird_nicht_abgerufen(self, qapp: QApplication) -> None:
@@ -710,7 +710,7 @@ class TestAutomatischesLaden:
     def test_jede_ansicht_zaehlt_fuer_sich(self, qapp: QApplication) -> None:
         window, gerufen = self._fenster(qapp)
         window._board_loaded[MODE_ASSIGNED] = True
-        window._tabs.setCurrentIndex(_VIEWS.index("Relevante Tickets"))
+        window._tabs.setCurrentIndex(_VIEWS.index("Meine Aktivitäten"))
         assert gerufen == [MODE_RELEVANT]
 
 
@@ -727,7 +727,7 @@ class TestAktualisieren:
 
     def test_auf_der_liste_laedt_den_monat(self, qapp: QApplication) -> None:
         window, gerufen = self._fenster()
-        window._stack.setCurrentIndex(_VIEWS.index("Liste"))
+        window._stack.setCurrentIndex(_VIEWS.index("Stundenzettel"))
         window.reload_current()
         assert gerufen == ["monat"]
 
@@ -747,7 +747,7 @@ class TestAktualisieren:
 
     def test_auf_relevanten_tickets_laedt_diese(self, qapp: QApplication) -> None:
         window, gerufen = self._fenster()
-        window._stack.setCurrentIndex(_VIEWS.index("Relevante Tickets"))
+        window._stack.setCurrentIndex(_VIEWS.index("Meine Aktivitäten"))
         window.reload_current()
         assert gerufen == [f"board:{MODE_RELEVANT}"]
 
@@ -818,7 +818,7 @@ class TestStatusleiste:
 
     def test_ohne_daten_bleibt_die_leiste_leer(self, qapp: QApplication) -> None:
         window = MainWindow(Settings(), Mode.DARK)
-        window._stack.setCurrentIndex(_VIEWS.index("Relevante Tickets"))
+        window._stack.setCurrentIndex(_VIEWS.index("Meine Aktivitäten"))
         window._refresh_summary_bar()
         assert "Tickets" not in self._texte(window)
 

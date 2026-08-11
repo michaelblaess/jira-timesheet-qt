@@ -28,6 +28,12 @@ HERE = Path(__file__).resolve().parent.parent
 QT_SRC = HERE / "src" / "jira_timesheet_qt"
 
 # Dateien, die aus der Textual-Fassung stammen.
+#
+# Die drei Kern-Pakete standen bis zum 11.08.2026 NICHT in dieser Liste,
+# obwohl sie den groessten geteilten Teil ausmachen. Der Reiter "Mein Team"
+# lief deshalb ueber Wochen unbemerkt auseinander - 138 Zeilen in
+# ticket_board, das ganze Paket team fehlte hier komplett. Ein Abgleich, der
+# den Kern auslaesst, meldet "alles gleich" und belegt damit nichts.
 SHARED = (
     "i18n.py",
     "models/export_column.py",
@@ -42,6 +48,25 @@ SHARED = (
     "services/manual_entry_service.py",
     "services/pdf_exporter.py",
     "services/timesheet_service.py",
+    # Ticket-Ansichten: der fachliche Kern, UI-frei und in beiden Fassungen
+    # wortgleich.
+    "services/ticket_board/__init__.py",
+    "services/ticket_board/config.py",
+    "services/ticket_board/models.py",
+    "services/ticket_board/queries.py",
+    "services/ticket_board/rules.py",
+    "services/ticket_board/stats.py",
+    # Mein Team: Merkliste und Kontoauswahl.
+    "services/team/__init__.py",
+    "services/team/models.py",
+    "services/team/roster.py",
+    # Ticket-Bericht.
+    "services/ticket_report/__init__.py",
+    "services/ticket_report/adf.py",
+    "services/ticket_report/lifecycle.py",
+    "services/ticket_report/render.py",
+    "services/ticket_report/style.py",
+    "services/ticket_report/viewmodel.py",
 )
 
 # Bewusst abweichend (anderer Datenpfad, kein Retro-Theme, Export-Verzeichnis).

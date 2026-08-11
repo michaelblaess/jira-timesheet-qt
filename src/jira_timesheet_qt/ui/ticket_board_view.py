@@ -115,16 +115,42 @@ class TicketBoardView(QWidget):
     detail_requested = Signal(object)
     report_requested = Signal(str)
 
+    # Meldet, dass eine andere Person gewaehlt wurde. Der Abruf gehoert nicht
+    # in die Ansicht - sie sagt nur, WEN sie sehen will.
+    member_changed = Signal(str)
+
     def __init__(
         self,
         title: str,
         *,
         with_charts: bool = False,
         mode: Mode = Mode.DARK,
+        with_members: bool = False,
         parent: QWidget | None = None,
     ) -> None:
+        """Baut die Ansicht.
+
+        Args:
+            title:
+                Ueberschrift der Ansicht.
+            with_charts:
+                Ob die Auswertung angezeigt wird. Bei fremden Tickets waere
+                sie eine Leistungskennzahl ueber jemand anderen.
+            mode:
+                Helles oder dunkles Erscheinungsbild.
+            with_members:
+                Ob das Auswahlfeld fuer die Person entsteht. Es entsteht
+                IMMER, wenn die Ansicht es braucht - auch bei leerer
+                Merkliste. Ein Feld, das erst mit dem ersten Eintrag
+                auftaucht, ist der Grund, warum in der Textual-Fassung
+                gespeicherte Personen im Reiter nicht ankamen.
+            parent:
+                Das Qt-Elternobjekt.
+        """
         super().__init__(parent)
         self._title = title
+        self._with_members = with_members
+        self._members: list[str] = []
         # Die Auswertung zeigt den eigenen Durchsatz. Bei fremden Tickets
         # waere sie eine Zahl ueber jemand anderen - deshalb nur dort, wo
         # es die eigenen sind.
@@ -152,6 +178,15 @@ class TicketBoardView(QWidget):
 
         head = QHBoxLayout()
         head.setSpacing(8)
+
+        if self._with_members:
+            head.addWidget(QLabel("Team-Mitglied:"))
+            self._member_box = QComboBox()
+            self._member_box.setObjectName("BoardMemberFilter")
+            self._member_box.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+            self._member_box.setMinimumContentsLength(18)
+            self._member_box.currentIndexChanged.connect(self._on_member_changed)
+            head.addWidget(self._member_box)
 
         head.addWidget(QLabel("Status:"))
         self._status_box = QComboBox()
@@ -289,6 +324,22 @@ class TicketBoardView(QWidget):
         if self._board is None:
             self._show_placeholder(text)
 
+    def show_hint(self, text: str) -> None:
+        """Ersetzt den Inhalt durch einen Hinweis.
+
+        Anders als ``set_loading`` und ``set_failed`` verdraengt das auch ein
+        bereits geladenes Ergebnis. Gedacht fuer den Fall, dass die Ansicht
+        gar nichts zeigen KANN - etwa die Fremdsicht ohne gewaehlte Person,
+        wo die alte Liste unter einem falschen Namen staende.
+
+        Args:
+            text:
+                Der Hinweis.
+        """
+        self._board = None
+        self._model.set_board(None)
+        self._show_placeholder(text)
+
     def _show_placeholder(self, text: str) -> None:
         """Blendet die Hinweisflaeche mit dem gegebenen Text ein."""
         self._placeholder.setText(text)
@@ -308,6 +359,39 @@ class TicketBoardView(QWidget):
         self._proxy.set_needle(text)
         if text:
             self._tree.expandAll()
+
+    def set_members(self, names: list[str]) -> None:
+        """Uebernimmt die Merkliste in das Auswahlfeld.
+
+        Args:
+            names:
+                Die Anzeigenamen aus den Einstellungen, bereits sortiert.
+        """
+        if not self._with_members:
+            return
+        previous = self.current_member()
+        self._members = list(names)
+        self._member_box.blockSignals(True)
+        self._member_box.clear()
+        for name in self._members:
+            self._member_box.addItem(name, name)
+        if previous in self._members:
+            self._member_box.setCurrentIndex(self._members.index(previous))
+        self._member_box.blockSignals(False)
+        self._member_box.setEnabled(bool(self._members))
+
+    def current_member(self) -> str:
+        """Der Name der gewaehlten Person, leer bei leerer Merkliste."""
+        if not self._with_members:
+            return ""
+        data = self._member_box.currentData()
+        return str(data) if data else ""
+
+    def _on_member_changed(self, _index: int) -> None:
+        """Meldet die neue Person nach oben."""
+        name = self.current_member()
+        if name:
+            self.member_changed.emit(name)
 
     def set_report_available(self, available: bool) -> None:
         """Schaltet den Menuepunkt fuer die Ticket-Analyse frei."""

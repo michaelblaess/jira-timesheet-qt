@@ -65,6 +65,7 @@ from jira_timesheet_qt.services.anonymizer import (
 )
 from jira_timesheet_qt.services.holiday_service import HolidayService
 from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
+from jira_timesheet_qt.services.team import TeamMember, from_storage
 from jira_timesheet_qt.services.ticket_board import Board, Marker, Role
 from jira_timesheet_qt.services.ticket_board import Ticket as BoardTicket
 from jira_timesheet_qt.ui.about_dialog import AboutDialog
@@ -85,6 +86,7 @@ from jira_timesheet_qt.ui.ticket_board_view import TicketBoardView
 from jira_timesheet_qt.ui.ticket_board_worker import (
     MODE_ASSIGNED,
     MODE_RELEVANT,
+    MODE_TEAM,
     TicketBoardWorker,
     TicketStatsWorker,
     config_from,
@@ -94,13 +96,14 @@ from jira_timesheet_qt.ui.timesheet_tree_model import TimesheetTreeModel
 from jira_timesheet_qt.ui.toast import Toast
 from jira_timesheet_qt.ui.year_view import YearView
 
-_VIEWS = ("Liste", "Kalender", "Jahr", "Meine Tickets", "Relevante Tickets")
+_VIEWS = ("Stundenzettel", "Kalender", "Jahr", "Meine Tickets", "Meine Aktivitäten", "Mein Team")
 
 # Welche Stapelseite welche Ticket-Ansicht ist. Aus _VIEWS abgeleitet,
 # damit eine neue Ansicht die Zuordnung nicht stillschweigend verschiebt.
 _BOARD_MODES: dict[int, str] = {
     _VIEWS.index("Meine Tickets"): MODE_ASSIGNED,
-    _VIEWS.index("Relevante Tickets"): MODE_RELEVANT,
+    _VIEWS.index("Meine Aktivitäten"): MODE_RELEVANT,
+    _VIEWS.index("Mein Team"): MODE_TEAM,
 }
 
 # Farbe des Pile-of-Shame-Werts in der Statusleiste (Hex ohne #).
@@ -160,17 +163,18 @@ class MainWindow(QMainWindow):
         # Je Ticket-Ansicht eine eigene Abruf-Nummer: beide laden
         # unabhaengig voneinander, ein Ergebnis darf das andere nicht
         # entwerten.
-        self._board_generation: dict[str, int] = {MODE_ASSIGNED: 0, MODE_RELEVANT: 0}
+        self._board_generation: dict[str, int] = {MODE_ASSIGNED: 0, MODE_RELEVANT: 0, MODE_TEAM: 0}
         # Beim ersten Wechsel in einen Ticket-Reiter wird automatisch
         # geladen - wie in der Jahresansicht. Danach nur noch auf Zuruf
         # ueber die Werkzeugleiste.
-        self._board_loaded: dict[str, bool] = {MODE_ASSIGNED: False, MODE_RELEVANT: False}
+        self._board_loaded: dict[str, bool] = {MODE_ASSIGNED: False, MODE_RELEVANT: False, MODE_TEAM: False}
         # Die echten Ergebnisse. Die Ansicht zeigt im Screenshot-Modus
         # eine Dummy-Kopie - die Rohdaten bleiben hier, damit sich der
         # Modus verlustfrei zurueckschalten laesst.
         self._real_boards: dict[str, Board | None] = {
             MODE_ASSIGNED: None,
             MODE_RELEVANT: None,
+            MODE_TEAM: None,
         }
         # Angezeigter Stundenzettel (bei aktiver Anonymisierung die Dummy-Kopie).
         self._timesheet: Timesheet | None = None
@@ -303,9 +307,15 @@ class MainWindow(QMainWindow):
         )
         self._assigned_board.detail_requested.connect(self._show_detail)
         self._assigned_board.report_requested.connect(self.open_ticket_report)
-        self._relevant_board = TicketBoardView("Relevante Tickets")
+        self._relevant_board = TicketBoardView("Meine Aktivitäten")
         self._relevant_board.detail_requested.connect(self._show_detail)
         self._relevant_board.report_requested.connect(self.open_ticket_report)
+        # Ohne Auswertung: der Durchsatz je Monat waere ueber eine andere
+        # Person eine Leistungskennzahl.
+        self._team_board = TicketBoardView("Mein Team", with_members=True)
+        self._team_board.detail_requested.connect(self._show_detail)
+        self._team_board.report_requested.connect(self.open_ticket_report)
+        self._team_board.member_changed.connect(self._on_member_changed)
         self._apply_board_settings()
 
         self._stack = QStackedWidget()
@@ -314,6 +324,7 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._year_view)
         self._stack.addWidget(self._assigned_board)
         self._stack.addWidget(self._relevant_board)
+        self._stack.addWidget(self._team_board)
         outer.addWidget(self._stack, 1)
 
         self._summary = SummaryBar(self._mode)
@@ -666,6 +677,7 @@ class MainWindow(QMainWindow):
         # Reiterwechsel nicht ueberraschend verschwindet.
         self._assigned_board.set_search(text)
         self._relevant_board.set_search(text)
+        self._team_board.set_search(text)
 
     def _build_empty_state(self) -> QWidget:
         """Zustand ohne Daten - formatfuellendes Hintergrundbild, Inhalt in einer Karte.
@@ -1202,9 +1214,42 @@ class MainWindow(QMainWindow):
         Funktion gibt.
         """
         available = bool(self._settings.jira_host and self._settings.jira_token)
-        for view in (self._assigned_board, self._relevant_board):
+        for view in (self._assigned_board, self._relevant_board, self._team_board):
             view.set_report_available(available)
             view.set_anonymized(self._anonymize)
+        # Die Merkliste gehoert mit hierher: sie kann sich mit jeder
+        # Einstellungsaenderung geaendert haben, und ein Auswahlfeld, das
+        # nicht nachzieht, laesst eine gepflegte Liste leer aussehen.
+        self._apply_team_roster()
+
+    def _current_member(self) -> TeamMember | None:
+        """Die im Reiter "Mein Team" gewaehlte Person.
+
+        Returns:
+            Das Mitglied, oder None bei leerer Merkliste. Kein Rueckfall auf
+            den ersten Eintrag: wer nichts gewaehlt hat, soll keine Liste
+            unter einem Namen sehen, den er nicht ausgesucht hat.
+        """
+        name = self._team_board.current_member()
+        if not name:
+            return None
+        return from_storage(self._settings.team_members).find(name)
+
+    def _on_member_changed(self, _name: str) -> None:
+        """Laedt die Ansicht neu, wenn eine andere Person gewaehlt wurde."""
+        self._board_loaded[MODE_TEAM] = False
+        if self._settings_complete():
+            self._load_board(MODE_TEAM)
+
+    def _apply_team_roster(self) -> None:
+        """Uebernimmt die Merkliste aus den Einstellungen in den Reiter.
+
+        Muss nach JEDER Aenderung der Einstellungen laufen. Fehlt der Aufruf,
+        bleibt das Auswahlfeld leer, obwohl die Merkliste gefuellt ist - genau
+        so ist es in der Textual-Fassung passiert.
+        """
+        roster = from_storage(self._settings.team_members)
+        self._team_board.set_members([member.display_name for member in roster.members])
 
     def _invalidate_boards(self) -> None:
         """Verwirft die geladenen Ticket-Ansichten nach einer Aenderung.
@@ -1214,14 +1259,26 @@ class MainWindow(QMainWindow):
         Die gerade sichtbare Ansicht laedt sofort, die andere beim
         naechsten Besuch.
         """
-        self._board_loaded = {MODE_ASSIGNED: False, MODE_RELEVANT: False}
+        self._board_loaded = {MODE_ASSIGNED: False, MODE_RELEVANT: False, MODE_TEAM: False}
         mode = _BOARD_MODES.get(self._stack.currentIndex())
         if mode is not None and self._settings_complete():
             self._load_board(mode)
 
     def _board_view(self, mode: str) -> TicketBoardView:
-        """Liefert die Ansicht zu einem Abrufmodus."""
-        return self._assigned_board if mode == MODE_ASSIGNED else self._relevant_board
+        """Liefert die Ansicht zu einem Abrufmodus.
+
+        Args:
+            mode:
+                MODE_ASSIGNED, MODE_RELEVANT oder MODE_TEAM.
+
+        Returns:
+            Die zugehoerige Ansicht.
+        """
+        if mode == MODE_ASSIGNED:
+            return self._assigned_board
+        if mode == MODE_TEAM:
+            return self._team_board
+        return self._relevant_board
 
     def _load_board(self, mode: str) -> None:
         """Startet den Abruf einer Ticket-Ansicht.
@@ -1233,7 +1290,7 @@ class MainWindow(QMainWindow):
 
         Args:
             mode:
-                MODE_ASSIGNED oder MODE_RELEVANT.
+                MODE_ASSIGNED, MODE_RELEVANT oder MODE_TEAM.
         """
         if not self._settings_complete():
             self._set_status(
@@ -1241,12 +1298,27 @@ class MainWindow(QMainWindow):
             )
             return
 
+        member = self._current_member() if mode == MODE_TEAM else None
+        if mode == MODE_TEAM and member is None:
+            # Ohne Person faellt die Abfrage auf currentUser() zurueck - dann
+            # staenden die EIGENEN Tickets unter fremdem Namen in der Ansicht.
+            # Ein Hinweis ist besser als eine Liste, die stimmig aussieht.
+            self._board_view(mode).show_hint(
+                "Noch niemand in der Merkliste.\n"
+                "Trage unter Einstellungen > Mein Team ein, wessen Ticketstand "
+                "du sehen willst."
+            )
+            self._set_status("")
+            return
+
         self._board_generation[mode] = self._board_generation.get(mode, 0) + 1
         generation = self._board_generation[mode]
 
         self._set_status("Tickets werden geladen ...", "busy")
         self._board_view(mode).set_loading()
-        worker = TicketBoardWorker(self._settings, config_from(self._settings), mode, self)
+        worker = TicketBoardWorker(
+            self._settings, config_from(self._settings), mode, self, member=member
+        )
         worker.progress.connect(
             lambda text, m=mode, g=generation: self._on_board_progress(text, m, g)
         )

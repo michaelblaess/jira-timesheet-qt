@@ -24,12 +24,15 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListView,
     QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSpinBox,
     QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -43,7 +46,16 @@ from jira_timesheet_qt.models.settings import (
 )
 from jira_timesheet_qt.services.cache_service import CACHE_DIR
 from jira_timesheet_qt.services.manual_entry_service import DB_FILE
+from jira_timesheet_qt.services.team import (
+    AccountCandidate,
+    Roster,
+    TeamMember,
+    from_storage,
+    merge_accounts,
+    to_storage,
+)
 from jira_timesheet_qt.ui.jira_worker import BudgetFieldWorker
+from jira_timesheet_qt.ui.team_worker import TeamSearchWorker
 from jira_timesheet_qt.ui.theme import ACCENT_LABELS, SCALES
 
 # Einheitliche Breite aller Eingabefelder. Ohne das richtet sich jedes Feld
@@ -114,7 +126,16 @@ class SettingsDialog(QDialog):
         self._nav.setObjectName("SettingsNav")
         self._nav.setFixedWidth(180)
         self._nav.addItems(
-            ["Zugang", "Arbeitszeit", "Tickets", "Export", "Spalten", "Darstellung", "Speicherort"]
+            [
+                "Zugang",
+                "Arbeitszeit",
+                "Tickets",
+                "Mein Team",
+                "Export",
+                "Spalten",
+                "Darstellung",
+                "Speicherort",
+            ]
         )
         self._nav.setCurrentRow(0)
         body.addWidget(self._nav)
@@ -123,6 +144,7 @@ class SettingsDialog(QDialog):
         self._pages.addWidget(self._scrollable(self._page_access()))
         self._pages.addWidget(self._scrollable(self._page_worktime()))
         self._pages.addWidget(self._scrollable(self._page_tickets()))
+        self._pages.addWidget(self._scrollable(self._page_team()))
         self._pages.addWidget(self._scrollable(self._page_export()))
         self._pages.addWidget(self._scrollable(self._page_columns()))
         self._pages.addWidget(self._scrollable(self._page_appearance()))
@@ -312,9 +334,20 @@ class SettingsDialog(QDialog):
         QMessageBox.critical(self, "Budget-Feld ermitteln", message)
 
     def _await_detect_worker(self, _result: int) -> None:
-        """Wartet beim Schliessen auf einen noch laufenden Erkennungs-Faden."""
+        """Wartet beim Schliessen auf noch laufende Hintergrund-Faeden.
+
+        Betrifft die Budget-Feld-Erkennung UND die Personensuche: beide
+        koennen laenger laufen als der Dialog offen bleibt, und Qt zerstoert
+        einen QThread nicht gefahrlos, solange er noch arbeitet.
+
+        Args:
+            _result:
+                Der Rueckgabewert des Dialogs, hier ohne Bedeutung.
+        """
         if self._detect_worker is not None and self._detect_worker.isRunning():
             self._detect_worker.wait(3000)
+        if self._team_worker is not None and self._team_worker.isRunning():
+            self._team_worker.wait(3000)
 
     def _page_worktime(self) -> QWidget:
         page, form = self._page("Arbeitszeit")
@@ -411,13 +444,26 @@ class SettingsDialog(QDialog):
         )
 
         self.board_closing = self._wide_edit(
-            self._settings.board_closing_status, "Zur Abnahme, Doku offen"
+            self._settings.board_closing_status, "Zur Übergabe, Deployment offen"
         )
-        form.addRow(self._label("Abschluss offen"), self.board_closing)
+        form.addRow(self._label("Übergabe"), self.board_closing)
         form.addRow(
             self._hint(
-                "Status, die Jira als fertig zählt, obwohl noch etwas zu tun ist. Ohne "
-                "diesen Eintrag fallen solche Tickets komplett aus der Ansicht."
+                "Das wichtigste Feld. Status, die Jira als fertig zählt, obwohl das Ticket "
+                "noch auf die Live-Setzung wartet - ohne diesen Eintrag tauchen sie in "
+                "keiner Liste auf."
+            )
+        )
+
+        self.board_done = self._wide_edit(
+            self._settings.board_done_status, "Erledigt, Abgeschlossen"
+        )
+        form.addRow(self._label("Abgeschlossen"), self.board_done)
+        form.addRow(
+            self._hint(
+                "Wirklich fertig. Reiner Kontrollblick: diese Tickets erscheinen ohne "
+                "Handlungsbedarf und ohne Schwelle, damit sichtbar bleibt, was formal noch "
+                "bei dir hängt."
             )
         )
 
@@ -435,7 +481,7 @@ class SettingsDialog(QDialog):
         form.addRow(self._label("Zeitfenster"), self.board_window)
         form.addRow(
             self._hint(
-                "Nur für \"Relevante Tickets\". 0 = kein Fenster - dann wird die Liste "
+                "Nur für \"Meine Aktivitäten\". 0 = kein Fenster - dann wird die Liste "
                 "schnell zum Archiv statt zum Arbeitsvorrat."
             )
         )
@@ -502,6 +548,252 @@ class SettingsDialog(QDialog):
         box.setValue(value)
         box.setFixedWidth(FIELD_WIDTH)
         return box
+
+    def _page_team(self) -> QWidget:
+        page, form = self._page("Mein Team")
+
+        form.addRow(
+            self._hint(
+                "Merke dir Kolleginnen und Kollegen, deren Ticketstand du im Reiter "
+                "\"Mein Team\" ansehen willst. Suche nach dem <b>Namen</b>, nicht nach der "
+                "Mailadresse: viele Konten geben ihre Adresse nicht heraus, und ein Mensch "
+                "kann mehrere Konten haben. Alle Treffer zu einer Person werden gemeinsam "
+                "übernommen."
+            )
+        )
+
+        self.team_query = QLineEdit()
+        self.team_query.setPlaceholderText("Nachname")
+        self.team_query.setFixedWidth(FIELD_WIDTH)
+        # Enter sucht - sonst muss man für jede Suche zur Maus greifen.
+        self.team_query.returnPressed.connect(self._team_search)
+
+        search_row = QWidget()
+        search_layout = QHBoxLayout(search_row)
+        search_layout.setContentsMargins(0, 0, 0, 0)
+        search_layout.setSpacing(8)
+        search_layout.addWidget(self.team_query)
+        self.team_search_button = QPushButton("Suchen")
+        self.team_search_button.setProperty("variant", "secondary")
+        self.team_search_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.team_search_button.clicked.connect(self._team_search)
+        search_layout.addWidget(self.team_search_button)
+        search_layout.addStretch(1)
+        form.addRow(self._label("Suchen"), search_row)
+
+        self.team_hits = QTableWidget(0, 4)
+        self.team_hits.setHorizontalHeaderLabels(["Name", "Mail", "offen", "zuletzt"])
+        self.team_hits.verticalHeader().setVisible(False)
+        self.team_hits.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        # ExtendedSelection, NICHT MultiSelection: bei MultiSelection ist ein
+        # Klick auf eine bereits ausgewaehlte Zeile ein Abwaehlen. Da nach der
+        # Suche die oberste Zeile vorgewaehlt ist, haette der Griff zum
+        # wahrscheinlichsten Treffer ihn gerade wieder abgewaehlt.
+        self.team_hits.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+        self.team_hits.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.team_hits.setMinimumHeight(170)
+        self.team_hits.setMinimumWidth(WIDE_FIELD_WIDTH)
+        # Mehrfachauswahl mit Absicht (Strg oder Umschalt): fuehrt eine Person
+        # mehrere Konten, muss man alle gemeinsam uebernehmen koennen. Die
+        # Reihenfolge stammt aus dem Kern - das juengste Konto steht oben,
+        # nicht das groesste.
+        form.addRow(self._label("Treffer"), self.team_hits)
+
+        self.team_status = self._hint("")
+        form.addRow(self.team_status)
+
+        self.team_name = QLineEdit()
+        self.team_name.setPlaceholderText("Wie im Reiter angezeigt")
+        self.team_name.setFixedWidth(FIELD_WIDTH)
+
+        add_row = QWidget()
+        add_layout = QHBoxLayout(add_row)
+        add_layout.setContentsMargins(0, 0, 0, 0)
+        add_layout.setSpacing(8)
+        add_layout.addWidget(self.team_name)
+        self.team_add_button = QPushButton("Übernehmen")
+        self.team_add_button.setProperty("variant", "secondary")
+        self.team_add_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.team_add_button.clicked.connect(self._team_add)
+        add_layout.addWidget(self.team_add_button)
+        add_layout.addStretch(1)
+        form.addRow(self._label("Anzeigename"), add_row)
+        form.addRow(
+            self._hint(
+                "Leer lassen übernimmt den Namen aus Jira. Jira führt denselben Menschen "
+                "aber gern in mehreren Schreibweisen - wie jemand genannt werden möchte, "
+                "entscheidet nicht das Verzeichnis."
+            )
+        )
+
+        self.team_roster_list = QListWidget()
+        self.team_roster_list.setMinimumHeight(120)
+        self.team_roster_list.setMinimumWidth(WIDE_FIELD_WIDTH)
+        form.addRow(self._label("Merkliste"), self.team_roster_list)
+
+        self.team_remove_button = QPushButton("Entfernen")
+        self.team_remove_button.setProperty("variant", "secondary")
+        self.team_remove_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.team_remove_button.clicked.connect(self._team_remove)
+        form.addRow(self.team_remove_button)
+
+        self._roster: Roster = from_storage(self._settings.team_members)
+        self._hits: list[AccountCandidate] = []
+        self._team_worker: TeamSearchWorker | None = None
+        self._refresh_roster()
+        return page
+
+    # --- Mein Team ------------------------------------------------------
+
+    def _team_search(self) -> None:
+        """Startet die Personensuche im Hintergrund."""
+        query = self.team_query.text().strip()
+        if not query:
+            return
+        if not (self.host.text().strip() and self.email.text().strip() and self.token.text()):
+            self.team_status.setText(
+                "Dafür fehlt der Jira-Zugang. Trage ihn unter \"Zugang\" ein."
+            )
+            return
+        if self._team_worker is not None and self._team_worker.isRunning():
+            return
+
+        self.team_search_button.setEnabled(False)
+        self.team_status.setText("Suche läuft ...")
+
+        # Die Suche nimmt den Zugang aus den FELDERN, nicht aus den
+        # gespeicherten Einstellungen: wer den Zugang gerade erst eingetragen
+        # hat, soll nicht erst speichern und den Dialog neu oeffnen muessen.
+        settings = self._settings_for_search()
+        self._team_worker = TeamSearchWorker(settings, query, self)
+        self._team_worker.finished_ok.connect(self._team_hits_ready)
+        self._team_worker.failed.connect(self._team_search_failed)
+        self._team_worker.start()
+
+    def _settings_for_search(self) -> Settings:
+        """Baut die Zugangsdaten aus den aktuellen Eingabefeldern."""
+        settings = Settings.load()
+        settings.jira_host = self.host.text().strip()
+        settings.email = self.email.text().strip()
+        settings.jira_token = self.token.text()
+        settings.proxy_url = self.proxy.text().strip()
+        settings.use_legacy_api = self.legacy.isChecked()
+        return settings
+
+    def _team_hits_ready(self, hits: object) -> None:
+        """Zeigt die gefundenen Konten an.
+
+        Args:
+            hits:
+                Die Kandidaten aus dem Faden, bereits sortiert.
+        """
+        self.team_search_button.setEnabled(True)
+        self._hits = list(hits) if isinstance(hits, list) else []
+        self.team_hits.setRowCount(len(self._hits))
+        for row, candidate in enumerate(self._hits):
+            stamp = candidate.last_touch.strftime("%d.%m.%Y") if candidate.last_touch else ""
+            # Leer statt "0" oder "-", wenn der Abruf des Kontos scheiterte:
+            # eine Null waere eine Behauptung, die niemand geprueft hat.
+            offen = "" if candidate.open_count is None else str(candidate.open_count)
+            for column, text in enumerate(
+                (candidate.display_name, candidate.email, offen, stamp)
+            ):
+                self.team_hits.setItem(row, column, QTableWidgetItem(text))
+        self.team_hits.resizeColumnsToContents()
+
+        if not self._hits:
+            self.team_status.setText("Kein Konto zu diesem Namen gefunden.")
+            return
+        self.team_status.setText(
+            f"{len(self._hits)} Konten gefunden. Wähle alle aus, die zu derselben Person "
+            "gehören - das oberste ist das zuletzt benutzte."
+        )
+        self.team_hits.selectRow(0)
+
+    def _team_search_failed(self, message: str) -> None:
+        """Meldet eine gescheiterte Suche, ohne den Dialog anzuhalten."""
+        self.team_search_button.setEnabled(True)
+        self.team_status.setText(f"Suche gescheitert: {message}")
+
+    def _team_add(self) -> None:
+        """Uebernimmt die ausgewaehlten Konten als eine Person."""
+        rows = sorted({index.row() for index in self.team_hits.selectedIndexes()})
+        chosen = [self._hits[row] for row in rows if 0 <= row < len(self._hits)]
+        if not chosen:
+            self.team_status.setText("Kein Konto ausgewählt.")
+            return
+
+        wanted = self.team_name.text().strip()
+        known = {
+            account_id
+            for existing in self._roster.members
+            for account_id in existing.account_ids
+        }
+        # Ein Konto, das bereits einer ANDEREN Person zugeordnet ist, waere
+        # doppelt in der Merkliste - dieselben Tickets erschienen dann unter
+        # zwei Namen. Nur beim Erweitern derselben Person ist es erwuenscht.
+        target = self._roster.find(wanted) if wanted else None
+        fremd = [
+            candidate
+            for candidate in chosen
+            if candidate.account_id in known
+            and (target is None or candidate.account_id not in target.account_ids)
+        ]
+        if fremd:
+            self.team_status.setText(
+                "Mindestens eines dieser Konten gehört schon zu einer Person in der "
+                "Merkliste. Entferne sie dort erst, oder trage denselben Anzeigenamen ein."
+            )
+            return
+
+        member = merge_accounts(chosen, name=wanted)
+        existing = self._roster.find(member.display_name)
+        if existing is None:
+            self._roster.members.append(member)
+        else:
+            # Gleicher Name, weitere Konten: vereinigen statt ersetzen. Wer
+            # spaeter ein viertes Konto derselben Person findet, soll es
+            # dazulegen koennen, ohne die schon gefundenen zu verlieren.
+            merged = list(existing.account_ids) + [
+                account_id
+                for account_id in member.account_ids
+                if account_id not in existing.account_ids
+            ]
+            member = TeamMember(
+                display_name=member.display_name,
+                account_ids=tuple(merged),
+                email=member.email or existing.email,
+                avatar_url=member.avatar_url or existing.avatar_url,
+            )
+            self._roster.members[self._roster.members.index(existing)] = member
+
+        self._refresh_roster()
+        self.team_name.clear()
+        konten = "1 Konto" if len(member.account_ids) == 1 else f"{len(member.account_ids)} Konten"
+        self.team_status.setText(f"{member.display_name} übernommen ({konten}).")
+
+    def _team_remove(self) -> None:
+        """Nimmt die ausgewaehlte Person aus der Merkliste."""
+        item = self.team_roster_list.currentItem()
+        if item is None:
+            return
+        name = str(item.data(Qt.ItemDataRole.UserRole))
+        chosen = self._roster.find(name)
+        if chosen is None:
+            return
+        self._roster.members.remove(chosen)
+        self._refresh_roster()
+        self.team_status.setText(f"{name} entfernt.")
+
+    def _refresh_roster(self) -> None:
+        """Schreibt die Merkliste neu in die Anzeige."""
+        self.team_roster_list.clear()
+        for member in self._roster.members:
+            konten = "1 Konto" if len(member.account_ids) == 1 else f"{len(member.account_ids)} Konten"
+            item = QListWidgetItem(f"{member.display_name}  ({konten})")
+            item.setData(Qt.ItemDataRole.UserRole, member.display_name)
+            self.team_roster_list.addItem(item)
+        self.team_remove_button.setEnabled(bool(self._roster.members))
 
     def _page_export(self) -> QWidget:
         page, form = self._page("Export")
@@ -906,6 +1198,8 @@ class SettingsDialog(QDialog):
         s.board_acceptance_status = _split(self.board_acceptance.text())
         s.board_handback_status = _split(self.board_handback.text())
         s.board_closing_status = _split(self.board_closing.text())
+        s.board_done_status = _split(self.board_done.text())
+        s.team_members = to_storage(self._roster)
         s.board_priorities = _split(self.board_priorities.text())
         s.board_window_days = self.board_window.value()
         s.board_stale_days = self.board_stale.value()
