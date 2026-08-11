@@ -426,10 +426,19 @@ class TestEinstellungsseite:
                 dialog.board_acceptance,
                 dialog.board_handback,
                 dialog.board_closing,
+                # board_done kam am 11.08.2026 dazu und fehlte hier zunaechst.
+                # Ein Schutz, der ein Feld auslaesst, meldet "sauber" und
+                # belegt nichts - genau dieses Feld traegt einen Platzhalter
+                # aus derselben Familie wie die verbotenen.
+                dialog.board_done,
             )
         ).casefold()
-        for echt in ("evaluation", "übergabe betrieb", "fertig für entwicklung", "schließen"):
-            assert echt not in beispiele
+        # Beide Seiten casefolden, nicht nur die Beispiele: casefold() macht
+        # aus "Schließen" ein "schliessen" (ß zerfaellt in ss). Die Suchliste
+        # trug das ß, der Vergleich konnte also nie anschlagen - der Schutz
+        # gegen genau diesen Statusnamen war seit jeher wirkungslos.
+        for echt in ("Evaluation", "Übergabe Betrieb", "Fertig für Entwicklung", "Schließen"):
+            assert echt.casefold() not in beispiele
 
     def test_alle_felder_kommen_zurueck(self, qapp: QApplication) -> None:
         from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
