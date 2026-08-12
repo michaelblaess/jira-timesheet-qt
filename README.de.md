@@ -158,6 +158,78 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
 - **Einstellungs-Backup** - Jedes Speichern legt eine rollierende Sicherung und eine goldene
   Kopie an; ein verlorener Jira-Zugang lässt sich beim nächsten Start wiederherstellen
 
+## Voraussetzungen
+
+Das Programm meldet sich mit deinem eigenen Konto an Jira an - es gibt keinen
+Server und keine Registrierung. Du brauchst dafür drei Angaben: die Adresse
+deiner Jira-Instanz, einen Token und deine Kennung. Wie du an den Token kommst,
+hängt davon ab, welches Jira du hast.
+
+### Jira Cloud (Adresse endet auf `.atlassian.net`)
+
+1. [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens) öffnen und anmelden.
+2. **Create API token** wählen.
+3. Einen Namen vergeben, an dem du den Token später wiedererkennst.
+4. Ein Ablaufdatum wählen - erlaubt sind 1 bis 365 Tage, voreingestellt ist ein Jahr.
+5. **Create**, dann **Copy to clipboard**.
+
+Der Token wird **nur dieses eine Mal angezeigt**. Wer ihn wegklickt, legt einen
+neuen an. Am besten gleich in den Passwort-Manager.
+
+Atlassian bietet Token **mit und ohne Scopes** an. Ohne Scopes hat der Token
+dieselben Rechte wie du selbst und funktioniert auf jeden Fall. Mit Scopes ist
+er enger begrenzt und damit sicherer - dann brauchst du Lese-Rechte auf Jira,
+sonst antwortet der Server mit 401 oder 403.
+
+Als Kennung trägst du die **Mailadresse deines Atlassian-Kontos** ein, nicht
+deinen Anzeigenamen.
+
+Denk an das Ablaufdatum: spätestens nach einem Jahr hört der Abruf auf zu
+funktionieren, und die Fehlermeldung sagt nur, dass die Anmeldung abgelehnt
+wurde. Dann einen neuen Token anlegen und in den Einstellungen eintragen.
+
+### Jira Data Center / Server
+
+Avatar oben rechts, dann **Profile** und im linken Menü **Personal access
+tokens**. Es gibt das ab Jira Core/Software 8.14 beziehungsweise Jira Service
+Management 4.15.
+
+Hier ist die Kennung dein **Jira-Benutzername**, nicht deine Mailadresse. Und
+in den Einstellungen muss der Schalter **Jira-Modus (Legacy-API)** an sein -
+sonst spricht das Programm die Cloud-Schnittstelle an, die es hier nicht gibt.
+
+**ScriptRunner ist auf Data Center Pflicht.** Das Programm sucht deine Worklogs
+über die JQL-Funktion `issueFunction in workLogged(...)`, und die bringt
+ScriptRunner mit. Fehlt das Plugin, lehnt Jira die Abfrage als ungültige JQL
+ab. Auf Jira Cloud spielt das keine Rolle - dort läuft die Suche über die
+normale Worklog-Schnittstelle.
+
+### Budget-Feld (optional)
+
+Wenn deine Instanz ein Custom-Field für das Budget führt, kann das Programm es
+als Spalte mitziehen.
+
+Auf Cloud genügt der Knopf **Automatisch ermitteln** im Einstellungsdialog (`Strg+,`). Er
+fragt `/rest/api/3/field` ab und schlägt alle Felder vor, deren Name "budget"
+enthält.
+
+Von Hand geht es überall: `https://DEINE-INSTANZ/rest/api/3/field` im Browser
+öffnen (Data Center: `/rest/api/2/field`), nach dem Feldnamen suchen und die
+`id` übernehmen. Sie sieht aus wie `customfield_12345`.
+
+Das Feld darf leer bleiben. Dann fehlt nur diese eine Spalte.
+
+### Status für die Ticket-Ansichten (optional)
+
+Die sechs Statusfelder im Einstellungsdialog (`Strg+,`) sind anfangs leer. Deine eigenen
+Statusnamen findest du in Jira in jedem Ticket oben oder als Spaltentitel
+deines Boards - trag sie kommagetrennt ein, genau so geschrieben wie dort.
+
+Leer lassen ist erlaubt: dann ordnet das Programm nach der Statuskategorie ein,
+die Jira selbst vergibt (offen, in Arbeit, fertig). Die Ansichten funktionieren,
+nur die feinere Unterscheidung fehlt - etwa zwischen "wartet auf Freigabe" und
+"ich bin dran".
+
 ## Installation
 
 ### Ein-Klick-Installation
@@ -185,7 +257,8 @@ jira-timesheet-qt              # Anwendung starten
 jira-timesheet-qt --demo       # Start mit Beispieldaten, ohne Jira-Zugang
 ```
 
-Beim ersten Start die Einstellungen öffnen (`Strg+,`) und den **Jira-Zugang** eintragen:
+Beim ersten Start die Einstellungen öffnen (`Strg+,`) und den **Jira-Zugang** eintragen -
+woher Token und Feld-ID kommen, steht unter [Voraussetzungen](#voraussetzungen):
 
 - **Jira-Host-URL** - Cloud: die kanonische `https://deine-firma.atlassian.net`
 - **E-Mail / Login** - Cloud: Deine Atlassian-Login-Mail; Data Center: Dein Jira-Benutzername

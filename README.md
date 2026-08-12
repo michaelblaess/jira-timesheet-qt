@@ -155,6 +155,75 @@ The application follows the light or dark theme and a configurable accent colour
 - **Settings backup** - Every save writes a rolling backup and a golden copy; a lost Jira
   access can be restored on the next start
 
+## Prerequisites
+
+The program signs in to Jira with your own account - there is no server and no
+sign-up. You need three things: the address of your Jira instance, a token and
+your login. How you get the token depends on which Jira you have.
+
+### Jira Cloud (address ends in `.atlassian.net`)
+
+1. Open [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens) and sign in.
+2. Choose **Create API token**.
+3. Give it a name you will recognise later.
+4. Pick an expiry date - anything from 1 to 365 days, one year by default.
+5. **Create**, then **Copy to clipboard**.
+
+The token is shown **only once**. If you dismiss it, create a new one. Put it
+straight into your password manager.
+
+Atlassian offers tokens **with and without scopes**. Without scopes the token
+has the same rights you have and will work in any case. With scopes it is more
+tightly limited and therefore safer - you then need read access to Jira, or the
+server answers with 401 or 403.
+
+For the login, enter the **email address of your Atlassian account**, not your
+display name.
+
+Keep the expiry date in mind: after a year at the latest the fetch stops
+working, and the error only says that authentication was refused. Create a new
+token and enter it in the settings.
+
+### Jira Data Center / Server
+
+Avatar in the top right, then **Profile**, then **Personal access tokens** in
+the left menu. This exists from Jira Core/Software 8.14 and Jira Service
+Management 4.15 onwards.
+
+Here the login is your **Jira username**, not your email address. And the
+**Jira mode (legacy API)** switch in the settings has to be on - otherwise the
+program talks to the Cloud endpoint, which does not exist here.
+
+**ScriptRunner is required on Data Center.** The program looks up your work
+logs through the JQL function `issueFunction in workLogged(...)`, which
+ScriptRunner provides. Without the plugin Jira rejects the query as invalid
+JQL. On Jira Cloud this does not apply - there the search goes through the
+regular worklog endpoint.
+
+### Budget field (optional)
+
+If your instance has a custom field for budget, the program can carry it along
+as a column.
+
+On Cloud the **Auto-detect** button in the settings dialog (`Ctrl+,`) is enough. It queries
+`/rest/api/3/field` and offers every field whose name contains "budget".
+
+By hand it works anywhere: open `https://YOUR-INSTANCE/rest/api/3/field` in the
+browser (Data Center: `/rest/api/2/field`), find the field name and take its
+`id`. It looks like `customfield_12345`.
+
+The field may stay empty. You then only lose that one column.
+
+### Status values for the ticket views (optional)
+
+The six status fields in the settings dialog (`Ctrl+,`) start out empty. You find your own
+status names on any Jira issue at the top, or as the column titles of your
+board - enter them comma-separated, spelled exactly as they are there.
+
+Leaving them empty is fine: the program then sorts by the status category Jira
+assigns itself (to do, in progress, done). The views work, they just lack the
+finer distinction - between "waiting for approval" and "my turn", for instance.
+
 ## Installation
 
 ### One-click install
@@ -182,7 +251,8 @@ jira-timesheet-qt              # start the application
 jira-timesheet-qt --demo       # start with example data, no Jira access required
 ```
 
-On first start, open the settings (`Ctrl+,`) and configure the **Jira access**:
+On first start, open the settings (`Ctrl+,`) and configure the **Jira access** - where
+token and field ID come from is covered under [Prerequisites](#prerequisites):
 
 - **Jira host URL** - Cloud: the canonical `https://your-company.atlassian.net`
 - **Email / login** - Cloud: your Atlassian login email; Data Center: your Jira username

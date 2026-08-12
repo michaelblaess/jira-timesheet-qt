@@ -40,6 +40,7 @@
       <a href="#tickets" class="header-link">Ticket-Ansichten</a>
       <a href="#keys" class="header-link">Tastenkürzel</a>
       <a href="#install" class="header-link">Installation</a>
+      <a href="#prerequisites" class="header-link">Voraussetzungen</a>
       <a href="https://github.com/michaelblaess/jira-timesheet-qt" class="header-link">GitHub</a>
       <button class="theme-toggle" onclick="toggleTheme()" aria-label="Theme wechseln">
         <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -303,6 +304,35 @@
     </div>
     <p style="text-align: center; color: var(--text-tertiary); font-size: 0.8rem; margin-top: 16px;">
       Oder das Archiv unter <a href="https://github.com/michaelblaess/jira-timesheet-qt/releases" style="color: var(--accent);">Releases</a> herunterladen. Läuft unter Windows, macOS und Linux · <code style="color: var(--accent);">jira-timesheet-qt --demo</code> startet ohne Jira-Zugang mit Beispieldaten.
+    </p>
+  </section>
+
+  <div class="divider"><div class="divider-line"></div></div>
+
+  <!-- VORAUSSETZUNGEN -->
+  <section class="section" id="prerequisites">
+    <div class="section-label">Bevor es losgeht</div>
+    <h2 class="section-title">Was du aus Jira brauchst</h2>
+    <p class="section-description">Das Programm meldet sich mit deinem eigenen Konto an - kein Server, keine Registrierung. Drei Angaben: Adresse, Token, Kennung. Zum Ausprobieren genügt <code>--demo</code>, dafür braucht es gar keinen Zugang.</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon">☁️</div>
+        <h3>Jira Cloud</h3>
+        <p>Token unter <a href="https://id.atlassian.com/manage-profile/security/api-tokens">id.atlassian.com</a> anlegen: <strong>Create API token</strong>, Name, Ablaufdatum (1 bis 365 Tage). Er wird <strong>nur einmal angezeigt</strong>. Als Kennung die Mailadresse des Atlassian-Kontos.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🏢</div>
+        <h3>Data Center / Server</h3>
+        <p>Avatar → <strong>Profile</strong> → <strong>Personal access tokens</strong> (ab Jira 8.14). Kennung ist der Jira-Benutzername, und der Schalter <strong>Jira-Modus</strong> muss an sein. Hier ist <strong>ScriptRunner Pflicht</strong> - die Worklog-Suche läuft über dessen JQL-Funktion.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🎫</div>
+        <h3>Optional: Budget und Status</h3>
+        <p>Das Budget-Feld findet auf Cloud ein Klick selbst. Die Statuslisten der Ticket-Ansichten dürfen leer bleiben - dann sortiert das Programm nach der Statuskategorie, die Jira ohnehin vergibt.</p>
+      </div>
+    </div>
+    <p style="text-align: center; color: var(--text-tertiary); font-size: 0.8rem; margin-top: 16px;">
+      Schritt für Schritt steht das in der <a href="https://github.com/michaelblaess/jira-timesheet-qt/blob/main/README.de.md#voraussetzungen" style="color: var(--accent);">README</a>.
     </p>
   </section>
 
