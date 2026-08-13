@@ -216,7 +216,13 @@ class JiraClient:
         version = "2" if self._legacy else "3"
         jql = "key in (" + ",".join(sorted(set(keys))) + ")"
         url = f"{self._host}/rest/api/{version}/search/jql"
-        params = {"jql": jql, "fields": "summary", "maxResults": len(set(keys))}
+        # Annotation noetig: aus gemischten Werten leitet mypy dict[str, object]
+        # ab, und das nimmt httpx.get(params=...) nicht an.
+        params: dict[str, str | int] = {
+            "jql": jql,
+            "fields": "summary",
+            "maxResults": len(set(keys)),
+        }
 
         titles: dict[str, str] = {}
         try:
