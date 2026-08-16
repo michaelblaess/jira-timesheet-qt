@@ -3,16 +3,22 @@
 Aufbau wie der AboutScreen der TUI: Name, dann Version, Autor und Jahr in einer
 Zeile, Beschreibung, Lizenz, Trennlinie, ein wechselndes Zitat und die Links.
 
-Der Zitatpool ist eine Auswahl aus textual-widgets. Das Paket wird hier NICHT
-eingebunden, weil es textual mitzieht - dieselbe Ueberlegung wie beim
-Haftungshinweis. Beides gehoert in ein gemeinsames Paket ohne
-Oberflaechen-Abhaengigkeit, sobald es eine zweite Qt-Anwendung gibt.
+Der Zitatpool steht NICHT mehr im Code, sondern in `quotes/quotes.json`. Die
+kanonische Quelle ist `claude-config/templates/zitate/zitate.json`, verteilt von
+`sync_zitate.py` - dort stehen auch die Aufnahmeregeln. Kurz: nur gemeinfreie
+Autoren (Schutz endet 70 Jahre nach dem Tod, § 64 UrhG), jede Uebersetzung
+selbst erstellt, jede Quelle benennbar. Wer ein Zitat aendern will, aendert die
+kanonische Datei und laesst neu verteilen - eine Aenderung hier waere beim
+naechsten Lauf wieder weg.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 import secrets
 from dataclasses import dataclass
+from importlib import resources
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -26,6 +32,9 @@ from PySide6.QtWidgets import (
 )
 
 from jira_timesheet_qt import __app_name__, __author__, __version__, __year__
+from jira_timesheet_qt.i18n import current_language
+
+logger = logging.getLogger(__name__)
 
 REPO_URL = "https://github.com/michaelblaess/jira-timesheet-qt"
 HOMEPAGE_URL = "https://www.michaelblaess.de/"
@@ -35,34 +44,34 @@ DESCRIPTION = "Stundenzettel aus Jira-Worklogs -\nmit manueller Nacherfassung un
 
 @dataclass(frozen=True)
 class Quote:
-    """Ein Zitat mit Urheber."""
+    """Ein Zitat mit Urheber und belegbarer Quelle."""
 
     text: str
     author: str
+    source: str
 
 
-QUOTES: tuple[Quote, ...] = (
-    Quote(
-        "Die Dunkelheit kann die Dunkelheit nicht vertreiben,\n"
-        "das kann nur das Licht. Hass kann den Hass nicht\nvertreiben, das kann nur die Liebe.",
-        "Martin Luther King jr.",
-    ),
-    Quote(
-        "Wir müssen lernen, miteinander als Brüder zu leben,\noder wir werden als Narren untergehen.",
-        "Martin Luther King jr.",
-    ),
-    Quote("Hoffnung ist das Ding mit Federn,\ndas in der Seele wohnt.", "Emily Dickinson"),
-    Quote(
-        "Zuerst ignorieren sie dich, dann lachen sie über dich,\n"
-        "dann bekämpfen sie dich, dann gewinnst du.",
-        "Mahatma Gandhi",
-    ),
-    Quote(
-        "Jeder Narr kann Code schreiben, den ein Rechner versteht.\n"
-        "Gute Programmierer schreiben Code, den Menschen verstehen.",
-        "Martin Fowler",
-    ),
-)
+def load_quotes(lang: str | None = None) -> tuple[Quote, ...]:
+    """Laedt den Zitatpool aus den Paketdaten.
+
+    Args:
+        lang:
+            Sprachkuerzel ('de' oder 'en'). Ohne Angabe die geladene UI-Sprache.
+
+    Returns:
+        Die Zitate der gewaehlten Sprache. Leer, wenn die Datei fehlt oder
+        unlesbar ist - ein Info-Dialog darf daran nicht scheitern.
+    """
+    feld = "text_en" if (lang or current_language()) == "en" else "text_de"
+    try:
+        raw = (resources.files("jira_timesheet_qt") / "quotes" / "quotes.json").read_text(encoding="utf-8")
+        eintraege = json.loads(raw)["zitate"]
+    except Exception:
+        logger.exception("Zitatpool konnte nicht geladen werden")
+        return ()
+    return tuple(
+        Quote(text=eintrag[feld], author=eintrag["autor"], source=eintrag["quelle"]) for eintrag in eintraege
+    )
 
 
 class AboutDialog(QDialog):
@@ -119,17 +128,23 @@ class AboutDialog(QDialog):
         layout.addWidget(facts)
         layout.addSpacing(16)
 
+        # Der Pool traegt keine Umbrueche mehr (Daten ohne Layout) - die
+        # Beschriftung bricht selbst um, der Dialog hat feste Breite.
         quote = self._pick_quote()
-        quote_text = QLabel(quote.text)
-        quote_text.setObjectName("AboutQuote")
-        quote_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(quote_text)
+        if quote is not None:
+            quote_text = QLabel(quote.text)
+            quote_text.setObjectName("AboutQuote")
+            quote_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            quote_text.setWordWrap(True)
+            quote_text.setToolTip(quote.source)
+            layout.addWidget(quote_text)
 
-        quote_author = QLabel(quote.author)
-        quote_author.setObjectName("AboutQuoteAuthor")
-        quote_author.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(quote_author)
-        layout.addSpacing(18)
+            quote_author = QLabel(quote.author)
+            quote_author.setObjectName("AboutQuoteAuthor")
+            quote_author.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            quote_author.setToolTip(quote.source)
+            layout.addWidget(quote_author)
+            layout.addSpacing(18)
 
         for url in (REPO_URL, HOMEPAGE_URL):
             link = QLabel(f'<a href="{url}" style="color:palette(link);">{url}</a>')
@@ -152,9 +167,14 @@ class AboutDialog(QDialog):
         layout.addLayout(buttons)
 
     @staticmethod
-    def _pick_quote() -> Quote:
-        """Waehlt ein Zitat. secrets statt random, weil ruff Letzteres ruegt."""
-        return QUOTES[secrets.randbelow(len(QUOTES))]
+    def _pick_quote() -> Quote | None:
+        """Waehlt ein Zitat. secrets statt random, weil ruff Letzteres ruegt.
+
+        Returns:
+            Ein zufaelliges Zitat der aktuellen Sprache, oder None bei leerem Pool.
+        """
+        pool = load_quotes()
+        return pool[secrets.randbelow(len(pool))] if pool else None
 
     @staticmethod
     def _divider() -> QFrame:

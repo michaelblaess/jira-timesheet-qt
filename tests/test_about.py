@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
 from jira_timesheet_qt import __author__, __version__
 from jira_timesheet_qt.models.settings import Settings
-from jira_timesheet_qt.ui.about_dialog import QUOTES, AboutDialog
+from jira_timesheet_qt.ui.about_dialog import AboutDialog, load_quotes
 from jira_timesheet_qt.ui.icons import GLYPHS, load_icon
 from jira_timesheet_qt.ui.main_window import MainWindow
 from jira_timesheet_qt.ui.theme import Mode, build_qss
@@ -31,17 +31,48 @@ class TestAboutDialog:
         assert "github.com/michaelblaess/jira-timesheet-qt" in joined
         assert "michaelblaess.de" in joined
 
-    def test_every_quote_has_an_author(self) -> None:
-        assert QUOTES
-        for quote in QUOTES:
-            assert quote.text.strip()
-            assert quote.author.strip()
+    def test_every_quote_has_an_author_and_source(self) -> None:
+        """Ohne benennbare Quelle darf kein Zitat in den Dialog."""
+        for lang in ("de", "en"):
+            pool = load_quotes(lang)
+            assert pool, lang
+            for quote in pool:
+                assert quote.text.strip()
+                assert quote.author.strip()
+                assert quote.source.strip()
 
     def test_quote_comes_from_the_pool(self, qapp: QApplication) -> None:
         """Auch bei zufaelliger Auswahl darf nichts Fremdes erscheinen."""
-        pool = {q.text for q in QUOTES}
+        pool = {q.text for q in load_quotes()}
         for _ in range(20):
-            assert AboutDialog._pick_quote().text in pool
+            quote = AboutDialog._pick_quote()
+            assert quote is not None
+            assert quote.text in pool
+
+    def test_no_copyrighted_author_in_the_pool(self) -> None:
+        """Nur gemeinfreie Autoren - der Schutz endet 70 Jahre nach dem Tod (§ 64 UrhG).
+
+        Die Namen unten sind die, die inhaltlich gepasst haetten und deshalb
+        immer wieder hereinrutschen. Martin Luther King ist bis Ende 2038
+        geschuetzt und stand bis August 2026 fest im Code dieses Dialogs.
+        """
+        gesperrt = ("martin luther king", "albert schweitzer", "c.s. lewis", "corrie ten boom", "martin fowler")
+        for lang in ("de", "en"):
+            for quote in load_quotes(lang):
+                autor = quote.author.casefold()
+                for name in gesperrt:
+                    assert name not in autor, f"{quote.author} ist nicht gemeinfrei ({lang})"
+
+    def test_pool_carries_a_rights_statement(self) -> None:
+        """Jeder Eintrag der Paketdatei sagt, warum er verwendet werden darf."""
+        import json
+        from importlib import resources
+
+        raw = (resources.files("jira_timesheet_qt") / "quotes" / "quotes.json").read_text(encoding="utf-8")
+        eintraege = json.loads(raw)["zitate"]
+        assert eintraege
+        for eintrag in eintraege:
+            assert eintrag.get("rechte", "").strip(), eintrag.get("autor")
 
     def test_close_button_exists(self, qapp: QApplication) -> None:
         # Der Dialog MUSS an eine Variable: ohne Referenz raeumt der

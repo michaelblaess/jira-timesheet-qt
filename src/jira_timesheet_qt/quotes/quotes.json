@@ -1,0 +1,214 @@
+{
+  "zitate": [
+    {
+      "id": 1,
+      "autor": "Philipper 4,13",
+      "lebensdaten": null,
+      "text_de": "Ich vermag alles durch den, der mich mächtig macht.",
+      "text_en": "I can do all things through Christ which strengtheneth me.",
+      "quelle": "Luther 1912 / King James Version 1611",
+      "jahr": null,
+      "rechte": "gemeinfrei: Bibeltext, Uebersetzungen von 1912 bzw. 1611"
+    },
+    {
+      "id": 2,
+      "autor": "1. Korinther 13,13",
+      "lebensdaten": null,
+      "text_de": "Nun aber bleibt Glaube, Hoffnung, Liebe, diese drei. Aber die Liebe ist die größte unter ihnen.",
+      "text_en": "And now abideth faith, hope, charity, these three; but the greatest of these is charity.",
+      "quelle": "Luther 1912 / King James Version 1611",
+      "jahr": null,
+      "rechte": "gemeinfrei: Bibeltext, Uebersetzungen von 1912 bzw. 1611"
+    },
+    {
+      "id": 3,
+      "autor": "Augustinus",
+      "lebensdaten": "354-430",
+      "text_de": "Unruhig ist unser Herz, bis es Ruhe findet in dir.",
+      "text_en": "Our heart is restless until it rests in you.",
+      "quelle": "Confessiones I,1 - Urtext: Inquietum est cor nostrum, donec requiescat in te",
+      "jahr": 398,
+      "rechte": "gemeinfrei: Autor gestorben 430, Uebersetzung selbst erstellt"
+    },
+    {
+      "id": 4,
+      "autor": "Augustinus",
+      "lebensdaten": "354-430",
+      "text_de": "Liebe, und dann tu, was du willst.",
+      "text_en": "Love, and do what you will.",
+      "quelle": "In epistolam Ioannis ad Parthos VII,8 - Urtext: Dilige et quod vis fac",
+      "jahr": 407,
+      "rechte": "gemeinfrei: Autor gestorben 430, Uebersetzung selbst erstellt"
+    },
+    {
+      "id": 5,
+      "autor": "Dietrich Bonhoeffer",
+      "lebensdaten": "1906-1945",
+      "text_de": "Ich glaube, dass Gott aus allem, auch aus dem Bösesten, Gutes entstehen lassen kann und will.",
+      "text_en": "I believe that God can and will bring good out of everything, even out of the greatest evil.",
+      "quelle": "Nach zehn Jahren, Silvester 1942",
+      "jahr": 1942,
+      "rechte": "gemeinfrei seit 2016: Autor gestorben 1945, englische Fassung selbst erstellt"
+    },
+    {
+      "id": 6,
+      "autor": "Dietrich Bonhoeffer",
+      "lebensdaten": "1906-1945",
+      "text_de": "Optimismus ist in seinem Wesen keine Ansicht über die gegenwärtige Situation, sondern er ist eine Lebenskraft.",
+      "text_en": "Optimism is in its essence not a view of the present situation, but a power of life.",
+      "quelle": "Nach zehn Jahren, 1942",
+      "jahr": 1942,
+      "rechte": "gemeinfrei seit 2016: Autor gestorben 1945, englische Fassung selbst erstellt"
+    },
+    {
+      "id": 7,
+      "autor": "Dietrich Bonhoeffer",
+      "lebensdaten": "1906-1945",
+      "text_de": "Es gibt ein erfülltes Leben trotz vieler unerfüllter Wünsche.",
+      "text_en": "There is a fulfilled life in spite of many unfulfilled wishes.",
+      "quelle": "Brief aus der Haft, abgedruckt in Widerstand und Ergebung",
+      "jahr": 1944,
+      "rechte": "gemeinfrei seit 2016: Brieftext von Bonhoeffer selbst, nicht die Herausgeberarbeit der Werkausgabe"
+    },
+    {
+      "id": 8,
+      "autor": "Dietrich Bonhoeffer",
+      "lebensdaten": "1906-1945",
+      "text_de": "Nichts kann uns ersetzen, was uns fehlt. Man muss es einfach aushalten und durchhalten.",
+      "text_en": "Nothing can replace what we are missing. We simply have to endure it and hold out.",
+      "quelle": "Brief an Eberhard Bethge, Weihnachten 1943",
+      "jahr": 1943,
+      "rechte": "gemeinfrei seit 2016: Brieftext von Bonhoeffer selbst, nicht die Herausgeberarbeit der Werkausgabe"
+    },
+    {
+      "id": 9,
+      "autor": "Teresa von Ávila",
+      "lebensdaten": "1515-1582",
+      "text_de": "Nichts soll dich ängstigen, nichts dich erschrecken. Alles vergeht, Gott bleibt derselbe.",
+      "text_en": "Let nothing trouble you, let nothing frighten you. All things pass away, God never changes.",
+      "quelle": "Lesezeichen aus ihrem Brevier - Urtext: Nada te turbe, nada te espante",
+      "jahr": null,
+      "rechte": "gemeinfrei: Autorin gestorben 1582, Uebersetzung selbst erstellt"
+    },
+    {
+      "id": 10,
+      "autor": "Teresa von Ávila",
+      "lebensdaten": "1515-1582",
+      "text_de": "Die Geduld erreicht alles. Wer Gott hat, dem fehlt nichts.",
+      "text_en": "Patience obtains all things. Whoever has God lacks nothing.",
+      "quelle": "Lesezeichen aus ihrem Brevier - Urtext: La paciencia todo lo alcanza",
+      "jahr": null,
+      "rechte": "gemeinfrei: Autorin gestorben 1582, Uebersetzung selbst erstellt"
+    },
+    {
+      "id": 11,
+      "autor": "Emily Dickinson",
+      "lebensdaten": "1830-1886",
+      "text_de": "Die Hoffnung ist das Ding mit Federn, das in der Seele wohnt.",
+      "text_en": "Hope is the thing with feathers that perches in the soul.",
+      "quelle": "Gedicht 254",
+      "jahr": null,
+      "rechte": "gemeinfrei: Autorin gestorben 1886, deutsche Fassung selbst erstellt"
+    },
+    {
+      "id": 12,
+      "autor": "Emily Dickinson",
+      "lebensdaten": "1830-1886",
+      "text_de": "Nicht wissend, wann der Morgen kommt, öffne ich jede Tür.",
+      "text_en": "Not knowing when the dawn will come, I open every door.",
+      "quelle": "Gedicht 1619",
+      "jahr": null,
+      "rechte": "gemeinfrei: Autorin gestorben 1886, deutsche Fassung selbst erstellt"
+    },
+    {
+      "id": 13,
+      "autor": "Emily Dickinson",
+      "lebensdaten": "1830-1886",
+      "text_de": "Für immer besteht aus lauter Jetzt.",
+      "text_en": "Forever is composed of nows.",
+      "quelle": "Gedicht 624",
+      "jahr": null,
+      "rechte": "gemeinfrei: Autorin gestorben 1886, deutsche Fassung selbst erstellt"
+    },
+    {
+      "id": 14,
+      "autor": "Emily Dickinson",
+      "lebensdaten": "1830-1886",
+      "text_de": "Dass es nie wiederkommt, macht das Leben so süß.",
+      "text_en": "That it will never come again is what makes life so sweet.",
+      "quelle": "Gedicht 1741",
+      "jahr": null,
+      "rechte": "gemeinfrei: Autorin gestorben 1886, deutsche Fassung selbst erstellt"
+    },
+    {
+      "id": 15,
+      "autor": "Emily Dickinson",
+      "lebensdaten": "1830-1886",
+      "text_de": "Zu leben ist so überwältigend, dass für anderes kaum Zeit bleibt.",
+      "text_en": "To live is so startling it leaves little time for anything else.",
+      "quelle": "Brief an Thomas Wentworth Higginson",
+      "jahr": null,
+      "rechte": "gemeinfrei: Autorin gestorben 1886, deutsche Fassung selbst erstellt"
+    },
+    {
+      "id": 16,
+      "autor": "Emily Dickinson",
+      "lebensdaten": "1830-1886",
+      "text_de": "Ein Wort ist tot, wenn es gesagt ist, sagen manche. Ich sage, es beginnt an diesem Tag erst zu leben.",
+      "text_en": "A word is dead when it is said, some say. I say it just begins to live that day.",
+      "quelle": "Gedicht 1212",
+      "jahr": null,
+      "rechte": "gemeinfrei: Autorin gestorben 1886, deutsche Fassung selbst erstellt"
+    },
+    {
+      "id": 17,
+      "autor": "Emily Dickinson",
+      "lebensdaten": "1830-1886",
+      "text_de": "Wenn ich ein Herz davor bewahren kann zu brechen, lebe ich nicht vergebens.",
+      "text_en": "If I can stop one heart from breaking, I shall not live in vain.",
+      "quelle": "Gedicht 919",
+      "jahr": null,
+      "rechte": "gemeinfrei: Autorin gestorben 1886, deutsche Fassung selbst erstellt"
+    },
+    {
+      "id": 18,
+      "autor": "Amy Carmichael",
+      "lebensdaten": "1867-1951",
+      "text_de": "Im Annehmen liegt Frieden.",
+      "text_en": "In acceptance lieth peace.",
+      "quelle": "gleichnamiges Gedicht",
+      "jahr": null,
+      "rechte": "gemeinfrei seit 2022: Autorin gestorben 1951, deutsche Fassung selbst erstellt"
+    },
+    {
+      "id": 19,
+      "autor": "Amy Carmichael",
+      "lebensdaten": "1867-1951",
+      "text_de": "Du kannst immer geben, ohne zu lieben. Aber du kannst niemals lieben, ohne zu geben.",
+      "text_en": "You can always give without loving, but you can never love without giving.",
+      "quelle": "ueberliefert aus ihren Schriften",
+      "jahr": null,
+      "rechte": "gemeinfrei seit 2022: Autorin gestorben 1951, deutsche Fassung selbst erstellt"
+    },
+    {
+      "id": 20,
+      "autor": "Søren Kierkegaard",
+      "lebensdaten": "1813-1855",
+      "text_de": "Das Leben kann nur rückwärts verstanden werden, aber es muss vorwärts gelebt werden.",
+      "text_en": "Life can only be understood backwards, but it must be lived forwards.",
+      "quelle": "Journal IV A 164",
+      "jahr": 1843,
+      "rechte": "gemeinfrei: Autor gestorben 1855, Uebersetzungen selbst erstellt"
+    },
+    {
+      "id": 21,
+      "autor": "Søren Kierkegaard",
+      "lebensdaten": "1813-1855",
+      "text_de": "Reinheit des Herzens ist, eines zu wollen.",
+      "text_en": "Purity of heart is to will one thing.",
+      "quelle": "Erbauliche Reden in verschiedenem Geist",
+      "jahr": 1847,
+      "rechte": "gemeinfrei: Autor gestorben 1855, Uebersetzungen selbst erstellt"
+    }
+  ]
+}

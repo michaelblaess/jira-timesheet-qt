@@ -55,7 +55,7 @@ core-sync = { cmd = "python assets/check_core_sync.py", help = "Kern gegen die T
 where = ["src"]
 
 [tool.setuptools.package-data]
-jira_timesheet_qt = ["locale/*.json", "resources/**/*"]
+jira_timesheet_qt = ["locale/*.json", "quotes/*.json", "resources/**/*"]
 
 [tool.mypy]
 python_version = "3.12"
