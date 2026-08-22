@@ -10,6 +10,7 @@ import pytest
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
+from jira_timesheet_qt import __app_name__, __version__
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.models.timesheet import Timesheet, TimesheetDay, WorklogEntry
 from jira_timesheet_qt.ui.calendar_view import CalendarView
@@ -190,70 +191,58 @@ class TestExport:
 
 
 class TestCrashGuard:
+    """Der Dialog selbst steht in QAppFramework und wird dort geprueft.
+
+    Hier bleibt, was diese Anwendung beisteuert: die Kopfzeile des Berichts und
+    die Frage, ob der Haken ueberhaupt eingehaengt wird.
+    """
+
     def test_report_names_version_and_cause(self) -> None:
         try:
             raise ValueError("etwas ging schief")
         except ValueError as exc:
             report = format_report(type(exc), exc, exc.__traceback__)
-        assert "jira-timesheet-qt" in report
+        assert report.splitlines()[0] == f"{__app_name__} {__version__}"
         assert "ValueError" in report
         assert "etwas ging schief" in report
 
     def test_dialog_shows_the_report(self, qapp: QApplication) -> None:
+        """Der Dialog der Bibliothek unter dem hier ueblichen Namen."""
         dialog = ErrorDialog("Zeile eins\nZeile zwei")
-        assert "Zeile zwei" in dialog._view.toPlainText()
+        assert "Zeile zwei" in dialog._ansicht.toPlainText()
 
-    @pytest.mark.parametrize("art", [KeyboardInterrupt, SystemExit])
-    def test_abbruchsignal_ist_kein_absturz(
-        self,
-        qapp: QApplication,
-        monkeypatch: pytest.MonkeyPatch,
-        art: type[BaseException],
-    ) -> None:
-        # Strg+C in der startenden Konsole trifft den Interpreter an einer
-        # beliebigen Stelle. Ein Absturzbericht zeigt dann auf voellig
-        # unschuldigen Code - am 06.08.2026 auf paintEvent in ticket_charts.
+    def test_install_haengt_den_haken_ein(self, qapp: QApplication) -> None:
+        """Ohne das bleibt ein Absturz wortlos - das Fenster verschwindet einfach."""
         from jira_timesheet_qt.ui import crash_guard
 
-        gebaut: list[str] = []
-        beendet: list[bool] = []
-        monkeypatch.setattr(
-            crash_guard,
-            "ErrorDialog",
-            lambda *a, **k: gebaut.append("dialog"),  # type: ignore[arg-type,return-value]
-        )
-        monkeypatch.setattr(qapp, "quit", lambda: beendet.append(True))
         vorher = sys.excepthook
         try:
             crash_guard.install()
-            sys.excepthook(art, art(), None)
+            assert sys.excepthook is not vorher
         finally:
             sys.excepthook = vorher
 
-        assert gebaut == []
-        assert beendet == [True]
-
-    def test_echter_fehler_zeigt_weiterhin_den_dialog(
-        self,
-        qapp: QApplication,
-        monkeypatch: pytest.MonkeyPatch,
+    def test_die_kopfzeile_kommt_beim_absturz_wirklich_an(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Gegenprobe: die Ausnahme oben darf nicht den ganzen Haken abschalten.
+        """Nicht nur format_report - der Weg durch install() muss sie tragen."""
+        from QAppFramework import absturz
+
         from jira_timesheet_qt.ui import crash_guard
 
         gezeigt: list[str] = []
 
         class _Attrappe:
-            def __init__(self, report: str, parent: object = None) -> None:
-                gezeigt.append(report)
+            def __init__(self, bericht: str, parent: object = None, **_rest: object) -> None:
+                gezeigt.append(bericht)
 
-            def setWindowModality(self, _mode: object) -> None:  # noqa: N802
+            def setWindowModality(self, _modus: object) -> None:  # noqa: N802
                 pass
 
             def exec(self) -> int:
                 return 0
 
-        monkeypatch.setattr(crash_guard, "ErrorDialog", _Attrappe)
+        monkeypatch.setattr(absturz, "FehlerDialog", _Attrappe)
         vorher = sys.excepthook
         try:
             crash_guard.install()
@@ -262,6 +251,7 @@ class TestCrashGuard:
             sys.excepthook = vorher
 
         assert len(gezeigt) == 1
+        assert gezeigt[0].startswith(f"{__app_name__} {__version__}")
         assert "kaputt" in gezeigt[0]
 
 
