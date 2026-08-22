@@ -10,7 +10,7 @@ import argparse
 import sys
 from typing import TYPE_CHECKING
 
-from jira_timesheet_qt import __version__
+from jira_timesheet_qt import __author__, __version__
 
 if TYPE_CHECKING:  # nur fuer die Typpruefung - Qt bleibt bis main() ungeladen
     from pathlib import Path
@@ -178,6 +178,8 @@ def _confirm_disclaimer(settings: Settings) -> bool:
     from jira_timesheet_qt import __version__ as version
     from jira_timesheet_qt.ui.disclaimer_dialog import (
         DISCLAIMER_VERSION,
+        DUTIES,
+        INTRO,
         DisclaimerDialog,
         DisclaimerStore,
     )
@@ -186,7 +188,12 @@ def _confirm_disclaimer(settings: Settings) -> bool:
     if store.accepted_version == DISCLAIMER_VERSION:
         return True
 
-    dialog = DisclaimerDialog(f"{app_name} {version}")
+    dialog = DisclaimerDialog(
+        f"{app_name} {version}",
+        autor=__author__,
+        intro=INTRO,
+        duties=DUTIES,
+    )
     if dialog.exec() != int(DisclaimerDialog.DialogCode.Accepted):
         return False
     store.record()

@@ -7,7 +7,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QPushButton
 
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.models.timesheet import WorklogEntry
@@ -15,6 +15,7 @@ from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
 from jira_timesheet_qt.ui.disclaimer_dialog import (
     DISCLAIMER_VERSION,
     DUTIES,
+    INTRO,
     DisclaimerDialog,
     DisclaimerStore,
 )
@@ -68,10 +69,15 @@ class TestDisclaimerStore:
 class TestDisclaimerDialog:
     def test_confirm_is_disabled_until_the_box_is_ticked(self, qapp: QApplication) -> None:
         """Ohne Haken darf sich der Hinweis nicht bestaetigen lassen."""
-        dialog = DisclaimerDialog("Test 1.0")
-        assert not dialog._accept.isEnabled()
-        dialog._agree.setChecked(True)
-        assert dialog._accept.isEnabled()
+        # Ueber die Objektnamen statt ueber private Felder: die Namen sind
+        # der Vertrag der Bibliothek, die Feldnamen dahinter nicht.
+        dialog = DisclaimerDialog("Test 1.0", intro=INTRO, duties=DUTIES)
+        haken = dialog.findChild(QCheckBox, "disclaimer-agree")
+        annehmen = dialog.findChild(QPushButton, "disclaimer-accept")
+        assert haken is not None and annehmen is not None
+        assert not annehmen.isEnabled()
+        haken.setChecked(True)
+        assert annehmen.isEnabled()
 
     def test_text_names_the_foreign_data(self, qapp: QApplication) -> None:
         """Der Kern der Begruendung muss im Text stehen."""
@@ -111,7 +117,7 @@ class TestSettingsDialog:
     def test_manual_color_round_trips(self, qapp: QApplication) -> None:
         dialog = SettingsDialog(Settings(manual_entry_color="00FF00"))
         # Vorbelegter Wert steht auf dem Farbknopf.
-        assert dialog._manual_color_value == "00FF00"
+        assert dialog.farbe_von(dialog.manual_color) == "00FF00"
         assert dialog.result_settings().manual_entry_color == "00FF00"
 
     def test_color_button_disabled_when_marking_off(self, qapp: QApplication) -> None:
@@ -122,7 +128,7 @@ class TestSettingsDialog:
 
     def test_accent_round_trips(self, qapp: QApplication) -> None:
         dialog = SettingsDialog(Settings(accent="gruen"))
-        assert dialog.accent.currentData() == "gruen"
+        assert dialog._feld_akzent.currentData() == "gruen"
         assert dialog.result_settings().accent == "gruen"
 
     def test_all_pages_are_reachable(self, qapp: QApplication) -> None:
@@ -130,11 +136,11 @@ class TestSettingsDialog:
         # mit. Der Fehler, den dieser Test finden soll, ist ein
         # Navigationseintrag ohne Seite (oder umgekehrt).
         dialog = SettingsDialog(Settings())
-        assert dialog._nav.count() == dialog._pages.count()
+        assert dialog._nav.count() == dialog._stapel.count()
         assert dialog._nav.count() >= 6
         for row in range(dialog._nav.count()):
             dialog._nav.setCurrentRow(row)
-            assert dialog._pages.currentIndex() == row
+            assert dialog._stapel.currentIndex() == row
 
     def test_detect_button_disabled_in_legacy_mode(self, qapp: QApplication) -> None:
         """Die Autoerkennung nutzt die Cloud-API - im Data-Center-Modus aus."""

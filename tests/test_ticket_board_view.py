@@ -382,7 +382,7 @@ class TestEinstellungsseite:
         dialog._nav.setCurrentRow(2)
         qapp.processEvents()
         try:
-            bereich = dialog._pages.currentWidget()
+            bereich = dialog._stapel.currentWidget()
             assert isinstance(bereich, QScrollArea)
             seite = bereich.widget()
             # Der Beleg: die Seite braucht mehr Hoehe als der Bereich hergibt,

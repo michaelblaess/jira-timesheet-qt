@@ -47,7 +47,7 @@ class TestEinstellungsseite:
         assert "Mein Team" in eintraege
         # Jeder Navigationseintrag braucht seine Seite - sonst zeigt der
         # Klick die Seite des Nachbarn an.
-        assert dialog._nav.count() == dialog._pages.count()
+        assert dialog._nav.count() == dialog._stapel.count()
 
     def test_uebernehmen_landet_in_der_merkliste(self, qapp: QApplication) -> None:
         from jira_timesheet_qt.ui.settings_dialog import SettingsDialog

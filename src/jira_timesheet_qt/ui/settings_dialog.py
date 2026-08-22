@@ -7,42 +7,34 @@ Seiten in einem QStackedWidget - dasselbe Muster wie im Hauptfenster.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
-    QColorDialog,
-    QComboBox,
-    QDialog,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListView,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
-    QScrollArea,
     QSpinBox,
-    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
-    QVBoxLayout,
     QWidget,
 )
+from QAppFramework.einstellungen import FELDBREITE, BasisEinstellungenDialog, Darstellung
+from QAppFramework.theme import Modus
 
 from jira_timesheet_qt.models.export_column import ExportColumn, default_label
 from jira_timesheet_qt.models.settings import (
-    DEFAULT_DAY_OVER_COLOR,
-    DEFAULT_DAY_UNDER_COLOR,
     Settings,
-    normalize_color,
 )
 from jira_timesheet_qt.services.cache_service import CACHE_DIR
 from jira_timesheet_qt.services.manual_entry_service import DB_FILE
@@ -56,11 +48,12 @@ from jira_timesheet_qt.services.team import (
 )
 from jira_timesheet_qt.ui.jira_worker import BudgetFieldWorker
 from jira_timesheet_qt.ui.team_worker import TeamSearchWorker
-from jira_timesheet_qt.ui.theme import ACCENT_LABELS, SCALES
 
 # Einheitliche Breite aller Eingabefelder. Ohne das richtet sich jedes Feld
 # nach seinem Inhalt, und die rechte Kante wirkt zerfranst.
-FIELD_WIDTH = 240
+# Eine Breite fuer alle Felder - die der Bibliothek. Sonst haetten die
+# eigenen Seiten eine andere rechte Kante als die Darstellungs-Seite.
+FIELD_WIDTH = FELDBREITE
 
 # Kommalisten brauchen mehr Platz: "Fertig fuer Entwicklung, Offen" passt in
 # ein Feld von 240 Pixeln nicht einmal zur Haelfte hinein. Die Ticket-Seite
@@ -94,7 +87,7 @@ def _split(raw: str) -> list[str]:
     return [part.strip() for part in raw.split(",") if part.strip()]
 
 
-class SettingsDialog(QDialog):
+class SettingsDialog(BasisEinstellungenDialog):
     """Dialog zum Bearbeiten der Einstellungen.
 
     Bekommt die aktuellen Einstellungen, gibt bei Annahme die geaenderten
@@ -102,96 +95,85 @@ class SettingsDialog(QDialog):
     """
 
     def __init__(self, settings: Settings, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
+        # Alles, was eigene_seiten() braucht, MUSS vor super().__init__ stehen:
+        # der Konstruktor der Basis ruft den Haken auf.
         self._settings = settings
         # Faden fuer die Budget-Feld-Autoerkennung (ein Netzwerkaufruf).
         self._detect_worker: BudgetFieldWorker | None = None
-        self.setWindowTitle("Einstellungen")
-        # Die Breite folgt dem breitesten Feld: Seitenleiste, Beschriftung,
-        # ein Textfeld von WIDE_FIELD_WIDTH und die senkrechte Bildlaufleiste
-        # muessen nebeneinander passen. Bei 720 lief die Ticket-Seite rechts
-        # aus dem Dialog heraus, bei 820 fehlte die Breite der Bildlaufleiste.
-        self.setMinimumSize(880, 520)
-        self.setSizeGripEnabled(True)
-
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
-
-        body = QHBoxLayout()
-        body.setContentsMargins(0, 0, 0, 0)
-        body.setSpacing(0)
-
-        self._nav = QListWidget()
-        self._nav.setObjectName("SettingsNav")
-        self._nav.setFixedWidth(180)
-        self._nav.addItems(
-            [
-                "Zugang",
-                "Arbeitszeit",
-                "Tickets",
-                "Mein Team",
-                "Export",
-                "Spalten",
-                "Darstellung",
-                "Speicherort",
-            ]
+        super().__init__(
+            Darstellung(
+                modus=Modus(settings.theme) if settings.theme in {m.value for m in Modus} else Modus.SYSTEM,
+                akzent=settings.accent,
+                zoom=settings.ui_scale,
+            ),
+            parent,
         )
-        self._nav.setCurrentRow(0)
-        body.addWidget(self._nav)
-
-        self._pages = QStackedWidget()
-        self._pages.addWidget(self._scrollable(self._page_access()))
-        self._pages.addWidget(self._scrollable(self._page_worktime()))
-        self._pages.addWidget(self._scrollable(self._page_tickets()))
-        self._pages.addWidget(self._scrollable(self._page_team()))
-        self._pages.addWidget(self._scrollable(self._page_export()))
-        self._pages.addWidget(self._scrollable(self._page_columns()))
-        self._pages.addWidget(self._scrollable(self._page_appearance()))
-        self._pages.addWidget(self._scrollable(self._page_storage()))
-        self._nav.currentRowChanged.connect(self._pages.setCurrentIndex)
-        body.addWidget(self._pages, 1)
-
-        outer.addLayout(body, 1)
-        outer.addWidget(self._buttons())
-
-        # Der Import-Knopf gehoert zur Zugang-Seite und wird nur dort gezeigt.
-        self._nav.currentRowChanged.connect(self._update_import_visibility)
-        self._update_import_visibility(self._nav.currentRow())
-
-        # Wird der Dialog geschlossen, waehrend die Autoerkennung laeuft, erst auf
-        # den Faden warten - sonst zerstoert Qt ihn im Lauf.
+        # Die Mindestbreite der Bibliothek reicht fuer ihre eigenen Felder. Die
+        # Statusfelder auf der Ticket-Seite sind doppelt so breit - gemessen
+        # ragte das breiteste 17 Bildpunkte heraus.
+        self.setMinimumWidth(WIDE_FIELD_WIDTH + 400)
+        # Wird der Dialog geschlossen, waehrend die Autoerkennung laeuft, erst
+        # auf den Faden warten - sonst zerstoert Qt ihn im Lauf.
         self.finished.connect(self._await_detect_worker)
+
+    def eigene_seiten(self) -> Sequence[tuple[str, QWidget]]:
+        """Die sechs Seiten dieser Anwendung.
+
+        Darstellung und Speicherort kommen aus der Bibliothek und haengen sich
+        dahinter. Was auf der Darstellungs-Seite zusaetzlich steht - Markierung
+        und Soll-Ist-Ampel -, liefert darstellung_erweitern().
+        """
+        return [
+            ("Zugang", self._page_access()),
+            ("Arbeitszeit", self._page_worktime()),
+            ("Tickets", self._page_tickets()),
+            ("Mein Team", self._page_team()),
+            ("Export", self._page_export()),
+            ("Spalten", self._page_columns()),
+        ]
+
+    def uebernehmen(self) -> None:
+        """Liest die eigenen Felder aus. Die Basis ruft das beim Speichern."""
+        self.result_settings()
+
+    def speicherorte(self) -> list[tuple[str, Path]]:
+        return [
+            ("Einstellungen", Settings.SETTINGS_FILE),
+            ("Protokoll", Settings.SETTINGS_DIR / "app.log"),
+            ("Zwischenspeicher", CACHE_DIR),
+            ("Manuelle Zeiten", DB_FILE),
+            ("Zustimmung", Settings.SETTINGS_DIR / "disclaimer.json"),
+        ]
 
     # --- Seiten ---------------------------------------------------------
 
     def _page_access(self) -> QWidget:
-        page, form = self._page("Zugang zu Jira")
+        page, form = self.seite("Zugang zu Jira")
 
         self.host = QLineEdit(self._settings.jira_host)
         self.host.setFixedWidth(FIELD_WIDTH)
         self.host.setPlaceholderText("https://deine-firma.atlassian.net")
-        form.addRow(self._label("Jira-Host"), self.host)
+        form.addRow(self.beschriftung("Jira-Host"), self.host)
 
         self.email = QLineEdit(self._settings.email)
         self.email.setFixedWidth(FIELD_WIDTH)
         self.email.setPlaceholderText("vorname.nachname@firma.de")
-        form.addRow(self._label("E-Mail"), self.email)
+        form.addRow(self.beschriftung("E-Mail"), self.email)
 
         self.token = QLineEdit(self._settings.jira_token)
         self.token.setEchoMode(QLineEdit.EchoMode.Password)
         self.token.setFixedWidth(FIELD_WIDTH)
         self.token.setPlaceholderText("API-Token von id.atlassian.com")
-        form.addRow(self._label("Token"), self.token)
+        form.addRow(self.beschriftung("Token"), self.token)
 
         self.legacy = QCheckBox("Data Center statt Cloud (Bearer-Token, ältere API)")
         self.legacy.setChecked(self._settings.use_legacy_api)
-        form.addRow(self._label(""), self.legacy)
+        form.addRow(self.beschriftung(""), self.legacy)
 
         self.proxy = QLineEdit(self._settings.proxy_url)
         self.proxy.setFixedWidth(FIELD_WIDTH)
         self.proxy.setPlaceholderText("http://proxy:8080 - leer lässt die Umgebung entscheiden")
-        form.addRow(self._label("Proxy"), self.proxy)
+        form.addRow(self.beschriftung("Proxy"), self.proxy)
 
         self.budget_field = QLineEdit(self._settings.budget_field)
         self.budget_field.setFixedWidth(FIELD_WIDTH)
@@ -213,20 +195,35 @@ class SettingsDialog(QDialog):
         self.legacy.toggled.connect(lambda checked: self.detect_budget.setEnabled(not checked))
         budget_layout.addWidget(self.detect_budget)
         budget_layout.addStretch(1)
-        form.addRow(self._label("Budget-Feld"), budget_row)
+        form.addRow(self.beschriftung("Budget-Feld"), budget_row)
 
         form.addRow(
-            self._hint(
+            self.hinweis(
                 "Der Token wird unverschlüsselt in der Einstellungsdatei abgelegt. "
                 "Wer Zugriff auf das Benutzerprofil hat, kann ihn lesen."
             )
         )
+
+        self._import_button = self._import_knopf()
+        if self._import_button is not None:
+            form.addRow(self.beschriftung(""), self._import_button)
         return page
 
-    def _update_import_visibility(self, row: int) -> None:
-        """Zeigt den Import-Knopf nur auf der Zugang-Seite (erste Zeile)."""
-        if self._import_button is not None:
-            self._import_button.setVisible(row == 0)
+    def _import_knopf(self) -> QPushButton | None:
+        """Uebernahme aus der Textual-Fassung - nur, wenn die hier etwas hinterlassen hat.
+
+        Stand bis 0.7.2 unten links in der Knopfzeile und wurde je nach Seite
+        ein- und ausgeblendet. Die Knopfzeile kommt jetzt aus der Bibliothek,
+        und inhaltlich gehoert der Knopf ohnehin dorthin, wo die Zugangsdaten
+        stehen.
+        """
+        if Settings.legacy_access() is None:
+            return None
+        knopf = QPushButton("Einstellungen aus jira-timesheet (TUI) übernehmen")
+        knopf.setProperty("variant", "secondary")
+        knopf.setCursor(Qt.CursorShape.PointingHandCursor)
+        knopf.clicked.connect(self._import_legacy_access)
+        return knopf
 
     def _import_legacy_access(self) -> None:
         """Fuellt Zugangs- und Berechnungsfelder aus der Textual-TUI.
@@ -350,7 +347,7 @@ class SettingsDialog(QDialog):
             self._team_worker.wait(3000)
 
     def _page_worktime(self) -> QWidget:
-        page, form = self._page("Arbeitszeit")
+        page, form = self.seite("Arbeitszeit")
 
         self.hours_per_day = QDoubleSpinBox()
         self.hours_per_day.setRange(0.5, 24.0)
@@ -359,7 +356,7 @@ class SettingsDialog(QDialog):
         self.hours_per_day.setSuffix(" h")
         self.hours_per_day.setValue(self._settings.hours_per_day)
         self.hours_per_day.setFixedWidth(FIELD_WIDTH)
-        form.addRow(self._label("Stunden pro Tag"), self.hours_per_day)
+        form.addRow(self.beschriftung("Stunden pro Tag"), self.hours_per_day)
 
         self.max_yearly = QDoubleSpinBox()
         self.max_yearly.setRange(0.0, 5000.0)
@@ -368,7 +365,7 @@ class SettingsDialog(QDialog):
         self.max_yearly.setSuffix(" h")
         self.max_yearly.setValue(self._settings.max_yearly_hours)
         self.max_yearly.setFixedWidth(FIELD_WIDTH)
-        form.addRow(self._label("Jahresbudget"), self.max_yearly)
+        form.addRow(self.beschriftung("Jahresbudget"), self.max_yearly)
 
         self.hourly_rate = QDoubleSpinBox()
         self.hourly_rate.setRange(0.0, 100000.0)
@@ -377,7 +374,7 @@ class SettingsDialog(QDialog):
         self.hourly_rate.setSuffix(" €")
         self.hourly_rate.setValue(self._settings.hourly_rate)
         self.hourly_rate.setFixedWidth(FIELD_WIDTH)
-        form.addRow(self._label("Stundensatz"), self.hourly_rate)
+        form.addRow(self.beschriftung("Stundensatz"), self.hourly_rate)
 
         self.vat_rate = QDoubleSpinBox()
         self.vat_rate.setRange(0.0, 100.0)
@@ -386,29 +383,29 @@ class SettingsDialog(QDialog):
         self.vat_rate.setSuffix(" %")
         self.vat_rate.setValue(self._settings.vat_rate)
         self.vat_rate.setFixedWidth(FIELD_WIDTH)
-        form.addRow(self._label("MwSt-Satz"), self.vat_rate)
+        form.addRow(self.beschriftung("MwSt-Satz"), self.vat_rate)
 
         self.vacation = QSpinBox()
         self.vacation.setRange(0, 90)
         self.vacation.setSuffix(" Tage")
         self.vacation.setValue(self._settings.vacation_days)
         self.vacation.setFixedWidth(FIELD_WIDTH)
-        form.addRow(self._label("Urlaubstage"), self.vacation)
+        form.addRow(self.beschriftung("Urlaubstage"), self.vacation)
 
-        self.state = self._combo()
+        self.state = self.auswahl()
         for code, name in _STATES:
             self.state.addItem(name, code)
         index = self.state.findData(self._settings.federal_state)
         self.state.setCurrentIndex(max(0, index))
-        form.addRow(self._label("Bundesland"), self.state)
-        form.addRow(self._hint("Bestimmt, welche Feiertage als arbeitsfrei gelten."))
+        form.addRow(self.beschriftung("Bundesland"), self.state)
+        form.addRow(self.hinweis("Bestimmt, welche Feiertage als arbeitsfrei gelten."))
         return page
 
     def _page_tickets(self) -> QWidget:
-        page, form = self._page("Ticket-Ansichten")
+        page, form = self.seite("Ticket-Ansichten")
 
         form.addRow(
-            self._hint(
+            self.hinweis(
                 "Die Ansicht gruppiert deine Tickets danach, wer gerade am Zug ist. Trage "
                 "hier ein, welcher Status deiner Jira-Instanz zu welcher Gruppe gehört - "
                 "mehrere durch Komma getrennt, genau so geschrieben wie im Ticket. Die "
@@ -420,24 +417,24 @@ class SettingsDialog(QDialog):
         self.board_active = self._wide_edit(
             self._settings.board_active_status, "In Bearbeitung, Im Review"
         )
-        form.addRow(self._label("Ich bin dran"), self.board_active)
+        form.addRow(self.beschriftung("Ich bin dran"), self.board_active)
 
         self.board_backlog = self._wide_edit(
             self._settings.board_backlog_status, "Bereit, Eingeplant"
         )
-        form.addRow(self._label("Backlog"), self.board_backlog)
+        form.addRow(self.beschriftung("Backlog"), self.board_backlog)
 
         self.board_acceptance = self._wide_edit(
             self._settings.board_acceptance_status, "Wartet auf Freigabe, Beim Fachbereich"
         )
-        form.addRow(self._label("Andere sind dran"), self.board_acceptance)
+        form.addRow(self.beschriftung("Andere sind dran"), self.board_acceptance)
 
         self.board_handback = self._wide_edit(
             self._settings.board_handback_status, "Ausgeliefert, Zur Bewertung"
         )
-        form.addRow(self._label("Live, Test offen"), self.board_handback)
+        form.addRow(self.beschriftung("Live, Test offen"), self.board_handback)
         form.addRow(
-            self._hint(
+            self.hinweis(
                 "Produktiv gesetzt und wartet auf den Test durch den Autor. Ist der Autor "
                 "jemand anderes, gehört das Ticket zurückgegeben - bist du es selbst, liegt "
                 "der Ball bei dir, und die Ansicht sortiert es zu \"Ich bin dran\"."
@@ -447,9 +444,9 @@ class SettingsDialog(QDialog):
         self.board_closing = self._wide_edit(
             self._settings.board_closing_status, "Zur Übergabe, Deployment offen"
         )
-        form.addRow(self._label("Übergabe"), self.board_closing)
+        form.addRow(self.beschriftung("Übergabe"), self.board_closing)
         form.addRow(
-            self._hint(
+            self.hinweis(
                 "Das wichtigste Feld. Status, die Jira als fertig zählt, obwohl das Ticket "
                 "noch auf die Live-Setzung wartet - ohne diesen Eintrag tauchen sie in "
                 "keiner Liste auf."
@@ -459,9 +456,9 @@ class SettingsDialog(QDialog):
         self.board_done = self._wide_edit(
             self._settings.board_done_status, "Erledigt, Abgeschlossen"
         )
-        form.addRow(self._label("Abgeschlossen"), self.board_done)
+        form.addRow(self.beschriftung("Abgeschlossen"), self.board_done)
         form.addRow(
-            self._hint(
+            self.hinweis(
                 "Wirklich fertig. Reiner Kontrollblick: diese Tickets erscheinen ohne "
                 "Handlungsbedarf und ohne Schwelle, damit sichtbar bleibt, was formal noch "
                 "bei dir hängt."
@@ -471,17 +468,17 @@ class SettingsDialog(QDialog):
         self.board_priorities = self._wide_edit(
             self._settings.board_priorities, "Blocker, Kritisch, Hoch, Mittel, Niedrig"
         )
-        form.addRow(self._label("Prioritäten"), self.board_priorities)
-        form.addRow(self._hint("Rangfolge, dringendstes zuerst. Leer = Reihenfolge aus Jira."))
+        form.addRow(self.beschriftung("Prioritäten"), self.board_priorities)
+        form.addRow(self.hinweis("Rangfolge, dringendstes zuerst. Leer = Reihenfolge aus Jira."))
 
         self.board_window = QSpinBox()
         self.board_window.setRange(0, 3650)
         self.board_window.setSuffix(" Tage")
         self.board_window.setValue(self._settings.board_window_days)
         self.board_window.setFixedWidth(FIELD_WIDTH)
-        form.addRow(self._label("Zeitfenster"), self.board_window)
+        form.addRow(self.beschriftung("Zeitfenster"), self.board_window)
         form.addRow(
-            self._hint(
+            self.hinweis(
                 "Nur für \"Meine Aktivitäten\". 0 = kein Fenster - dann wird die Liste "
                 "schnell zum Archiv statt zum Arbeitsvorrat."
             )
@@ -492,20 +489,20 @@ class SettingsDialog(QDialog):
         self.board_stale.setSuffix(" Tage")
         self.board_stale.setValue(self._settings.board_stale_days)
         self.board_stale.setFixedWidth(FIELD_WIDTH)
-        form.addRow(self._label("Verwaist ab"), self.board_stale)
+        form.addRow(self.beschriftung("Verwaist ab"), self.board_stale)
 
         self.board_threshold_active = self._threshold(self._settings.board_threshold_active)
-        form.addRow(self._label("Schwelle: ich dran"), self.board_threshold_active)
+        form.addRow(self.beschriftung("Schwelle: ich dran"), self.board_threshold_active)
 
         self.board_threshold_acceptance = self._threshold(
             self._settings.board_threshold_acceptance
         )
-        form.addRow(self._label("Schwelle: andere"), self.board_threshold_acceptance)
+        form.addRow(self.beschriftung("Schwelle: andere"), self.board_threshold_acceptance)
 
         self.board_threshold_closing = self._threshold(self._settings.board_threshold_closing)
-        form.addRow(self._label("Schwelle: Übergabe"), self.board_threshold_closing)
+        form.addRow(self.beschriftung("Schwelle: Übergabe"), self.board_threshold_closing)
         form.addRow(
-            self._hint(
+            self.hinweis(
                 "Ab so vielen ARBEITSTAGEN ohne Änderung UND ohne gebuchte Stunde landet ein "
                 "Ticket im Pile of Shame. 0 schaltet die Rolle davon frei. Die Zahlen sind "
                 "eine Setzung, keine Messung - zu klein gewählt trifft der Hinweis alles und "
@@ -551,10 +548,10 @@ class SettingsDialog(QDialog):
         return box
 
     def _page_team(self) -> QWidget:
-        page, form = self._page("Mein Team")
+        page, form = self.seite("Mein Team")
 
         form.addRow(
-            self._hint(
+            self.hinweis(
                 "Merke dir Kolleginnen und Kollegen, deren Ticketstand du im Reiter "
                 "\"Mein Team\" ansehen willst. Suche nach dem <b>Namen</b>, nicht nach der "
                 "Mailadresse: viele Konten geben ihre Adresse nicht heraus, und ein Mensch "
@@ -580,7 +577,7 @@ class SettingsDialog(QDialog):
         self.team_search_button.clicked.connect(self._team_search)
         search_layout.addWidget(self.team_search_button)
         search_layout.addStretch(1)
-        form.addRow(self._label("Suchen"), search_row)
+        form.addRow(self.beschriftung("Suchen"), search_row)
 
         self.team_hits = QTableWidget(0, 4)
         self.team_hits.setHorizontalHeaderLabels(["Name", "Mail", "offen", "zuletzt"])
@@ -598,9 +595,9 @@ class SettingsDialog(QDialog):
         # mehrere Konten, muss man alle gemeinsam uebernehmen koennen. Die
         # Reihenfolge stammt aus dem Kern - das juengste Konto steht oben,
         # nicht das groesste.
-        form.addRow(self._label("Treffer"), self.team_hits)
+        form.addRow(self.beschriftung("Treffer"), self.team_hits)
 
-        self.team_status = self._hint("")
+        self.team_status = self.hinweis("")
         form.addRow(self.team_status)
 
         self.team_name = QLineEdit()
@@ -618,9 +615,9 @@ class SettingsDialog(QDialog):
         self.team_add_button.clicked.connect(self._team_add)
         add_layout.addWidget(self.team_add_button)
         add_layout.addStretch(1)
-        form.addRow(self._label("Anzeigename"), add_row)
+        form.addRow(self.beschriftung("Anzeigename"), add_row)
         form.addRow(
-            self._hint(
+            self.hinweis(
                 "Leer lassen übernimmt den Namen aus Jira. Jira führt denselben Menschen "
                 "aber gern in mehreren Schreibweisen - wie jemand genannt werden möchte, "
                 "entscheidet nicht das Verzeichnis."
@@ -630,7 +627,7 @@ class SettingsDialog(QDialog):
         self.team_roster_list = QListWidget()
         self.team_roster_list.setMinimumHeight(120)
         self.team_roster_list.setMinimumWidth(WIDE_FIELD_WIDTH)
-        form.addRow(self._label("Merkliste"), self.team_roster_list)
+        form.addRow(self.beschriftung("Merkliste"), self.team_roster_list)
 
         self.team_remove_button = QPushButton("Entfernen")
         self.team_remove_button.setProperty("variant", "secondary")
@@ -803,7 +800,7 @@ class SettingsDialog(QDialog):
         self.team_remove_button.setEnabled(bool(self._roster.members))
 
     def _page_export(self) -> QWidget:
-        page, form = self._page("Export")
+        page, form = self.seite("Export")
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
         self.logo_path = QLineEdit(self._settings.logo_path)
@@ -819,25 +816,25 @@ class SettingsDialog(QDialog):
         browse.setCursor(Qt.CursorShape.PointingHandCursor)
         browse.clicked.connect(self._browse_logo)
         logo_layout.addWidget(browse)
-        form.addRow(self._label("Logo-Pfad"), logo_row)
+        form.addRow(self.beschriftung("Logo-Pfad"), logo_row)
 
         self.show_target = QCheckBox("Soll-Stunden im Excel-/PDF-Export anzeigen")
         self.show_target.setChecked(self._settings.show_target_hours_in_export)
-        form.addRow(self._label(""), self.show_target)
+        form.addRow(self.beschriftung(""), self.show_target)
 
         self.show_ticket_links = QCheckBox("Ticket-Links im Excel-/PDF-Export anzeigen")
         self.show_ticket_links.setChecked(self._settings.show_ticket_links_in_export)
-        form.addRow(self._label(""), self.show_ticket_links)
+        form.addRow(self.beschriftung(""), self.show_ticket_links)
 
         self.default_customer = QLineEdit(self._settings.default_customer)
         self.default_customer.setFixedWidth(FIELD_WIDTH)
         self.default_customer.setPlaceholderText("Vertrieb")
-        form.addRow(self._label("Standard-Kunde"), self.default_customer)
+        form.addRow(self.beschriftung("Standard-Kunde"), self.default_customer)
 
         self.customers = QPlainTextEdit("\n".join(self._settings.customers))
         self.customers.setFixedHeight(110)
-        form.addRow(self._label("Kunden-Auswahl"), self.customers)
-        form.addRow(self._hint("Ein Kunde pro Zeile. Das ist die Auswahlliste im Dialog fuer manuelle Zeiten."))
+        form.addRow(self.beschriftung("Kunden-Auswahl"), self.customers)
+        form.addRow(self.hinweis("Ein Kunde pro Zeile. Das ist die Auswahlliste im Dialog fuer manuelle Zeiten."))
         return page
 
     def _browse_logo(self) -> None:
@@ -854,10 +851,10 @@ class SettingsDialog(QDialog):
             self.logo_path.setText(chosen)
 
     def _page_columns(self) -> QWidget:
-        page, form = self._page("Spalten")
+        page, form = self.seite("Spalten")
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         form.addRow(
-            self._hint(
+            self.hinweis(
                 "Anzeige steuert die Listenansicht, Export die Excel- und PDF-Datei. Die "
                 "Bezeichnung gilt fuer den Export; leer gelassen gilt die Standard-Bezeichnung."
             )
@@ -918,268 +915,37 @@ class SettingsDialog(QDialog):
         self._column_rows.append((column.key, visible, enabled, label))
         return row
 
-    def _page_appearance(self) -> QWidget:
-        page, form = self._page("Darstellung")
+    def darstellung_erweitern(self, form: QFormLayout) -> None:
+        """Markierung und Soll-Ist-Ampel - sie gehoeren fuer den Anwender zur
+        Darstellung, kennt aber nur diese Anwendung.
 
-        self.theme = self._combo()
-        self.theme.addItem("Wie das Betriebssystem", "system")
-        self.theme.addItem("Dunkel", "dark")
-        self.theme.addItem("Hell", "light")
-        index = self.theme.findData(self._settings.theme)
-        self.theme.setCurrentIndex(max(0, index))
-        form.addRow(self._label("Erscheinungsbild"), self.theme)
-
-        # Akzentfarbe - vordefinierte Werte mit gutem Kontrast in Hell und Dunkel.
-        self.accent = self._combo()
-        for key in sorted(ACCENT_LABELS, key=lambda k: ACCENT_LABELS[k]):
-            self.accent.addItem(ACCENT_LABELS[key], key)
-        accent_index = self.accent.findData(self._settings.accent)
-        self.accent.setCurrentIndex(max(0, accent_index))
-        form.addRow(self._label("Akzentfarbe"), self.accent)
-
-        # Oberflaechen-Zoom - skaliert alle Schriftgroessen (auch per Ctrl +/-/0).
-        self.ui_scale = self._combo()
-        for percent in SCALES:
-            self.ui_scale.addItem(f"{percent} %", percent)
-        scale_index = self.ui_scale.findData(self._settings.ui_scale)
-        self.ui_scale.setCurrentIndex(max(0, scale_index))
-        form.addRow(self._label("Zoom"), self.ui_scale)
-
+        Erscheinungsbild, Akzentfarbe und Zoom stehen darueber und kommen aus
+        der Bibliothek.
+        """
         self.mark_manual = QCheckBox("Manuell erfasste Zeiten hervorheben")
         self.mark_manual.setChecked(self._settings.mark_manual_entries)
-        form.addRow(self._label(""), self.mark_manual)
+        form.addRow(self.beschriftung(""), self.mark_manual)
 
         # Farbe, in der manuelle Eintraege in der Liste eingefaerbt werden.
-        self._manual_color_value = normalize_color(self._settings.manual_entry_color)
-        self.manual_color = QPushButton()
-        self.manual_color.setFixedWidth(FIELD_WIDTH)
-        self.manual_color.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.manual_color.clicked.connect(self._pick_manual_color)
-        self._update_manual_color_button()
+        self.manual_color = self.farbknopf(self._settings.manual_entry_color, "Markierungsfarbe")
         self.mark_manual.toggled.connect(self.manual_color.setEnabled)
         self.manual_color.setEnabled(self.mark_manual.isChecked())
-        form.addRow(self._label("Markierungsfarbe"), self.manual_color)
+        form.addRow(self.beschriftung("Markierungsfarbe"), self.manual_color)
 
         # Soll-Ist-Ampel der Tagessummen: ueber Soll gruen, unter Soll rot.
         self.color_day_totals = QCheckBox("Tagessummen nach Soll-Ist einfärben")
         self.color_day_totals.setChecked(self._settings.color_day_totals)
-        form.addRow(self._label(""), self.color_day_totals)
+        form.addRow(self.beschriftung(""), self.color_day_totals)
 
-        self._day_over_value = normalize_color(self._settings.day_over_color, DEFAULT_DAY_OVER_COLOR)
-        self.day_over_color = QPushButton()
-        self.day_over_color.setFixedWidth(FIELD_WIDTH)
-        self.day_over_color.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.day_over_color.clicked.connect(self._pick_day_over_color)
-        self._style_color_button(self.day_over_color, self._day_over_value)
-        form.addRow(self._label("Farbe über Soll"), self.day_over_color)
+        self.day_over_color = self.farbknopf(self._settings.day_over_color, "Farbe über Soll")
+        form.addRow(self.beschriftung("Farbe über Soll"), self.day_over_color)
 
-        self._day_under_value = normalize_color(self._settings.day_under_color, DEFAULT_DAY_UNDER_COLOR)
-        self.day_under_color = QPushButton()
-        self.day_under_color.setFixedWidth(FIELD_WIDTH)
-        self.day_under_color.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.day_under_color.clicked.connect(self._pick_day_under_color)
-        self._style_color_button(self.day_under_color, self._day_under_value)
-        form.addRow(self._label("Farbe unter Soll"), self.day_under_color)
+        self.day_under_color = self.farbknopf(self._settings.day_under_color, "Farbe unter Soll")
+        form.addRow(self.beschriftung("Farbe unter Soll"), self.day_under_color)
 
         for widget in (self.day_over_color, self.day_under_color):
             self.color_day_totals.toggled.connect(widget.setEnabled)
             widget.setEnabled(self.color_day_totals.isChecked())
-
-        form.addRow(self._hint("Ein Wechsel wirkt sofort, ohne Neustart."))
-        return page
-
-    def _pick_manual_color(self) -> None:
-        """Oeffnet den Farbwaehler fuer die Markierungsfarbe manueller Eintraege."""
-        chosen = QColorDialog.getColor(
-            QColor(f"#{self._manual_color_value}"), self, "Markierungsfarbe"
-        )
-        if chosen.isValid():
-            self._manual_color_value = normalize_color(chosen.name().lstrip("#"))
-            self._update_manual_color_button()
-
-    def _update_manual_color_button(self) -> None:
-        """Zeigt die aktuelle Markierungsfarbe als Flaeche samt Hex-Wert."""
-        self._style_color_button(self.manual_color, self._manual_color_value)
-
-    @staticmethod
-    def _style_color_button(button: QPushButton, hex_value: str) -> None:
-        """Malt eine Farbflaeche samt Hex-Wert auf einen Farbwaehler-Knopf."""
-        color = QColor(f"#{hex_value}")
-        text_color = "#000000" if color.lightnessF() > 0.6 else "#ffffff"
-        button.setText(f"#{hex_value}")
-        button.setStyleSheet(
-            f"background-color: #{hex_value}; color: {text_color}; "
-            f"border: 1px solid {color.darker(130).name()}; border-radius: 4px; padding: 6px;"
-        )
-
-    def _pick_day_over_color(self) -> None:
-        """Farbwaehler fuer Tagessummen ueber Soll (gruen)."""
-        chosen = QColorDialog.getColor(QColor(f"#{self._day_over_value}"), self, "Farbe ueber Soll")
-        if chosen.isValid():
-            self._day_over_value = normalize_color(chosen.name().lstrip("#"))
-            self._style_color_button(self.day_over_color, self._day_over_value)
-
-    def _pick_day_under_color(self) -> None:
-        """Farbwaehler fuer Tagessummen unter Soll (rot)."""
-        chosen = QColorDialog.getColor(QColor(f"#{self._day_under_value}"), self, "Farbe unter Soll")
-        if chosen.isValid():
-            self._day_under_value = normalize_color(chosen.name().lstrip("#"))
-            self._style_color_button(self.day_under_color, self._day_under_value)
-
-    def _page_storage(self) -> QWidget:
-        page, form = self._page("Speicherort")
-        # Anders als bei den Eingabeseiten sollen die Pfad-Zeilen die volle
-        # Breite fuellen - nur so stehen die "Oeffnen"-Knoepfe buendig
-        # rechts untereinander statt an jeder Pfadlaenge ausgerichtet.
-        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
-        for caption, path in (
-            ("Einstellungen", Settings.SETTINGS_FILE),
-            ("Protokoll", Settings.SETTINGS_DIR / "app.log"),
-            ("Zwischenspeicher", CACHE_DIR),
-            ("Manuelle Zeiten", DB_FILE),
-            ("Zustimmung", Settings.SETTINGS_DIR / "disclaimer.json"),
-        ):
-            form.addRow(self._label(caption), self._path_row(path))
-        form.addRow(
-            self._hint("Ein Klick öffnet den Ordner. Die Anwendung überschreibt diese Dateien beim Speichern.")
-        )
-        return page
-
-    # --- Bausteine ------------------------------------------------------
-
-    @staticmethod
-    def _scrollable(page: QWidget) -> QWidget:
-        """Haengt eine Seite in einen Bildlaufbereich.
-
-        Ohne das wird eine Seite, die hoeher ist als der Dialog, schlicht
-        abgeschnitten - der untere Teil ist dann nicht abgeschnitten, sondern
-        UNERREICHBAR. Aufgefallen an der Ticket-Seite, deren Erklaerungstexte
-        unten weggeschnitten wurden.
-
-        Args:
-            page:
-                Die aufgebaute Seite.
-
-        Returns:
-            Der Bildlaufbereich, der in den Seitenstapel gehoert.
-        """
-        area = QScrollArea()
-        area.setObjectName("SettingsScroll")
-        area.setWidget(page)
-        # Ohne das behaelt die Seite ihre Wunschbreite und der Bereich zeigt
-        # eine waagerechte Bildlaufleiste statt die Seite mitzuziehen.
-        area.setWidgetResizable(True)
-        area.setFrameShape(QScrollArea.Shape.NoFrame)
-        area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        return area
-
-    def _page(self, title: str) -> tuple[QWidget, QFormLayout]:
-        """Baut eine Seite mit Ueberschrift und liefert ihr Formular."""
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(24, 22, 24, 22)
-        layout.setSpacing(14)
-
-        heading = QLabel(title)
-        heading.setObjectName("SettingsHeading")
-        layout.addWidget(heading)
-
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        form.setHorizontalSpacing(16)
-        form.setVerticalSpacing(12)
-        # Felder wachsen NICHT mit der Dialogbreite - sonst haetten die
-        # Textfelder eine andere Kante als die Zahlenfelder daneben.
-        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
-        layout.addLayout(form)
-        layout.addStretch(1)
-        return page, form
-
-    @staticmethod
-    def _combo() -> QComboBox:
-        """Auswahlliste, deren aufgeklapptes Feld dem Stylesheet folgt.
-
-        Ohne ein ausdrueckliches QListView zeichnet Qt das Popup mit einem
-        eigenen View, der die ::item-Regeln ignoriert - die Auswahl erscheint
-        dann im Systemblau statt in der Akzentfarbe.
-        """
-        combo = QComboBox()
-        combo.setView(QListView())
-        combo.setFixedWidth(FIELD_WIDTH)
-        return combo
-
-    @staticmethod
-    def _label(text: str) -> QLabel:
-        label = QLabel(text)
-        label.setObjectName("SettingsLabel")
-        label.setMinimumWidth(120)
-        return label
-
-    @staticmethod
-    def _hint(text: str) -> QLabel:
-        hint = QLabel(text)
-        hint.setObjectName("SettingsHint")
-        hint.setWordWrap(True)
-        return hint
-
-    def _path_row(self, path: Path) -> QWidget:
-        """Zeigt einen Pfad an und oeffnet ihn auf Klick im Dateimanager."""
-        row = QWidget()
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-
-        value = QLabel(str(path))
-        value.setObjectName("SettingsPath")
-        value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        layout.addWidget(value, 1)
-
-        button = QPushButton("Öffnen")
-        button.setProperty("variant", "secondary")
-        button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.clicked.connect(lambda: self._open_path(path))
-        layout.addWidget(button)
-        return row
-
-    @staticmethod
-    def _open_path(path: Path) -> None:
-        """Oeffnet das Verzeichnis des Pfads im Dateimanager."""
-        target = path if path.is_dir() else path.parent
-        if not target.exists():
-            target.mkdir(parents=True, exist_ok=True)
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
-
-    def _buttons(self) -> QWidget:
-        row = QWidget()
-        row.setObjectName("DialogButtons")
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(24, 14, 24, 16)
-        layout.setSpacing(10)
-
-        # Import-Knopf unten links - nur, wenn die Textual-TUI hier einen
-        # Zugang hinterlassen hat. Sichtbar gesteuert ueber die aktive Seite.
-        self._import_button: QPushButton | None = None
-        if Settings.legacy_access() is not None:
-            self._import_button = QPushButton("Einstellungen aus jira-timesheet (TUI) übernehmen")
-            self._import_button.setProperty("variant", "secondary")
-            self._import_button.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._import_button.clicked.connect(self._import_legacy_access)
-            layout.addWidget(self._import_button)
-
-        layout.addStretch(1)
-
-        cancel = QPushButton("Abbrechen")
-        cancel.clicked.connect(self.reject)
-        layout.addWidget(cancel)
-
-        save = QPushButton("Speichern")
-        save.setProperty("variant", "primary")
-        save.setDefault(True)
-        save.clicked.connect(self.accept)
-        layout.addWidget(save)
-        return row
-
-    # --- Ergebnis -------------------------------------------------------
 
     def result_settings(self) -> Settings:
         """Liefert die Einstellungen mit den Werten aus dem Dialog."""
@@ -1223,14 +989,15 @@ class SettingsDialog(QDialog):
             )
             for key, visible, enabled, label in self._column_rows
         ]
-        s.theme = str(self.theme.currentData())
-        s.accent = str(self.accent.currentData())
-        s.ui_scale = int(self.ui_scale.currentData())
+        # Erscheinungsbild, Akzentfarbe und Zoom kommen aus der Bibliothek.
+        s.theme = self.darstellung.modus.value
+        s.accent = self.darstellung.akzent
+        s.ui_scale = self.darstellung.zoom
         s.mark_manual_entries = self.mark_manual.isChecked()
-        s.manual_entry_color = self._manual_color_value
+        s.manual_entry_color = self.farbe_von(self.manual_color)
         s.color_day_totals = self.color_day_totals.isChecked()
-        s.day_over_color = self._day_over_value
-        s.day_under_color = self._day_under_value
+        s.day_over_color = self.farbe_von(self.day_over_color)
+        s.day_under_color = self.farbe_von(self.day_under_color)
         return s
 
     def _customers_from_input(self) -> list[str]:
