@@ -28,7 +28,7 @@ class TestAboutDialog:
         joined = _label_text(dialog)
         assert __version__ in joined
         assert __author__ in joined
-        assert "Apache-2.0" in joined
+        assert "BUSL-1.1" in joined
 
     def test_links_are_present(self, qapp: QApplication) -> None:
         dialog = AboutDialog()

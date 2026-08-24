@@ -10,7 +10,7 @@
 [![Stars](https://img.shields.io/github/stars/michaelblaess/jira-timesheet-qt?logo=github&logoColor=white&color=fbbf24)](https://github.com/michaelblaess/jira-timesheet-qt/stargazers)
 [![Issues](https://img.shields.io/github/issues/michaelblaess/jira-timesheet-qt?logo=github&logoColor=white&color=f87171)](https://github.com/michaelblaess/jira-timesheet-qt/issues)
 [![Last Commit](https://img.shields.io/github/last-commit/michaelblaess/jira-timesheet-qt?logo=git&logoColor=white&color=3b82f6)](https://github.com/michaelblaess/jira-timesheet-qt/commits/main)
-[![License](https://img.shields.io/badge/license-Apache_2.0-3b82f6)](LICENSE)
+[![License](https://img.shields.io/badge/license-BUSL--1.1-3b82f6)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12+-3b82f6?logo=python&logoColor=white)](https://www.python.org/)
 [![Qt](https://img.shields.io/badge/Qt-PySide6-41cd52?logo=qt&logoColor=white)](https://doc.qt.io/qtforpython/)
 
@@ -371,7 +371,7 @@ On its first start the program shows a notice that has to be confirmed - without
 
 Your consent is recorded in `~/.jira-timesheet-qt/disclaimer.json` and is only requested again when the wording changes. The "Storage" tab of the settings dialog shows the location, where you can also delete the file to see the notice again.
 
-The software is provided free of charge and without warranty of any kind ("as is"), as set out in section 7 of the Apache License 2.0. The liability of the author (Michael Blaess) for damages arising from its use is excluded to the extent permitted by applicable law. Liability for intent and gross negligence, for injury to life, body or health, and under mandatory product liability law remains unaffected.
+The software is provided without warranty of any kind ("as is"), as set out in the licence. The liability of the author (Michael Blaess) for damages arising from its use is excluded to the extent permitted by applicable law. Liability for intent and gross negligence, for injury to life, body or health, and under mandatory product liability law remains unaffected.
 
 ## Keyboard Shortcuts
 
@@ -465,7 +465,21 @@ uv run poe lint        # ruff + mypy (strict)
 
 ## License
 
-Apache License 2.0, see [LICENSE](LICENSE).
+The source code is licensed under the **Business Source License 1.1** (see
+[LICENSE](LICENSE)). In short:
+
+- **Reading, building and using it yourself is free** - as a private person, including
+  for professional work. Clone the repository, run `uv sync` and start it.
+- **Ready-to-run builds** for Windows, macOS and Linux are available for a small fee.
+  They come with the [EULA](EULA.md) and may not be passed on.
+- **Use by organizations**, and offering it as a paid service, require a commercial
+  licence. Just get in touch.
+- Every version turns into the **Mozilla Public License 2.0** four years after its
+  release.
+
+Why not open source? Building and maintaining a desktop application across three
+platforms takes real time. Keeping the source open while asking for a small
+contribution for the convenience of a ready-made build seemed the fairest trade.
 
 ---
 

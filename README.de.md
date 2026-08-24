@@ -10,7 +10,7 @@
 [![Stars](https://img.shields.io/github/stars/michaelblaess/jira-timesheet-qt?logo=github&logoColor=white&color=fbbf24)](https://github.com/michaelblaess/jira-timesheet-qt/stargazers)
 [![Issues](https://img.shields.io/github/issues/michaelblaess/jira-timesheet-qt?logo=github&logoColor=white&color=f87171)](https://github.com/michaelblaess/jira-timesheet-qt/issues)
 [![Last Commit](https://img.shields.io/github/last-commit/michaelblaess/jira-timesheet-qt?logo=git&logoColor=white&color=3b82f6)](https://github.com/michaelblaess/jira-timesheet-qt/commits/main)
-[![License](https://img.shields.io/badge/license-Apache_2.0-3b82f6)](LICENSE)
+[![License](https://img.shields.io/badge/license-BUSL--1.1-3b82f6)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12+-3b82f6?logo=python&logoColor=white)](https://www.python.org/)
 [![Qt](https://img.shields.io/badge/Qt-PySide6-41cd52?logo=qt&logoColor=white)](https://doc.qt.io/qtforpython/)
 
@@ -383,7 +383,7 @@ Beim ersten Start erscheint ein Hinweis, der bestätigt werden muss - ohne Zusti
 
 Die Zustimmung wird in `~/.jira-timesheet-qt/disclaimer.json` festgehalten und nur erneut abgefragt, wenn sich der Wortlaut ändert. Den Speicherort zeigt der Reiter "Speicherort" im Einstellungsdialog - dort lässt sich die Datei auch löschen, um den Hinweis wieder anzuzeigen.
 
-Die Software wird kostenlos und ohne jede Gewährleistung bereitgestellt ("as is"), wie in Abschnitt 7 der Apache License 2.0 geregelt. Die Haftung des Autors (Michael Blaess) für Schäden aus der Nutzung ist im gesetzlich zulässigen Rahmen ausgeschlossen. Die Haftung für Vorsatz und grobe Fahrlässigkeit, für die Verletzung von Leben, Körper oder Gesundheit sowie nach zwingendem Produkthaftungsrecht bleibt unberührt.
+Die Software wird ohne jede Gewährleistung bereitgestellt ("as is"), wie in der Lizenz geregelt. Die Haftung des Autors (Michael Blaess) für Schäden aus der Nutzung ist im gesetzlich zulässigen Rahmen ausgeschlossen. Die Haftung für Vorsatz und grobe Fahrlässigkeit, für die Verletzung von Leben, Körper oder Gesundheit sowie nach zwingendem Produkthaftungsrecht bleibt unberührt.
 
 ## Tastenkürzel
 
@@ -479,7 +479,22 @@ uv run poe lint        # ruff + mypy (strict)
 
 ## Lizenz
 
-Apache License 2.0, siehe [LICENSE](LICENSE).
+Der Quelltext steht unter der **Business Source License 1.1** (siehe
+[LICENSE](LICENSE)). Kurz gefasst:
+
+- **Lesen, selbst bauen und benutzen ist kostenlos** - als Privatperson, auch für die
+  berufliche Arbeit. Repository klonen, `uv sync`, starten.
+- **Fertige Programmpakete** für Windows, macOS und Linux gibt es gegen einen kleinen
+  Betrag. Für sie gilt die [EULA](EULA.md), und sie dürfen nicht weitergegeben werden.
+- **Nutzung durch Organisationen** und das entgeltliche Anbieten als Dienst brauchen
+  eine kommerzielle Lizenz. Sprich mich einfach an.
+- Jede Version wird vier Jahre nach ihrer Veröffentlichung automatisch zur
+  **Mozilla Public License 2.0**.
+
+Warum nicht Open Source? Eine Desktop-Anwendung über drei Plattformen zu bauen und zu
+pflegen kostet echte Zeit. Den Quelltext offen zu lassen und für die Bequemlichkeit
+eines fertigen Pakets um einen kleinen Beitrag zu bitten, schien mir der fairste
+Tausch.
 
 ---
 

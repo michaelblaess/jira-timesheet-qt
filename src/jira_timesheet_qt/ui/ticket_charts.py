@@ -1,7 +1,8 @@
 """Diagramme ueber der Ticket-Tabelle, selbst gezeichnet mit QPainter.
 
-Bewusst OHNE QtCharts: das Modul steht unter GPL oder kommerzieller Lizenz
-und darf in einem Apache-2.0-Repo nicht verwendet werden. QtDataVisualization
+Bewusst OHNE QtCharts: das Modul steht unter GPL oder kommerzieller Lizenz.
+Unter der BUSL geht das erst recht nicht - die GPL verlangt, dass das
+Gesamtwerk unter GPL steht, und das ist hier ausgeschlossen. QtDataVisualization
 und QtGraphs ebenso. Zulaessig waeren PyQtGraph (MIT) oder Matplotlib (BSD) -
 fuer ein paar Balken und eine Kurve lohnt keine zusaetzliche Abhaengigkeit,
 und Kalender- und Jahresansicht zeichnen hier ohnehin schon selbst.
