@@ -866,7 +866,7 @@ wheels = [
 [[package]]
 name = "qappframework"
 version = "0.11.0"
-source = { git = "https://github.com/michaelblaess/QAppFramework.git#21bc01dc35419d37ee01a339e615115a9f2c8fe0" }
+source = { git = "https://github.com/michaelblaess/QAppFramework.git#fbde280d10034bba42105ebf65c2f4666ea6ddd2" }
 dependencies = [
     { name = "pyside6" },
     { name = "qtawesome" },
