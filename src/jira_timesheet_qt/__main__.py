@@ -114,6 +114,9 @@ def main() -> int:
     from jira_timesheet_qt.ui import crash_guard
 
     crash_guard.install(window)
+    # Strg+C in der startenden Konsole: geordnet beenden, damit closeEvent
+    # laeuft. Der Wecker haengt an der Anwendung und lebt so lange wie sie.
+    crash_guard.install_interrupt(app)
 
     if args.demo:
         from jira_timesheet_qt.ui.demo import demo_timesheet

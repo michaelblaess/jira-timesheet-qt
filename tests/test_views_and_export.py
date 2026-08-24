@@ -295,3 +295,31 @@ class TestViewsInWindow:
         window._tabs.setCurrentIndex(2)  # Jahr
         year_texts = " ".join(label.text() for label in window._summary.findChildren(QLabel))
         assert "Prognose" in year_texts
+
+
+class TestAbbruch:
+    """Strg+C soll die Anwendung beenden, nicht irgendwo eine Ausnahme werfen."""
+
+    def test_install_interrupt_setzt_behandler_und_wecker(self, qapp: QApplication) -> None:
+        """Ohne beides trifft der Abbruch zufaelligen Code - meist den eventFilter."""
+        import signal
+
+        from jira_timesheet_qt.ui import crash_guard
+
+        vorher = signal.getsignal(signal.SIGINT)
+        wecker = crash_guard.install_interrupt(qapp)
+        try:
+            assert signal.getsignal(signal.SIGINT) is not signal.default_int_handler
+            assert wecker.isActive()
+            assert wecker.parent() is qapp
+        finally:
+            wecker.stop()
+            signal.signal(signal.SIGINT, vorher)
+
+    def test_der_start_haengt_den_abbruch_ein(self) -> None:
+        """Die Verdrahtung in main() - sonst nuetzt der Baustein nichts."""
+        import inspect
+
+        from jira_timesheet_qt import __main__
+
+        assert "install_interrupt" in inspect.getsource(__main__.main)
