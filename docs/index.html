@@ -51,7 +51,7 @@
 
   <!-- HERO -->
   <section class="hero">
-    <div class="hero-badge"><span class="dot"></span> Open Source Desktop-GUI · v0.3.4</div>
+    <div class="hero-badge"><span class="dot"></span> Desktop-GUI für Jira-Worklogs · v0.8.2</div>
     <h1>Jira Timesheet <span class="accent">Desktop</span></h1>
     <p class="hero-description">Eine native Desktop-Anwendung (PySide6 / Qt 6) für Stundenzettel aus Jira-Worklogs - der einfach zu bedienende Desktop-Port der Textual-Anwendung jira-timesheet. Mit Liste, Kalender und Jahr, Excel- und PDF-Export, Feiertagskalender und Jahres-Prognose.</p>
     <div class="hero-actions">
@@ -360,7 +360,7 @@
     <div class="section-label">Rechtliches</div>
     <h2 class="section-title">Haftungshinweis beim ersten Start</h2>
     <p class="section-description" style="max-width: 760px;">Beim ersten Start erscheint ein Hinweis, der bestätigt werden muss - ohne Zustimmung beendet sich das Programm. Das Werkzeug liest über die Jira-REST-API Arbeitszeit-Buchungen aus einem fremden System; je nach Rechtevergabe gehören dazu auch Buchungen anderer Personen. Mit der Bestätigung erklärst Du, das Programm nur gegen dazu berechtigte Jira-Instanzen einzusetzen und nur Daten auszuwerten, zu deren Verarbeitung Du befugt bist. Die Zustimmung wird in <code>~/.jira-timesheet-qt/disclaimer.json</code> festgehalten.</p>
-    <p class="section-description" style="max-width: 760px;">Die Software wird kostenlos und ohne jede Gewährleistung bereitgestellt ("as is"), wie in Abschnitt 7 der Apache License 2.0 geregelt. Die Haftung des Autors (Michael Blaess) für Schäden aus der Nutzung ist im gesetzlich zulässigen Rahmen ausgeschlossen. Die Haftung für Vorsatz und grobe Fahrlässigkeit, für die Verletzung von Leben, Körper oder Gesundheit sowie nach zwingendem Produkthaftungsrecht bleibt unberührt.</p>
+    <p class="section-description" style="max-width: 760px;">Die Software wird ohne jede Gewährleistung bereitgestellt ("as is"), wie in der Lizenz geregelt. Die Haftung des Autors (Michael Blaess) für Schäden aus der Nutzung ist im gesetzlich zulässigen Rahmen ausgeschlossen. Die Haftung für Vorsatz und grobe Fahrlässigkeit, für die Verletzung von Leben, Körper oder Gesundheit sowie nach zwingendem Produkthaftungsrecht bleibt unberührt.</p>
   </section>
 
   <!-- DISCLAIMER -->
@@ -373,10 +373,35 @@
     </p>
   </section>
 
+    <div class="divider"><div class="divider-line"></div></div>
+
+  <section class="section" id="lizenz">
+    <div class="section-label">Nutzungsbedingungen</div>
+    <h2 class="section-title">Lizenz</h2>
+    <p class="section-description">Der Quelltext steht unter der Business Source License 1.1 - offen einsehbar, die kommerzielle Verwertung durch Dritte aber nicht gestattet.</p>
+    <div class="choice-grid">
+      <div class="feature-card">
+        <div class="feature-icon">🧑‍💻</div>
+        <h3>Selbst bauen ist frei</h3>
+        <p>Als Privatperson darfst Du den Quelltext lesen, bauen und benutzen - auch für Deine berufliche Arbeit. Repository klonen, <code>uv sync</code>, starten.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📦</div>
+        <h3>Fertige Pakete kosten</h3>
+        <p>Die gebauten Programmpakete für Windows, macOS und Linux gibt es gegen einen kleinen Betrag. Sie sind an den Erwerber gebunden und dürfen nicht weitergegeben werden.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🗓️</div>
+        <h3>Wird später frei</h3>
+        <p>Jede Version wird vier Jahre nach ihrer Veröffentlichung automatisch zur Mozilla Public License 2.0.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-left">
-      <span>Apache License 2.0 · Michael Blaess</span>
+      <span>BUSL-1.1 · Michael Blaess</span>
     </div>
     <div class="footer-links">
       <a href="https://github.com/michaelblaess/jira-timesheet-qt">GitHub</a>
