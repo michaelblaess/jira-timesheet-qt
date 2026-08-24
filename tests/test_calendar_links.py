@@ -47,7 +47,8 @@ def test_click_emits_the_clicked_entry(qtbot: QtBot) -> None:
     rect, entry = cal._ticket_hits[0]
     center = QPoint(int(rect.center().x()), int(rect.center().y()))
     with qtbot.waitSignal(cal.ticket_activated, timeout=500) as blocker:
-        qtbot.mouseClick(cal, Qt.MouseButton.LeftButton, pos=center)
+        # pytest-qt typisiert QtBot nur teilweise - mouseClick gilt als untypisiert.
+        qtbot.mouseClick(cal, Qt.MouseButton.LeftButton, pos=center)  # type: ignore[no-untyped-call]
     assert blocker.args[0] is entry
 
 

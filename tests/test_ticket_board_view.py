@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+from PySide6.QtCore import QModelIndex
 from PySide6.QtWidgets import QApplication, QComboBox
 
 from jira_timesheet_qt.models.settings import Settings
@@ -18,6 +19,7 @@ from jira_timesheet_qt.services.ticket_board import (
     Group,
     Marker,
     Role,
+    Statistics,
     Ticket,
 )
 from jira_timesheet_qt.ui.main_window import _VIEWS, MainWindow
@@ -31,6 +33,17 @@ from jira_timesheet_qt.ui.ticket_board_worker import (
 )
 
 NOW = dt.datetime(2026, 8, 5, 12, 0, tzinfo=dt.UTC)
+
+
+def tickets_von(view: TicketBoardView) -> list[Ticket]:
+    """Die Tickets der Ansicht, mit Zusicherung statt stiller Annahme.
+
+    `board` ist `Board | None`. In diesen Tests ist es immer gesetzt - steht es
+    doch auf None, ist der Testaufbau kaputt und soll das auch sagen.
+    """
+    assert view.board is not None, "Die Ansicht hat kein Board - Testaufbau pruefen"
+    return view.board.tickets
+
 
 
 def ticket(
@@ -385,6 +398,7 @@ class TestEinstellungsseite:
             bereich = dialog._stapel.currentWidget()
             assert isinstance(bereich, QScrollArea)
             seite = bereich.widget()
+            assert seite is not None
             # Der Beleg: die Seite braucht mehr Hoehe als der Bereich hergibt,
             # und genau dafuer ist die Bildlaufleiste da.
             assert seite.height() > bereich.viewport().height()
@@ -573,12 +587,12 @@ class TestBedienung:
         view.set_board(board(Group(role=Role.ACTIVE, tickets=[ticket("A-1")])))
         return view
 
-    def _erste_zeile(self, view: TicketBoardView):
+    def _erste_zeile(self, view: TicketBoardView) -> QModelIndex:
         return view._proxy.index(0, 0, view._proxy.index(0, 0))
 
     def test_doppelklick_auf_ticket_oeffnet_details(self, qapp: QApplication) -> None:
         view = self._befuellt()
-        empfangen: list[object] = []
+        empfangen: list[Ticket] = []
         view.detail_requested.connect(empfangen.append)
         view._on_double_click(self._erste_zeile(view))
         assert len(empfangen) == 1
@@ -586,7 +600,7 @@ class TestBedienung:
 
     def test_doppelklick_auf_gruppe_klappt_nur_um(self, qapp: QApplication) -> None:
         view = self._befuellt()
-        empfangen: list[object] = []
+        empfangen: list[Ticket] = []
         view.detail_requested.connect(empfangen.append)
         gruppe = view._proxy.index(0, 0)
         view._tree.setExpanded(gruppe, True)
@@ -601,7 +615,7 @@ class TestBedienung:
         # Ohne freigeschalteten Zugang darf der Aufruf nichts ausloesen.
         assert view._report_available is False
         view.set_report_available(True)
-        view._emit_report(view._board.tickets[0])
+        view._emit_report(tickets_von(view)[0])
         assert empfangen == ["A-1"]
 
     def test_suche_von_aussen_filtert(self, qapp: QApplication) -> None:
@@ -637,13 +651,13 @@ class TestKontextmenue:
         view.set_board(board(Group(role=Role.ACTIVE, tickets=[ticket("A-1")])))
         return view
 
-    def _eintraege(self, view: TicketBoardView, t: object) -> list[tuple[str, bool]]:
+    def _eintraege(self, view: TicketBoardView, t: Ticket | None) -> list[tuple[str, bool]]:
         menu = view.build_menu(t)
         return [(a.text(), a.isEnabled()) for a in menu.actions() if not a.isSeparator()]
 
     def test_alle_gewuenschten_eintraege_sind_da(self, qapp: QApplication) -> None:
         view = self._view()
-        texte = [t for t, _ in self._eintraege(view, view._board.tickets[0])]
+        texte = [t for t, _ in self._eintraege(view, tickets_von(view)[0])]
         assert "Details anzeigen" in texte
         assert "Ticket im Browser öffnen" in texte
         assert "Ticket-Analyse erstellen" in texte
@@ -661,16 +675,16 @@ class TestKontextmenue:
 
     def test_analyse_braucht_zugangsdaten(self, qapp: QApplication) -> None:
         view = self._view()
-        t = view._board.tickets[0]
+        t = tickets_von(view)[0]
         assert dict(self._eintraege(view, t))["Ticket-Analyse erstellen"] is False
         view.set_report_available(True)
         assert dict(self._eintraege(view, t))["Ticket-Analyse erstellen"] is True
 
     def test_details_loesen_das_signal_aus(self, qapp: QApplication) -> None:
         view = self._view()
-        empfangen: list[object] = []
+        empfangen: list[Ticket] = []
         view.detail_requested.connect(empfangen.append)
-        menu = view.build_menu(view._board.tickets[0])
+        menu = view.build_menu(tickets_von(view)[0])
         next(a for a in menu.actions() if a.text() == "Details anzeigen").trigger()
         assert len(empfangen) == 1
 
@@ -679,7 +693,7 @@ class TestKontextmenue:
         view.set_report_available(True)
         empfangen: list[str] = []
         view.report_requested.connect(empfangen.append)
-        menu = view.build_menu(view._board.tickets[0])
+        menu = view.build_menu(tickets_von(view)[0])
         next(a for a in menu.actions() if a.text() == "Ticket-Analyse erstellen").trigger()
         assert empfangen == ["A-1"]
 
@@ -927,7 +941,7 @@ class TestMeldungskanaele:
 class TestDiagramme:
     """Der einklappbare Auswertungsstreifen über der Tabelle."""
 
-    def _stats(self):
+    def _stats(self) -> Statistics:
         from jira_timesheet_qt.services.ticket_board import build_statistics
 
         def issue_row(key: str, created: str, done: str = "") -> dict[str, object]:
@@ -1082,7 +1096,7 @@ class TestDiagramme:
 class TestAnonymisierung:
     """Screenshot-Modus: nichts Identifizierendes darf im Bild landen."""
 
-    def _echtes_board(self):
+    def _echtes_board(self) -> Board:
         return board(
             Group(
                 role=Role.ACTIVE,
@@ -1108,7 +1122,7 @@ class TestAnonymisierung:
             )
         )
 
-    def _anonym(self):
+    def _anonym(self) -> Board:
         from jira_timesheet_qt.services.anonymizer import anonymize_board
 
         return anonymize_board(self._echtes_board())
@@ -1178,10 +1192,10 @@ class TestAnonymisierung:
         window._assigned_board.set_board(echt)
 
         window._toggle_anonymize()
-        assert window._assigned_board.board.tickets[0].key != "GEHEIM-4711"
+        assert tickets_von(window._assigned_board)[0].key != "GEHEIM-4711"
         # Zurueckschalten liefert die echten Daten wieder.
         window._toggle_anonymize()
-        assert window._assigned_board.board.tickets[0].key == "GEHEIM-4711"
+        assert tickets_von(window._assigned_board)[0].key == "GEHEIM-4711"
 
     def test_absprung_und_analyse_sind_im_screenshot_modus_gesperrt(
         self, qapp: QApplication
@@ -1193,7 +1207,7 @@ class TestAnonymisierung:
         view.set_anonymized(True)
         eintraege = {
             a.text(): a.isEnabled()
-            for a in view.build_menu(view.board.tickets[0]).actions()
+            for a in view.build_menu(tickets_von(view)[0]).actions()
             if not a.isSeparator()
         }
         assert eintraege["Ticket im Browser öffnen"] is False

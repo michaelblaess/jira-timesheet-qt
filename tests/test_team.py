@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 import unittest
+from typing import Any
 
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.services.team import (
@@ -31,6 +32,7 @@ from jira_timesheet_qt.services.ticket_board import (
     BoardConfig,
     Marker,
     Role,
+    Ticket,
     WorklogInfo,
     assigned_jql,
     assignee_clause,
@@ -252,7 +254,8 @@ class MerklisteTest(unittest.TestCase):
         self.assertEqual(["Gut"], [m.display_name for m in geladen.members])
 
     def test_kein_bestand_ergibt_leere_liste(self) -> None:
-        for wert in (None, "", 42, {}):
+        werte: tuple[object, ...] = (None, "", 42, {})
+        for wert in werte:
             self.assertEqual([], from_storage(wert).members)
 
     def test_suche_ist_unabhaengig_von_gross_und_kleinschreibung(self) -> None:
@@ -264,7 +267,7 @@ class MerklisteTest(unittest.TestCase):
 class FremdsichtGrenzeTest(unittest.TestCase):
     """Was in der Fremdsicht NICHT entstehen darf."""
 
-    def _issue(self, key: str, reporter: str) -> dict[str, object]:
+    def _issue(self, key: str, reporter: str) -> dict[str, Any]:
         """Ein Ticket in einem Rueckgabe-Status mit gegebenem Autor."""
         alt = (dt.datetime.now(dt.UTC) - dt.timedelta(days=90)).strftime(
             "%Y-%m-%dT%H:%M:%S.000+0000"
@@ -338,7 +341,7 @@ class AbgeschlossenTest(unittest.TestCase):
             done_status=("Erledigt",),
         )
 
-    def _issue(self, key: str, status: str) -> dict[str, object]:
+    def _issue(self, key: str, status: str) -> dict[str, Any]:
         alt = (dt.datetime.now(dt.UTC) - dt.timedelta(days=200)).strftime(
             "%Y-%m-%dT%H:%M:%S.000+0000"
         )
@@ -512,7 +515,7 @@ class VerdrahtungTest(unittest.TestCase):
         gemeldet_von_dritten = self._fremd_board(reporter="9999abcd9999abcd9999abcd")
         self.assertTrue(gemeldet_von_dritten.foreign_reporter)
 
-    def _fremd_board(self, reporter: str) -> object:
+    def _fremd_board(self, reporter: str) -> Ticket:
         """Laesst den Faden mit eingesetztem Client laufen und gibt das Ticket.
 
         Die gemeinte Person fuehrt zwei Konten (ID_B und ID_C), der
@@ -532,7 +535,7 @@ class VerdrahtungTest(unittest.TestCase):
         alt = (dt.datetime.now(dt.UTC) - dt.timedelta(days=90)).strftime(
             "%Y-%m-%dT%H:%M:%S.000+0000"
         )
-        issue = {
+        issue: dict[str, Any] = {
             "key": "PROJ-1",
             "fields": {
                 "summary": "Beispiel",
@@ -559,8 +562,8 @@ class VerdrahtungTest(unittest.TestCase):
                 # Benutzers - in der Fremdsicht also die falsche.
                 return ID_A, [issue]
 
-        original = modul.JiraClient
-        modul.JiraClient = FakeClient  # type: ignore[misc, assignment]
+        original = modul.JiraClient  # type: ignore[attr-defined]
+        modul.JiraClient = FakeClient  # type: ignore[attr-defined, assignment]
         try:
             mitglied = TeamMember(display_name="Fremde Person", account_ids=(ID_B, ID_C))
             worker = TicketBoardWorker(
@@ -568,7 +571,7 @@ class VerdrahtungTest(unittest.TestCase):
             )
             board = asyncio.run(worker._fetch())
         finally:
-            modul.JiraClient = original  # type: ignore[misc]
+            modul.JiraClient = original  # type: ignore[attr-defined]
         return [t for gruppe in board.groups for t in gruppe.tickets][0]
 
     def test_einstellung_erreicht_den_kern(self) -> None:

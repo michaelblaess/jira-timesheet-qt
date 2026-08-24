@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QModelIndex, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
@@ -115,7 +115,7 @@ class TestTreeModelEditing:
         model.set_timesheet(demo_timesheet())
         return model
 
-    def _manual_index(self, model: TimesheetTreeModel):  # noqa: ANN202
+    def _manual_index(self, model: TimesheetTreeModel) -> QModelIndex:
         # Eltern-Index fuer rowCount/index MUSS Spalte 0 sein (Qt-Konvention).
         for g in range(model.rowCount()):
             group = model.index(g, 0)

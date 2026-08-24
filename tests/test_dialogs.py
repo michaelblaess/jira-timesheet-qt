@@ -242,7 +242,7 @@ class TestStatusBar:
         assert window._status.text() == "Fehlgeschlagen"
         assert window._status.property("state") == "error"
 
-    def test_loading_without_credentials_reports_an_error(self, qapp: QApplication, monkeypatch) -> None:
+    def test_loading_without_credentials_reports_an_error(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
         """Ohne Zugang darf kein Arbeitsfaden starten."""
         window = MainWindow(Settings(), Mode.DARK)
         monkeypatch.setattr(window, "open_settings", lambda: None)

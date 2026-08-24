@@ -11,6 +11,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from jira_timesheet_qt.models.settings import Settings
+from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
 from jira_timesheet_qt.services.anonymizer import (
     FAKE_EMAIL,
     FAKE_HOST,
@@ -21,6 +22,23 @@ from jira_timesheet_qt.ui.demo import demo_timesheet
 from jira_timesheet_qt.ui.log_dock import LogDock
 from jira_timesheet_qt.ui.main_window import MainWindow
 from jira_timesheet_qt.ui.theme import Mode
+
+
+def eintrag(window: MainWindow, zeile: int) -> WorklogEntry:
+    """Der Eintrag einer Zeile, mit Zusicherung statt stiller Annahme.
+
+    `entry_at` liefert `WorklogEntry | None`. In diesen Tests ist der Zettel
+    immer befuellt - steht dort None, ist der Testaufbau kaputt.
+    """
+    gefunden = window._model.entry_at(zeile)
+    assert gefunden is not None, f"Zeile {zeile} hat keinen Eintrag - Testaufbau pruefen"
+    return gefunden
+
+
+def zettel(vorhanden: Timesheet | None) -> Timesheet:
+    """Derselbe Gedanke fuer den Stundenzettel des Fensters."""
+    assert vorhanden is not None, "Kein Stundenzettel geladen - Testaufbau pruefen"
+    return vorhanden
 
 REAL_HOST = "https://jira.intern.example/"
 REAL_EMAIL = "vorname.nachname@example.com"
@@ -123,28 +141,28 @@ def window(qapp: QApplication) -> MainWindow:
 
 class TestMainWindowAnonymize:
     def test_toggle_replaces_data_and_host(self, window: MainWindow) -> None:
-        real_ticket = window._model.entry_at(0).ticket
+        real_ticket = eintrag(window, 0).ticket
         window._toggle_anonymize()
         # Ansicht zeigt jetzt Dummy-Daten.
         assert window._anonymize is True
         # isVisible() ist headless immer False (Fenster nie gezeigt) - isHidden()
         # spiegelt den explizit gesetzten Zustand.
         assert window._anon_badge.isHidden() is False
-        assert window._model.entry_at(0).ticket != real_ticket
-        assert window._timesheet.email == FAKE_EMAIL
+        assert eintrag(window, 0).ticket != real_ticket
+        assert zettel(window._timesheet).email == FAKE_EMAIL
         # Host in Status und Detail-Dialog ist verschleiert.
         assert window._display_host() == FAKE_HOST
         assert window._host_label() == "jira.example.com"
         # Die echten Rohdaten bleiben erhalten.
-        assert window._real_ts.all_entries[0].ticket == real_ticket
+        assert zettel(window._real_ts).all_entries[0].ticket == real_ticket
 
     def test_toggle_off_restores_real_data(self, window: MainWindow) -> None:
-        real_ticket = window._model.entry_at(0).ticket
+        real_ticket = eintrag(window, 0).ticket
         window._toggle_anonymize()
         window._toggle_anonymize()
         assert window._anonymize is False
         assert window._anon_badge.isHidden() is True
-        assert window._model.entry_at(0).ticket == real_ticket
+        assert eintrag(window, 0).ticket == real_ticket
         assert window._display_host() == REAL_HOST
 
     def test_command_reflects_state(self, window: MainWindow) -> None:

@@ -11,8 +11,9 @@ uebernommen, war nach dem erneuten Oeffnen aber wieder leer.
 from __future__ import annotations
 
 import datetime as dt
+from typing import TYPE_CHECKING
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.services.team import AccountCandidate
@@ -32,6 +33,10 @@ def _hit(account_id: str, name: str, offen: int | None = 3) -> AccountCandidate:
         open_count=offen,
         last_touch=dt.datetime(2026, 8, 5, 9, 0, tzinfo=dt.UTC),
     )
+
+
+if TYPE_CHECKING:
+    from jira_timesheet_qt.services.ticket_board import Board
 
 
 class TestEinstellungsseite:
@@ -172,10 +177,12 @@ class TestEinstellungsseite:
 
         dialog = SettingsDialog(Settings())
         dialog._team_hits_ready([_hit(ID_A, "Ohne Zahlen", offen=None)])
-        assert dialog.team_hits.item(0, 2).text() == ""
+        zelle = dialog.team_hits.item(0, 2)
+        assert zelle is not None and zelle.text() == ""
         # Gegenprobe: mit Zahl steht sie auch da.
         dialog._team_hits_ready([_hit(ID_B, "Mit Zahlen", offen=7)])
-        assert dialog.team_hits.item(0, 2).text() == "7"
+        zelle = dialog.team_hits.item(0, 2)
+        assert zelle is not None and zelle.text() == "7"
 
 
 class TestReiter:
@@ -247,8 +254,9 @@ class TestReiter:
         assert member.account_ids
 
     def test_ohne_merkliste_kein_abruf_sondern_ein_hinweis(self, qapp: QApplication) -> None:
-        from jira_timesheet_qt.ui.main_window import MODE_TEAM, MainWindow
+        from jira_timesheet_qt.ui.main_window import MainWindow
         from jira_timesheet_qt.ui.theme import Mode
+        from jira_timesheet_qt.ui.ticket_board_worker import MODE_TEAM
 
         window = MainWindow(
             Settings(
@@ -279,7 +287,7 @@ class TestReiter:
 class TestGruppen:
     """Titel, Hinweise und der Startzustand der Gruppen."""
 
-    def _board(self) -> object:
+    def _board(self) -> Board:
         """Eine Ansicht mit je einem Ticket in Übergabe und Abgeschlossen."""
         from jira_timesheet_qt.services.ticket_board import BoardConfig, build_board
 
@@ -402,8 +410,9 @@ class TestLadenUndAktualisieren:
     def test_aktualisieren_trifft_die_sichtbare_ansicht(self, qapp: QApplication) -> None:
         # Ein Aktualisieren, das den Monat neu holt, während man auf eine
         # Ticketliste schaut, sieht wie ein Ausfall aus.
-        from jira_timesheet_qt.ui.main_window import _VIEWS, MODE_TEAM, MainWindow
+        from jira_timesheet_qt.ui.main_window import _VIEWS, MainWindow
         from jira_timesheet_qt.ui.theme import Mode
+        from jira_timesheet_qt.ui.ticket_board_worker import MODE_TEAM
 
         window = MainWindow(self._zugang(), Mode.DARK)
         geladen: list[str] = []
@@ -439,7 +448,7 @@ class TestBeschriftungen:
         "board_done": "Abgeschlossen",
     }
 
-    def _labels(self, dialog: object) -> dict[str, str]:
+    def _labels(self, dialog: QWidget) -> dict[str, str]:
         """Liest zu jedem Board-Feld die Beschriftung aus dem Formular."""
         from PySide6.QtWidgets import QFormLayout, QLabel
 

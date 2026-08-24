@@ -134,7 +134,7 @@ class TestYearView:
 
 
 class TestExport:
-    def test_excel_is_written(self, qapp: QApplication, tmp_path: Path, monkeypatch) -> None:
+    def test_excel_is_written(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         service = ExportService(Settings())
         target = tmp_path / "Stundenzettel.xlsx"
         monkeypatch.setattr(service, "_ask_target", lambda *a, **k: str(target))
@@ -143,7 +143,7 @@ class TestExport:
         assert Path(result.path).is_file()
         assert Path(result.path).stat().st_size > 0
 
-    def test_pdf_is_written(self, qapp: QApplication, tmp_path: Path, monkeypatch) -> None:
+    def test_pdf_is_written(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         service = ExportService(Settings())
         target = tmp_path / "Stundenzettel.pdf"
         monkeypatch.setattr(service, "_ask_target", lambda *a, **k: str(target))
@@ -152,7 +152,7 @@ class TestExport:
         assert Path(result.path).is_file()
         assert Path(result.path).read_bytes()[:4] == b"%PDF"
 
-    def test_cancelling_writes_nothing(self, qapp: QApplication, monkeypatch) -> None:
+    def test_cancelling_writes_nothing(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
         service = ExportService(Settings())
         monkeypatch.setattr(service, "_ask_target", lambda *a, **k: "")
         assert service.export_excel(demo_timesheet(), None).cancelled  # type: ignore[arg-type]

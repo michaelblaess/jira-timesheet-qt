@@ -141,8 +141,10 @@ class TestBuilder:
         act_l = registry.get("v.l").action
         act_c = registry.get("v.c").action
         assert act_l is not None and act_l.isCheckable()
-        assert act_l.actionGroup() is act_c.actionGroup()
-        assert act_l.actionGroup().isExclusive()
+        assert act_c is not None
+        gruppe = act_l.actionGroup()
+        assert gruppe is act_c.actionGroup()
+        assert gruppe is not None and gruppe.isExclusive()
 
     def test_permission_drops_subtree(self, qapp: QApplication) -> None:
         definition = _defn([

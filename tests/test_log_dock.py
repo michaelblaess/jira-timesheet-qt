@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from PySide6.QtWidgets import QApplication, QComboBox, QLineEdit, QSpinBox
 
@@ -70,7 +72,7 @@ class TestLogInWindow:
         window.show()
         assert window._log.isVisible()
 
-    def test_toggle_is_remembered(self, qapp: QApplication, tmp_path, monkeypatch) -> None:
+    def test_toggle_is_remembered(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Der Zustand ueberlebt den naechsten Start."""
         monkeypatch.setattr(Settings, "SETTINGS_DIR", tmp_path)
         monkeypatch.setattr(Settings, "SETTINGS_FILE", tmp_path / "settings.json")
@@ -92,7 +94,7 @@ class TestLogInWindow:
         window._set_status("Etwas ist schiefgegangen", "error")
         assert "Etwas ist schiefgegangen" in window._log.plain_text()
 
-    def test_failed_load_is_recorded(self, qapp: QApplication, monkeypatch) -> None:
+    def test_failed_load_is_recorded(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
         """Der Grund eines Fehlschlags muss im Verlauf nachlesbar bleiben."""
         window = MainWindow(Settings(), Mode.DARK)
         monkeypatch.setattr(window, "open_settings", lambda: None)

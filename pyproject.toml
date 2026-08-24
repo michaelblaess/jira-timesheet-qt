@@ -74,6 +74,15 @@ disallow_untyped_defs = true
 module = ["qtawesome.*"]
 ignore_missing_imports = true
 
+# Tests patchen am Verwendungsort: `monkeypatch.setattr(modul, "QMessageBox", ...)`
+# greift auf einen Namen zu, den das Modul importiert, aber nicht ausdruecklich
+# weiterexportiert. Das ist die richtige Stelle zum Patchen (ein Patch an der
+# Quelle wuerde nicht greifen) - nur `no_implicit_reexport` aus strict verbietet
+# den Zugriff. Alle uebrigen strict-Regeln gelten in tests weiter.
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+implicit_reexport = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"

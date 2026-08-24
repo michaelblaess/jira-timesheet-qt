@@ -12,6 +12,7 @@ import pytest
 
 from jira_timesheet_qt.services.ticket_board import (
     AccountIdError,
+    Board,
     BoardConfig,
     Marker,
     Role,
@@ -277,7 +278,7 @@ class TestMarker:
 class TestPileOfShame:
     """Die Regel muss das Dauerticket vom vergessenen Ticket trennen."""
 
-    def _board(self, key: str, updated_days: int, worklog: WorklogInfo | None):
+    def _board(self, key: str, updated_days: int, worklog: WorklogInfo | None) -> Board:
         return build_board(
             [issue(key, "In Arbeit", updated=NOW - dt.timedelta(days=updated_days))],
             CONFIG,

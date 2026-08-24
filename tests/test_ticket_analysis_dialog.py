@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
 from jira_timesheet_qt.i18n import current_language, load_locale
 from jira_timesheet_qt.models.settings import Settings
@@ -122,7 +122,7 @@ class TestDialog:
         self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         gestartet: list[str] = []
-        monkeypatch.setattr(modul.QMessageBox, "warning", lambda *a, **k: None)
+        monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
         monkeypatch.setattr(
             modul, "TicketReportWorker", lambda *a, **k: gestartet.append("start")
         )
@@ -142,9 +142,9 @@ class TestDialog:
         ziel = tmp_path / "berichte" / "ABC-1.html"
         ziel.parent.mkdir()
         monkeypatch.setattr(
-            modul.QFileDialog, "getSaveFileName", lambda *a, **k: (str(ziel), "")
+            QFileDialog, "getSaveFileName", lambda *a, **k: (str(ziel), "")
         )
-        monkeypatch.setattr(modul.QMessageBox, "information", lambda *a, **k: None)
+        monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
 
         einstellungen = _configured()
         dialog = TicketAnalysisDialog(einstellungen)
@@ -164,7 +164,7 @@ class TestDialog:
     def test_abbruch_im_speichern_dialog_schreibt_nichts(
         self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(modul.QFileDialog, "getSaveFileName", lambda *a, **k: ("", ""))
+        monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a, **k: ("", ""))
 
         dialog = TicketAnalysisDialog(_configured())
         dialog._input.setText("ABC-1")

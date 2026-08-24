@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -152,7 +153,9 @@ class TestSaveGuard:
 class TestBackup:
     """Sicherung, atomares Schreiben und goldene Kopie beim Speichern."""
 
-    def _full(self, **extra: object) -> Settings:
+    # Any statt object: der Helfer reicht die Argumente an die getypten Felder
+    # von Settings durch - mit object passt kein einziges davon.
+    def _full(self, **extra: Any) -> Settings:
         return Settings(jira_host="https://h", email="e@x.de", jira_token="TOK", **extra)
 
     def test_keeps_only_max_backups(self, _isolated: tuple[Path, Path]) -> None:
