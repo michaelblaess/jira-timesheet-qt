@@ -63,7 +63,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
-          retention-days: 1
+          retention-days: 30
           name: dist-${{ matrix.os }}
           path: |
             dist/jira-timesheet-qt-v*.zip
@@ -71,21 +71,23 @@ jobs:
 
   release:
     needs: build
-    # Auch wenn eine Plattform scheitert, die erfolgreichen Artefakte
-    # veroeffentlichen.
+    # Auch wenn eine Plattform scheitert, die uebrigen Ergebnisse festhalten.
     if: always()
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v7
-        with:
-          merge-multiple: true
-
-      - name: Create Release
+      # Seit dem Wechsel auf die BUSL sind die fertigen Programmpakete
+      # kostenpflichtig. Sie haengen deshalb NICHT mehr am GitHub-Release,
+      # sondern bleiben Actions-Artefakte - von dort gehen sie in den Verkauf.
+      # Das Release selbst bleibt als Versionsmarke mit Aenderungsnotizen.
+      - name: Create Release (ohne Programmpakete)
         uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
-          files: |
-            *.zip
-            *.tar.gz
+          body: |
+            Die fertigen Programmpakete fuer Windows, macOS und Linux sind
+            kostenpflichtig - siehe Abschnitt "Lizenz" in der README.
+
+            Wer selbst baut, kann diese Version wie gewohnt aus dem Quelltext
+            erzeugen: `uv sync` und starten. Das ist ausdruecklich erlaubt und
+            kostenlos.
