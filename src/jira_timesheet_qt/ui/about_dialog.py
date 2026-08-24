@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QWidget
 from QAppFramework.about import AboutDialog as _AboutDialog
-from QAppFramework.about import Zitat, lade_zitate
 
 from jira_timesheet_qt import __app_name__, __author__, __version__, __year__
 from jira_timesheet_qt.i18n import current_language
@@ -16,7 +15,7 @@ from jira_timesheet_qt.i18n import current_language
 REPO_URL = "https://github.com/michaelblaess/jira-timesheet-qt"
 DESCRIPTION = "Stundenzettel aus Jira-Worklogs - mit manueller Nacherfassung und Export."
 
-__all__ = ["DESCRIPTION", "REPO_URL", "AboutDialog", "Zitat", "lade_zitate"]
+__all__ = ["DESCRIPTION", "REPO_URL", "AboutDialog", "Quote", "load_quotes"]
 
 
 class AboutDialog(_AboutDialog):

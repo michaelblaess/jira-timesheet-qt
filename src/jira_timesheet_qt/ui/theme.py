@@ -22,25 +22,25 @@ from enum import StrEnum
 
 from PySide6.QtGui import QPalette
 from QAppFramework.theme import (
-    AKZENTE,
-    DUNKEL,
-    HELL,
+    ACCENTS,
+    DARK,
+    DEFAULT_ACCENT,
+    DEFAULT_ZOOM,
+    LIGHT,
     RADIUS_MD,
     RADIUS_SM,
-    STANDARD_AKZENT,
-    STANDARD_ZOOM,
-    ZOOMSTUFEN,
-    Akzent,
-    Farben,
-    akzent_namen,
+    ZOOM_LEVELS,
+    Accent,
+    Colors,
+    accent_names,
 )
-from QAppFramework.theme import akzent as current_accent
-from QAppFramework.theme import baue_palette as _baue_palette
-from QAppFramework.theme import baue_qss as _baue_qss
-from QAppFramework.theme import farben as _farben
-from QAppFramework.theme import setze_akzent as set_accent
-from QAppFramework.theme import setze_zoom as set_scale
-from QAppFramework.theme import skaliere as _skaliere
+from QAppFramework.theme import accent as current_accent
+from QAppFramework.theme import build_palette as _baue_palette
+from QAppFramework.theme import build_stylesheet as _baue_qss
+from QAppFramework.theme import colors as _farben
+from QAppFramework.theme import scale as _skaliere
+from QAppFramework.theme import set_accent as set_accent
+from QAppFramework.theme import set_zoom as set_scale
 from QAppFramework.theme import zoom as current_scale
 
 
@@ -56,17 +56,13 @@ class Mode(StrEnum):
     LIGHT = "light"
 
 
-# Die Anwendung nennt die Farbwerte 'Palette'.
-Palette = Farben
-DARK = DUNKEL
-LIGHT = HELL
-
-# Akzentfarben und Zoomstufen unter den hier ueblichen Namen.
-ACCENTS = AKZENTE
-ACCENT_LABELS: dict[str, str] = akzent_namen("de")
-DEFAULT_ACCENT = STANDARD_AKZENT
-SCALES = ZOOMSTUFEN
-DEFAULT_SCALE = STANDARD_ZOOM
+# Die Anwendung nennt die Farbwerte 'Palette' und die Zoomstufen 'Scales' -
+# alles andere heisst in der Bibliothek inzwischen genauso und kommt direkt
+# aus dem Import.
+Palette = Colors
+ACCENT_LABELS: dict[str, str] = accent_names("de")
+SCALES = ZOOM_LEVELS
+DEFAULT_SCALE = DEFAULT_ZOOM
 
 __all__ = [
     "ACCENTS",
@@ -77,7 +73,6 @@ __all__ = [
     "LIGHT",
     "SCALES",
     "Accent",
-    "Akzent",
     "Mode",
     "Palette",
     "build_palette",
@@ -89,8 +84,6 @@ __all__ = [
     "set_scale",
 ]
 
-# Der Name, unter dem die Anwendung den Akzentfarben-Satz kennt.
-Accent = Akzent
 
 
 def palette_for(mode: Mode) -> Palette:

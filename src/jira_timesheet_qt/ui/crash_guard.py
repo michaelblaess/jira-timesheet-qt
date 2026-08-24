@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from PySide6.QtCore import QCoreApplication, QTimer
 from PySide6.QtWidgets import QWidget
-from QAppFramework.absturz import FehlerDialog as ErrorDialog
-from QAppFramework.absturz import abbruch_abfangen as _abbruch_abfangen
-from QAppFramework.absturz import baue_bericht
-from QAppFramework.absturz import einhaengen as _einhaengen
+from QAppFramework.crash import ErrorDialog as ErrorDialog
+from QAppFramework.crash import build_report
+from QAppFramework.crash import install_error_handler as _einhaengen
+from QAppFramework.crash import install_interrupt_handler as _abbruch_abfangen
 
 from jira_timesheet_qt import __app_name__, __version__
 from jira_timesheet_qt.i18n import current_language
@@ -21,7 +21,7 @@ __all__ = ["ErrorDialog", "format_report", "install", "install_interrupt"]
 
 def format_report(exc_type: type[BaseException], value: BaseException, tb: object) -> str:
     """Baut den Fehlerbericht mit Name, Version und Umgebung."""
-    return baue_bericht(exc_type, value, tb, f"{__app_name__} {__version__}")  # type: ignore[arg-type]
+    return build_report(exc_type, value, tb, f"{__app_name__} {__version__}")  # type: ignore[arg-type]
 
 
 def install(parent: QWidget | None = None) -> None:

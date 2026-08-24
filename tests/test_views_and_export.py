@@ -226,7 +226,7 @@ class TestCrashGuard:
         self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Nicht nur format_report - der Weg durch install() muss sie tragen."""
-        from QAppFramework import absturz
+        from QAppFramework import crash
 
         from jira_timesheet_qt.ui import crash_guard
 
@@ -242,7 +242,7 @@ class TestCrashGuard:
             def exec(self) -> int:
                 return 0
 
-        monkeypatch.setattr(absturz, "FehlerDialog", _Attrappe)
+        monkeypatch.setattr(crash, "ErrorDialog", _Attrappe)
         vorher = sys.excepthook
         try:
             crash_guard.install()

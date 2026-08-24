@@ -29,8 +29,8 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QWidget,
 )
-from QAppFramework.einstellungen import FELDBREITE, BasisEinstellungenDialog, Darstellung
-from QAppFramework.theme import Modus
+from QAppFramework.settings import FELDBREITE, Appearance, SettingsDialogBase
+from QAppFramework.theme import Mode
 
 from jira_timesheet_qt.models.export_column import ExportColumn, default_label
 from jira_timesheet_qt.models.settings import (
@@ -87,7 +87,7 @@ def _split(raw: str) -> list[str]:
     return [part.strip() for part in raw.split(",") if part.strip()]
 
 
-class SettingsDialog(BasisEinstellungenDialog):
+class SettingsDialog(SettingsDialogBase):
     """Dialog zum Bearbeiten der Einstellungen.
 
     Bekommt die aktuellen Einstellungen, gibt bei Annahme die geaenderten
@@ -101,9 +101,9 @@ class SettingsDialog(BasisEinstellungenDialog):
         # Faden fuer die Budget-Feld-Autoerkennung (ein Netzwerkaufruf).
         self._detect_worker: BudgetFieldWorker | None = None
         super().__init__(
-            Darstellung(
-                modus=Modus(settings.theme) if settings.theme in {m.value for m in Modus} else Modus.SYSTEM,
-                akzent=settings.accent,
+            Appearance(
+                mode=Mode(settings.theme) if settings.theme in {m.value for m in Mode} else Mode.SYSTEM,
+                accent=settings.accent,
                 zoom=settings.ui_scale,
             ),
             parent,
@@ -119,7 +119,7 @@ class SettingsDialog(BasisEinstellungenDialog):
     def eigene_seiten(self) -> Sequence[tuple[str, QWidget]]:
         """Die sechs Seiten dieser Anwendung.
 
-        Darstellung und Speicherort kommen aus der Bibliothek und haengen sich
+        Appearance und Speicherort kommen aus der Bibliothek und haengen sich
         dahinter. Was auf der Darstellungs-Seite zusaetzlich steht - Markierung
         und Soll-Ist-Ampel -, liefert darstellung_erweitern().
         """
@@ -190,7 +190,7 @@ class SettingsDialog(BasisEinstellungenDialog):
             "Sucht in Jira (Cloud) das Custom-Feld mit 'budget' im Namen und trägt es hier ein."
         )
         self.detect_budget.clicked.connect(self._detect_budget_field)
-        # Die Autoerkennung nutzt die Cloud-API - im Data-Center-Modus abgeschaltet.
+        # Die Autoerkennung nutzt die Cloud-API - im Data-Center-Mode abgeschaltet.
         self.detect_budget.setEnabled(not self.legacy.isChecked())
         self.legacy.toggled.connect(lambda checked: self.detect_budget.setEnabled(not checked))
         budget_layout.addWidget(self.detect_budget)
@@ -295,7 +295,7 @@ class SettingsDialog(BasisEinstellungenDialog):
         worker.start()
 
     def _reset_detect_button(self) -> None:
-        """Setzt den Knopf zurueck (Beschriftung und - je nach Modus - aktiv)."""
+        """Setzt den Knopf zurueck (Beschriftung und - je nach Mode - aktiv)."""
         self.detect_budget.setText("Automatisch ermitteln")
         self.detect_budget.setEnabled(not self.legacy.isChecked())
 
@@ -917,7 +917,7 @@ class SettingsDialog(BasisEinstellungenDialog):
 
     def darstellung_erweitern(self, form: QFormLayout) -> None:
         """Markierung und Soll-Ist-Ampel - sie gehoeren fuer den Anwender zur
-        Darstellung, kennt aber nur diese Anwendung.
+        Appearance, kennt aber nur diese Anwendung.
 
         Erscheinungsbild, Akzentfarbe und Zoom stehen darueber und kommen aus
         der Bibliothek.
@@ -990,8 +990,8 @@ class SettingsDialog(BasisEinstellungenDialog):
             for key, visible, enabled, label in self._column_rows
         ]
         # Erscheinungsbild, Akzentfarbe und Zoom kommen aus der Bibliothek.
-        s.theme = self.darstellung.modus.value
-        s.accent = self.darstellung.akzent
+        s.theme = self.darstellung.mode.value
+        s.accent = self.darstellung.accent
         s.ui_scale = self.darstellung.zoom
         s.mark_manual_entries = self.mark_manual.isChecked()
         s.manual_entry_color = self.farbe_von(self.manual_color)
