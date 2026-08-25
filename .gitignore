@@ -38,3 +38,6 @@ PLAN*.md
 
 # Erzeugte Ticket-Berichte tragen interne Ticketdaten - nie ins Repo.
 *.html
+
+# Ausgestellte Lizenzdateien gehen an Anwender, nicht ins Repo.
+*.lic
