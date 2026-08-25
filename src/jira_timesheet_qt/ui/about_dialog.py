@@ -11,6 +11,7 @@ from QAppFramework.about import AboutDialog as _AboutDialog
 
 from jira_timesheet_qt import __app_name__, __author__, __version__, __year__
 from jira_timesheet_qt.i18n import current_language
+from jira_timesheet_qt.ui import registration
 
 REPO_URL = "https://github.com/michaelblaess/jira-timesheet-qt"
 DESCRIPTION = "Stundenzettel aus Jira-Worklogs - mit manueller Nacherfassung und Export."
@@ -31,4 +32,8 @@ class AboutDialog(_AboutDialog):
             beschreibung=DESCRIPTION,
             repo_url=REPO_URL,
             sprache=current_language(),
+            registration_store=registration.store(),
+            public_key=registration.PUBLIC_KEY,
+            registration_mode=registration.MODE,
+            benefits=registration.BENEFITS,
         )

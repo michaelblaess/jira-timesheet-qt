@@ -46,6 +46,7 @@ from jira_timesheet_qt.services.team import (
     merge_accounts,
     to_storage,
 )
+from jira_timesheet_qt.ui import registration
 from jira_timesheet_qt.ui.jira_worker import BudgetFieldWorker
 from jira_timesheet_qt.ui.team_worker import TeamSearchWorker
 
@@ -143,6 +144,10 @@ class SettingsDialog(SettingsDialogBase):
             ("Zwischenspeicher", CACHE_DIR),
             ("Manuelle Zeiten", DB_FILE),
             ("Zustimmung", Settings.SETTINGS_DIR / "disclaimer.json"),
+            # Bewusst als eigener Eintrag und zuletzt: hier steht der
+            # erworbene Schluessel. Wer die Zustimmung zurueckstellen will,
+            # soll ihn nicht versehentlich mitloeschen.
+            ("Registrierung (Lizenz)", registration.license_path()),
         ]
 
     # --- Seiten ---------------------------------------------------------

@@ -107,6 +107,15 @@ def main() -> int:
     if not _confirm_disclaimer(settings):
         return 0
 
+    # Freiwillige Registrierung: gefragt wird genau einmal. Wer ablehnt,
+    # arbeitet unveraendert weiter - die Anwendung bleibt vollstaendig.
+    from QAppFramework.registration import RegistrationOutcome
+
+    from jira_timesheet_qt.ui import registration
+
+    if registration.check() is RegistrationOutcome.REMIND:
+        registration.ask()
+
     window = MainWindow(settings, mode)
     window.theme_changed.connect(apply_theme)
 
