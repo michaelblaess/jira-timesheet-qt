@@ -116,8 +116,10 @@ jobs:
           protocol: ftps
           local-dir: ./pakete/
           # Je Version ein eigener Ordner: der Abgleich der Action kann damit
-          # nur innerhalb dieses frischen Ordners wirken.
-          server-dir: /michaelblaess.de/pakete/jira-timesheet-qt/${{ github.ref_name }}/
+          # nur innerhalb dieses frischen Ordners wirken. Der Baum darueber ist
+          # per .htaccess passwortgeschuetzt - das stoert den Upload nicht,
+          # denn Basic Auth wirkt nur ueber HTTP, nicht ueber FTPS.
+          server-dir: /michaelblaess.de/releases/jira-timesheet-qt/${{ github.ref_name }}/
   release:
     needs: build
     # Auch wenn eine Plattform scheitert, die uebrigen Ergebnisse festhalten.
