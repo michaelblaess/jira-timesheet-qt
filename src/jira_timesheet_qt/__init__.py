@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.8.2"
+__version__ = "0.9.0"
 __author__ = "Michael Blaess"
 __year__ = "2026"
 # Anzeigename der Anwendung - was in Fenstertitel, Info-Dialog und
