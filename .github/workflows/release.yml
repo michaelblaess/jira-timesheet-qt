@@ -69,6 +69,55 @@ jobs:
             dist/jira-timesheet-qt-v*.zip
             dist/jira-timesheet-qt-v*.tar.gz
 
+  # Die fertigen Pakete zusaetzlich auf den eigenen Webspace legen. Sie liegen
+  # dort je Version in einem eigenen Ordner - bewusst NEBEN dem Astro-Seitenbaum
+  # (nicht unter downloads/), damit der Deploy der Projektseite und dieser hier
+  # sich nicht ins Gehege kommen.
+  publish:
+    needs: build
+    # Laedt hoch, was fertig geworden ist - auch wenn eine Plattform scheiterte.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Zugangsdaten vorhanden?
+        id: check
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+        run: |
+          if [ -z "$FTP_HOST" ]; then
+            echo "vorhanden=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::FTP-Zugangsdaten fehlen - Upload uebersprungen. Secrets FTP_HOST, FTP_USER und FTP_PASSWORD im Repo setzen."
+          else
+            echo "vorhanden=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Pakete einsammeln
+        if: steps.check.outputs.vorhanden == 'true'
+        uses: actions/download-artifact@v6
+        with:
+          merge-multiple: true
+          path: pakete
+
+      - name: Was liegt vor?
+        if: steps.check.outputs.vorhanden == 'true'
+        run: ls -lh pakete/
+
+      - name: Auf michaelblaess.de hochladen
+        if: steps.check.outputs.vorhanden == 'true'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          # Explizites FTPS - ohne diese Zeile faellt die Action auf
+          # unverschluesseltes FTP zurueck und schickt die Zugangsdaten
+          # im Klartext ueber die Leitung.
+          protocol: ftps
+          local-dir: ./pakete/
+          # Je Version ein eigener Ordner: der Abgleich der Action kann damit
+          # nur innerhalb dieses frischen Ordners wirken.
+          server-dir: /michaelblaess.de/pakete/jira-timesheet-qt/${{ github.ref_name }}/
   release:
     needs: build
     # Auch wenn eine Plattform scheitert, die uebrigen Ergebnisse festhalten.
