@@ -16,7 +16,7 @@ from jira_timesheet_qt.ui import registration
 REPO_URL = "https://github.com/michaelblaess/jira-timesheet-qt"
 DESCRIPTION = "Stundenzettel aus Jira-Worklogs - mit manueller Nacherfassung und Export."
 
-__all__ = ["DESCRIPTION", "REPO_URL", "AboutDialog", "Quote", "load_quotes"]
+__all__ = ["DESCRIPTION", "REPO_URL", "AboutDialog"]
 
 
 class AboutDialog(_AboutDialog):
