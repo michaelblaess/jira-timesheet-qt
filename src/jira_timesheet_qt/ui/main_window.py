@@ -156,6 +156,11 @@ class MainWindow(QMainWindow):
         # ein ueberholter Faden laeuft also zu Ende, sein Ergebnis wird aber
         # anhand dieser Nummer verworfen.
         self._load_generation = 0
+        # Laeuft gerade ein Monatsabruf? Der Leerzustand muss das wissen: seit
+        # dem Autostart steht die Karte schon da, waehrend die Daten noch
+        # unterwegs sind - "Keine Eintraege in diesem Zeitraum" waere dann eine
+        # Aussage ueber einen Stand, den noch niemand kennt.
+        self._loading_month = False
         # Alle noch laufenden Faeden, auch die ueberholten. Beim Schliessen muss
         # auf jeden davon gewartet werden, sonst zerstoert Qt einen laufenden
         # Faden mitsamt dem Fenster.
@@ -1142,7 +1147,22 @@ class MainWindow(QMainWindow):
         self._month_label.setText(f"{_month_name(self._month)} {self._year}")
 
     def _update_empty_state(self) -> None:
-        """Passt den Leerzustand an: fehlt der Zugang oder nur die Daten?"""
+        """Passt den Leerzustand an: laeuft der Abruf, fehlt der Zugang, fehlen die Daten?
+
+        Der Ladezustand steht bewusst vorn. Seit der Abruf beim Start von
+        selbst anlaeuft, steht die Karte schon da, waehrend die Buchungen noch
+        unterwegs sind - "Keine Eintraege in diesem Zeitraum" behauptet dann
+        ein Ergebnis, das noch gar nicht vorliegt, und der Knopf daneben laedt
+        ein zweites Mal, was ohnehin schon laeuft.
+        """
+        if self._loading_month:
+            self._empty_title.setText("Buchungen werden geladen")
+            self._empty_text.setText("Einen Moment bitte - die Daten kommen gerade aus Jira.")
+            self._empty_button.setText("Wird geladen")
+            self._empty_button.setEnabled(False)
+            return
+
+        self._empty_button.setEnabled(True)
         if self._settings_complete():
             self._empty_title.setText("Keine Einträge in diesem Zeitraum")
             self._empty_text.setText("Hole die Buchungen aus Jira oder wähle einen anderen Monat.")
@@ -1193,6 +1213,12 @@ class MainWindow(QMainWindow):
             self._set_status("Zugang unvollständig - bitte Host, E-Mail und Token hinterlegen.", "error")
             self.open_settings()
             return
+
+        # Vor dem Start, nicht danach: der Faden meldet sich erst mit seinem
+        # ersten Fortschritt zurueck, bis dahin stuende sonst weiter die
+        # Aussage da, es gebe keine Eintraege.
+        self._loading_month = True
+        self._update_empty_state()
 
         first = date(self._year, self._month, 1)
         last = date(self._year, self._month, calendar.monthrange(self._year, self._month)[1])
@@ -1451,6 +1477,9 @@ class MainWindow(QMainWindow):
     def _on_loaded(self, timesheet: Timesheet, generation: int | None = None) -> None:
         if not self._is_current(generation):
             return
+        # Vor set_timesheet: das ruft _update_empty_state und soll dort den
+        # fertigen Stand sehen, nicht mehr den Ladehinweis.
+        self._loading_month = False
         self.set_timesheet(timesheet)
         # Rechts in der Statusleiste steht der Verbindungszustand, nicht die
         # Summe - die Stunden zeigt schon die Kennzahlen-Leiste in der Mitte.
@@ -1459,6 +1488,7 @@ class MainWindow(QMainWindow):
     def _on_failed(self, message: str, generation: int | None = None) -> None:
         if not self._is_current(generation):
             return
+        self._loading_month = False
         self.set_timesheet(None)
         self._set_status(message, "error")
 
@@ -1527,6 +1557,11 @@ class MainWindow(QMainWindow):
         if not self._is_current(generation):
             return  # ein ueberholter Faden - der aktuelle laeuft weiter
         self._worker = None
+        # Netz gegen einen Faden, der weder Ergebnis noch Fehler gemeldet hat:
+        # sonst bliebe die Karte fuer immer auf "wird geladen" stehen.
+        if self._loading_month:
+            self._loading_month = False
+            self._update_empty_state()
 
     def load_year(self) -> None:
         """Holt alle zwoelf Monate des Jahres in einem einzigen Bereichs-Abruf."""
