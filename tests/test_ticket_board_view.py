@@ -14,6 +14,7 @@ from PySide6.QtCore import QModelIndex
 from PySide6.QtWidgets import QApplication, QComboBox
 
 from jira_timesheet_qt.models.settings import Settings
+from jira_timesheet_qt.services.anonymizer import _FAKE_AUTHORS
 from jira_timesheet_qt.services.ticket_board import (
     Board,
     BoardConfig,
@@ -1273,7 +1274,7 @@ class TestAnonymisierung:
                         summary="Interner Vorgang beim Kunden",
                         status="Zur Übergabe",
                         reporter="Blaess, Michael",
-                        assignee="Koch, Luca",
+                        assignee="Platzhalter, Paula",
                         priority="Kritisch",
                         issue_type="Bug",
                         is_bug=True,
@@ -1296,7 +1297,11 @@ class TestAnonymisierung:
         assert t.key != "GEHEIM-4711"
         assert t.summary != "Interner Vorgang beim Kunden"
         assert t.reporter != "Blaess, Michael"
-        assert t.assignee != "Koch, Luca"
+        assert t.assignee != "Platzhalter, Paula"
+        # Der Ausgangsname darf nicht aus dem Ersatzpool stammen: der
+        # Anonymisierer wuerfelt daraus, koennte ihn also auf sich selbst
+        # abbilden - der Test waere dann zufaellig rot oder gruen.
+        assert "Platzhalter, Paula" not in _FAKE_AUTHORS
 
     def test_der_statusname_verschwindet_auch(self, qapp: QApplication) -> None:
         # Statusnamen sind interne Prozessbezeichner des Betreibers und
