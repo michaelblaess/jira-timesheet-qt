@@ -377,7 +377,7 @@ The software is provided without warranty of any kind ("as is"), as set out in t
 
 | Key | Action |
 | --- | --- |
-| `F5` | Fetch the bookings for the month (or the year in year view) |
+| `F5` | Fetches the visible view and **always the bookings for the month as well**. The remaining views reload when you switch to them |
 | `Ctrl+F` | Focus the search field |
 | `Ctrl+N` | Record manual time |
 | `Ctrl+D` | Show ticket details |

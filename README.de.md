@@ -389,7 +389,7 @@ Die Software wird ohne jede Gewährleistung bereitgestellt ("as is"), wie in der
 
 | Taste | Aktion |
 | --- | --- |
-| `F5` | Buchungen des Monats holen (bzw. das Jahr in der Jahresansicht) |
+| `F5` | Holt die sichtbare Ansicht und **immer auch die Buchungen des Monats**. Die übrigen Ansichten laden beim nächsten Hinwechseln nach |
 | `Strg+F` | Suchfeld fokussieren |
 | `Strg+N` | Manuelle Zeit erfassen |
 | `Strg+D` | Ticket-Details anzeigen |

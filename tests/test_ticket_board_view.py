@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+import pytest
 from PySide6.QtCore import QModelIndex
 from PySide6.QtWidgets import QApplication, QComboBox
 
@@ -799,41 +800,143 @@ class TestAutomatischesLaden:
 
 
 class TestAktualisieren:
-    """Der Befehl der Werkzeugleiste trifft die sichtbare Ansicht."""
+    """F5 laedt die sichtbare Ansicht - und immer den Stundenzettel.
 
-    def _fenster(self) -> tuple[MainWindow, list[str]]:
-        window = MainWindow(Settings(), Mode.DARK)
+    Michael hat am 04.09.2026 gemeldet: wer in "Meine Tickets" aktualisiert
+    und danach auf den Stundenzettel wechselt, sieht dort den alten Stand und
+    muss ein zweites Mal F5 druecken.
+    """
+
+    def _zugang(self) -> Settings:
+        """Vollstaendiger Zugang - ohne ihn haelt sich F5 zurueck."""
+        return Settings(
+            jira_host="https://beispiel.invalid",
+            email="ich@example.invalid",
+            jira_token="geheim",
+        )
+
+    def _fenster(self, settings: Settings | None = None) -> tuple[MainWindow, list[str]]:
+        window = MainWindow(settings if settings is not None else self._zugang(), Mode.DARK)
         gerufen: list[str] = []
         window._load_board = lambda mode: gerufen.append(f"board:{mode}")  # type: ignore[method-assign]
         window.load_month = lambda: gerufen.append("monat")  # type: ignore[method-assign]
         window.load_year = lambda: gerufen.append("jahr")  # type: ignore[method-assign]
         return window, gerufen
 
-    def test_auf_der_liste_laedt_den_monat(self, qapp: QApplication) -> None:
+    def test_auf_der_liste_laedt_den_monat_nur_einmal(self, qapp: QApplication) -> None:
+        # Steht er selbst im Vordergrund, ist er die sichtbare Ansicht - ein
+        # zweiter Abruf waere reine Verschwendung.
         window, gerufen = self._fenster()
         window._stack.setCurrentIndex(_VIEWS.index("Stundenzettel"))
         window.reload_current()
         assert gerufen == ["monat"]
 
-    def test_auf_dem_jahr_laedt_das_jahr(self, qapp: QApplication) -> None:
+    def test_auf_dem_jahr_laedt_das_jahr_und_den_monat(self, qapp: QApplication) -> None:
         window, gerufen = self._fenster()
         window._stack.setCurrentIndex(_VIEWS.index("Jahr"))
         window.reload_current()
-        assert gerufen == ["jahr"]
+        assert gerufen == ["jahr", "monat"]
 
-    def test_auf_meinen_tickets_laedt_die_tickets(self, qapp: QApplication) -> None:
-        # Vorher lud der Befehl den Monat neu, waehrend man auf eine
-        # Ticketliste schaute.
+    def test_auf_meinen_tickets_laedt_die_tickets_und_den_monat(
+        self, qapp: QApplication
+    ) -> None:
+        # Der gemeldete Fall: ohne den Monat stuende auf dem Stundenzettel
+        # danach der alte Stand.
         window, gerufen = self._fenster()
+        window._stack.setCurrentIndex(_VIEWS.index("Meine Tickets"))
+        window.reload_current()
+        assert gerufen == [f"board:{MODE_ASSIGNED}", "monat"]
+
+    def test_auf_relevanten_tickets_laedt_diese_und_den_monat(
+        self, qapp: QApplication
+    ) -> None:
+        window, gerufen = self._fenster()
+        window._stack.setCurrentIndex(_VIEWS.index("Meine Aktivitäten"))
+        window.reload_current()
+        assert gerufen == [f"board:{MODE_RELEVANT}", "monat"]
+
+    def test_die_uebrigen_ansichten_gelten_danach_als_veraltet(
+        self, qapp: QApplication
+    ) -> None:
+        # Sie laden beim naechsten Hinwechseln - sofort mitzuziehen waere
+        # teuer und meist umsonst.
+        window, _ = self._fenster()
+        window._board_loaded[MODE_ASSIGNED] = True
+        window._board_loaded[MODE_RELEVANT] = True
+        window._year_loaded_for = 2026
+
+        window._stack.setCurrentIndex(_VIEWS.index("Meine Tickets"))
+        window.reload_current()
+
+        assert window._board_loaded[MODE_RELEVANT] is False
+        assert window._year_loaded_for is None
+
+    def test_ohne_zugang_bleibt_es_bei_der_sichtbaren_ansicht(
+        self, qapp: QApplication
+    ) -> None:
+        # Sonst zeigt ein F5 denselben Hinweis dreimal, und load_month
+        # oeffnet dabei den Einstellungsdialog.
+        window, gerufen = self._fenster(Settings())
         window._stack.setCurrentIndex(_VIEWS.index("Meine Tickets"))
         window.reload_current()
         assert gerufen == [f"board:{MODE_ASSIGNED}"]
 
-    def test_auf_relevanten_tickets_laedt_diese(self, qapp: QApplication) -> None:
-        window, gerufen = self._fenster()
-        window._stack.setCurrentIndex(_VIEWS.index("Meine Aktivitäten"))
+    def test_ohne_zugang_laedt_das_jahr_weiterhin_das_jahr(
+        self, qapp: QApplication
+    ) -> None:
+        window, gerufen = self._fenster(Settings())
+        window._stack.setCurrentIndex(_VIEWS.index("Jahr"))
         window.reload_current()
-        assert gerufen == [f"board:{MODE_RELEVANT}"]
+        assert gerufen == ["jahr"]
+
+
+class TestAbrufKanaele:
+    """Monat und Jahr laufen gleichzeitig und duerfen sich nicht entwerten.
+
+    Bis zum 04.09.2026 teilten sie sich einen Zaehler. Seit F5 den
+    Stundenzettel immer mitzieht, ist das Nebeneinander der Normalfall - der
+    spaeter gestartete Abruf haette das Ergebnis des frueheren verworfen.
+    """
+
+    def test_ein_monatsabruf_entwertet_das_jahresergebnis_nicht(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from jira_timesheet_qt.ui.main_window import _CHANNEL_MONTH, _CHANNEL_YEAR
+
+        window = MainWindow(Settings(), Mode.DARK)
+        jahr = window._next_generation(_CHANNEL_YEAR)
+        window._next_generation(_CHANNEL_MONTH)
+        window._next_generation(_CHANNEL_MONTH)
+
+        assert window._is_current(jahr, _CHANNEL_YEAR) is True
+
+    def test_ein_zweiter_jahresabruf_entwertet_den_ersten(
+        self, qapp: QApplication
+    ) -> None:
+        # Gegenprobe: innerhalb eines Kanals bleibt die Entwertung.
+        from jira_timesheet_qt.ui.main_window import _CHANNEL_YEAR
+
+        window = MainWindow(Settings(), Mode.DARK)
+        erster = window._next_generation(_CHANNEL_YEAR)
+        window._next_generation(_CHANNEL_YEAR)
+
+        assert window._is_current(erster, _CHANNEL_YEAR) is False
+
+    def test_ein_fehlgeschlagener_jahresabruf_leert_die_stundenliste_nicht(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Die Stundenliste hat mit dem Jahresabruf nichts zu tun.
+        from jira_timesheet_qt.ui.main_window import _CHANNEL_YEAR
+
+        window = MainWindow(Settings(), Mode.DARK)
+        geleert: list[object] = []
+        monkeypatch.setattr(
+            MainWindow, "set_timesheet", lambda self, ts: geleert.append(ts)
+        )
+
+        window._on_failed("Netzwerkfehler", None, _CHANNEL_YEAR)
+
+        assert geleert == []
 
 
 class TestStatusleiste:

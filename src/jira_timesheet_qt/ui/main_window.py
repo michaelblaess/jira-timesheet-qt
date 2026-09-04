@@ -106,6 +106,17 @@ _BOARD_MODES: dict[int, str] = {
     _VIEWS.index("Mein Team"): MODE_TEAM,
 }
 
+# Stapelseite der Jahresansicht. Aus _VIEWS abgeleitet wie _BOARD_MODES,
+# damit eine neue Ansicht die Nummer nicht stillschweigend verschiebt.
+_YEAR_VIEW: int = _VIEWS.index("Jahr")
+
+# Abruf-Kanaele mit je eigenem Zaehler. Monat und Jahr laufen gleichzeitig,
+# seit F5 den Stundenzettel immer mitzieht - ein gemeinsamer Zaehler wuerde
+# das zuerst gestartete Ergebnis verwerfen. Die Ticket-Ansichten fuehren
+# ihre eigenen Zaehler in _board_generation.
+_CHANNEL_MONTH = "month"
+_CHANNEL_YEAR = "year"
+
 # Farbe des Pile-of-Shame-Werts in der Statusleiste (Hex ohne #).
 _SHAME_COLOR = "C0392B"
 
@@ -156,6 +167,11 @@ class MainWindow(QMainWindow):
         # ein ueberholter Faden laeuft also zu Ende, sein Ergebnis wird aber
         # anhand dieser Nummer verworfen.
         self._load_generation = 0
+        # Eigener Zaehler fuer die Jahresansicht. Monat und Jahr teilten sich
+        # bis zum 04.09.2026 einen: laufen beide zugleich - seit F5 den
+        # Stundenzettel immer mitzieht, ist das der Normalfall -, entwertete
+        # der spaeter gestartete das Ergebnis des frueheren.
+        self._year_generation = 0
         # Laeuft gerade ein Monatsabruf? Der Leerzustand muss das wissen: seit
         # dem Autostart steht die Karte schon da, waehrend die Daten noch
         # unterwegs sind - "Keine Eintraege in diesem Zeitraum" waere dann eine
@@ -488,7 +504,7 @@ class MainWindow(QMainWindow):
         add(Command("view.calendar", run=lambda: self._go_to_view(1),
                     is_checked=lambda: self._stack.currentIndex() == 1))
         add(Command("view.year", run=lambda: self._go_to_view(2),
-                    is_checked=lambda: self._stack.currentIndex() == 2))
+                    is_checked=lambda: self._stack.currentIndex() == _YEAR_VIEW))
         add(Command("view.detail", run=self._show_detail_current))
         add(Command("view.group", run=lambda: self._on_group_toggled(not self._grouped),
                     is_checked=lambda: self._grouped))
@@ -870,7 +886,7 @@ class MainWindow(QMainWindow):
             self._summary_board(self._board_view(mode), mode)
         elif view == 1:
             self._summary_calendar()
-        elif view == 2:
+        elif view == _YEAR_VIEW:
             self._summary_year()
         else:
             self._summary_list()
@@ -1436,6 +1452,7 @@ class MainWindow(QMainWindow):
         last: date,
         on_ok: Callable[[Timesheet, int], None],
         status: str,
+        channel: str = _CHANNEL_MONTH,
     ) -> None:
         """Startet einen Abruf und entwertet einen eventuell laufenden.
 
@@ -1445,18 +1462,36 @@ class MainWindow(QMainWindow):
         laengst einen anderen Monat zeigte. Ein QThread laesst sich nicht
         abbrechen, deshalb laeuft der ueberholte Faden zu Ende - sein Ergebnis
         wird aber anhand der Abruf-Nummer verworfen.
+
+        Args:
+            first:
+                Erster Tag des Zeitraums.
+            last:
+                Letzter Tag des Zeitraums.
+            on_ok:
+                Nimmt das fertige Ergebnis samt Abruf-Nummer entgegen.
+            status:
+                Text fuer die Statuszeile, solange der Abruf laeuft.
+            channel:
+                Welcher Zaehler gilt - Monat oder Jahr. Getrennt, weil beide
+                gleichzeitig laufen duerfen.
         """
-        self._load_generation += 1
-        generation = self._load_generation
+        generation = self._next_generation(channel)
 
         self._set_status(status, "busy")
         worker = WorklogWorker(self._settings, first, last, self)
-        worker.progress.connect(lambda text, g=generation: self._on_progress(text, g))
+        worker.progress.connect(
+            lambda text, g=generation, c=channel: self._on_progress(text, g, c)
+        )
         # Ausfuehrliches (die JQL-Ausdruecke) nur ins Meldungsfenster.
         worker.log.connect(self._log.write)
         worker.finished_ok.connect(lambda ts, g=generation: on_ok(ts, g))
-        worker.failed.connect(lambda msg, g=generation: self._on_failed(msg, g))
-        worker.finished.connect(lambda g=generation: self._on_worker_done(g))
+        worker.failed.connect(
+            lambda msg, g=generation, c=channel: self._on_failed(msg, g, c)
+        )
+        worker.finished.connect(
+            lambda g=generation, c=channel: self._on_worker_done(g, c)
+        )
         # Ueberholte Faeden geben sich nach ihrem Ende selbst frei, sonst
         # sammeln sie sich als Kinder des Fensters an.
         worker.finished.connect(worker.deleteLater)
@@ -1464,13 +1499,26 @@ class MainWindow(QMainWindow):
         self._worker = worker
         worker.start()
 
-    def _is_current(self, generation: int | None) -> bool:
-        """Gehoert eine Rueckmeldung noch zum juengsten Abruf?"""
-        return generation is None or generation == self._load_generation
+    def _next_generation(self, channel: str) -> int:
+        """Zaehlt den Zaehler des Kanals hoch und liefert die neue Nummer."""
+        if channel == _CHANNEL_YEAR:
+            self._year_generation += 1
+            return self._year_generation
+        self._load_generation += 1
+        return self._load_generation
 
-    def _on_progress(self, text: str, generation: int | None = None) -> None:
+    def _is_current(self, generation: int | None, channel: str = _CHANNEL_MONTH) -> bool:
+        """Gehoert eine Rueckmeldung noch zum juengsten Abruf ihres Kanals?"""
+        if generation is None:
+            return True
+        aktuell = self._year_generation if channel == _CHANNEL_YEAR else self._load_generation
+        return generation == aktuell
+
+    def _on_progress(
+        self, text: str, generation: int | None = None, channel: str = _CHANNEL_MONTH
+    ) -> None:
         """Fortschritt eines Abrufs - der eines ueberholten wird verworfen."""
-        if not self._is_current(generation):
+        if not self._is_current(generation, channel):
             return
         self._set_status(text, "busy")
 
@@ -1485,8 +1533,15 @@ class MainWindow(QMainWindow):
         # Summe - die Stunden zeigt schon die Kennzahlen-Leiste in der Mitte.
         self._set_status(f"Verbunden mit {self._host_label()}")
 
-    def _on_failed(self, message: str, generation: int | None = None) -> None:
-        if not self._is_current(generation):
+    def _on_failed(
+        self, message: str, generation: int | None = None, channel: str = _CHANNEL_MONTH
+    ) -> None:
+        if not self._is_current(generation, channel):
+            return
+        if channel == _CHANNEL_YEAR:
+            # Die Stundenliste hat mit dem Jahresabruf nichts zu tun - sie aus
+            # fremdem Anlass zu leeren waere ein Datenverlust.
+            self._set_status(message, "error")
             return
         self._loading_month = False
         self.set_timesheet(None)
@@ -1551,12 +1606,17 @@ class MainWindow(QMainWindow):
         self.show_toast(t("notify.anonymized" if self._anonymize else "notify.deanonymized"))
         self._commands.refresh("view.anonymize")
 
-    def _on_worker_done(self, generation: int | None = None) -> None:
+    def _on_worker_done(
+        self, generation: int | None = None, channel: str = _CHANNEL_MONTH
+    ) -> None:
         """Ein Faden ist fertig - der juengste gibt den Platz frei."""
         self._running_workers = [w for w in self._running_workers if w.isRunning()]
-        if not self._is_current(generation):
+        if not self._is_current(generation, channel):
             return  # ein ueberholter Faden - der aktuelle laeuft weiter
         self._worker = None
+        if channel == _CHANNEL_YEAR:
+            # Der Ladehinweis der Stundenliste gehoert dem Monatsabruf.
+            return
         # Netz gegen einen Faden, der weder Ergebnis noch Fehler gemeldet hat:
         # sonst bliebe die Karte fuer immer auf "wird geladen" stehen.
         if self._loading_month:
@@ -1574,11 +1634,12 @@ class MainWindow(QMainWindow):
             date(self._year, 12, 31),
             self._on_year_loaded,
             f"Lade Jahr {self._year} ...",
+            channel=_CHANNEL_YEAR,
         )
 
     def _on_year_loaded(self, timesheet: Timesheet, generation: int | None = None) -> None:
         """Aggregiert einen Jahres-Stundenzettel in die zwoelf Monatskacheln."""
-        if not self._is_current(generation):
+        if not self._is_current(generation, _CHANNEL_YEAR):
             return
         self._year_ts = timesheet
         self._aggregate_year(self._display_ts(timesheet))
@@ -1632,21 +1693,53 @@ class MainWindow(QMainWindow):
             self.load_month()
 
     def reload_current(self) -> None:
-        """Laedt die AKTIVE Ansicht neu.
+        """Laedt die sichtbare Ansicht neu UND immer den Stundenzettel.
 
-        Der Befehl heisst "Aktualisieren" und muss deshalb das aktualisieren,
-        was der Anwender gerade sieht - sonst laedt er den Monat neu, waehrend
-        er auf eine Ticketliste schaut.
+        Der Stundenzettel ist der Zweck der Anwendung - er darf nie alt sein,
+        nur weil gerade eine Ticketliste im Vordergrund stand. Frueher lud F5
+        ausschliesslich die aktive Ansicht: wer in "Meine Tickets"
+        aktualisiert hatte und danach auf den Stundenzettel wechselte, sah
+        dort den alten Stand und musste ein zweites Mal F5 druecken.
+
+        Die uebrigen Ansichten werden nur als veraltet vermerkt und laden beim
+        naechsten Hinwechseln von selbst nach (_on_view_changed). Sie sofort
+        mitzuziehen waere teuer und meist umsonst - ein Abruf kostet Minuten,
+        und "Mein Team" fragt dabei eine fremde Person ab.
+
+        Die Jahresansicht bleibt aussen vor, solange sie nicht selbst im
+        Vordergrund steht: zwoelf Monate sind der teuerste Abruf ueberhaupt.
+        Auch sie laedt beim naechsten Hinwechseln neu.
         """
         position = self._stack.currentIndex()
         mode = _BOARD_MODES.get(position)
+
+        if not self._settings_complete():
+            # Ohne Zugang bleibt es beim bisherigen Verhalten der sichtbaren
+            # Ansicht - ein Sammel-Abruf wuerde nur denselben Hinweis dreimal
+            # zeigen, und load_month oeffnet dabei die Einstellungen.
+            if mode is not None:
+                self._load_board(mode)
+            elif position == _YEAR_VIEW:
+                self.load_year()
+            else:
+                self.load_month()
+            return
+
+        # Alles, was jetzt nicht abgerufen wird, gilt als veraltet.
+        for anderer in self._board_loaded:
+            if anderer != mode:
+                self._board_loaded[anderer] = False
+        if position != _YEAR_VIEW:
+            self._year_loaded_for = None
+
         if mode is not None:
             self._load_board(mode)
-            return
-        if position == 2:
+        elif position == _YEAR_VIEW:
             self._year_loaded_for = None
             self.load_year()
-            return
+
+        # Der Stundenzettel immer. Steht er selbst im Vordergrund, ist das der
+        # einzige Abruf; sonst laeuft er daneben, auf eigenem Zaehler.
         self.load_month()
 
     def _set_status(self, text: str, state: str = "") -> None:
@@ -1811,7 +1904,11 @@ class MainWindow(QMainWindow):
         self._refresh_summary_bar()
         # Beim ersten Wechsel in die Jahresansicht (oder nach Jahreswechsel) alle
         # zwoelf Monate in einem Bereichs-Abruf laden.
-        if position == 2 and self._settings_complete() and self._year_loaded_for != self._year:
+        if (
+            position == _YEAR_VIEW
+            and self._settings_complete()
+            and self._year_loaded_for != self._year
+        ):
             self.load_year()
         # Ticket-Reiter: beim ersten Besuch laden, danach nur auf Zuruf.
         mode = _BOARD_MODES.get(position)

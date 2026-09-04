@@ -408,8 +408,9 @@ class TestLadenUndAktualisieren:
         assert gerufen == ["monat"]
 
     def test_aktualisieren_trifft_die_sichtbare_ansicht(self, qapp: QApplication) -> None:
-        # Ein Aktualisieren, das den Monat neu holt, während man auf eine
-        # Ticketliste schaut, sieht wie ein Ausfall aus.
+        # Die sichtbare Ansicht wird geladen - und seit dem 04.09.2026 immer
+        # auch der Stundenzettel. Er ist der Zweck der Anwendung und darf
+        # nicht alt sein, nur weil eine Ticketliste im Vordergrund stand.
         from jira_timesheet_qt.ui.main_window import _VIEWS, MainWindow
         from jira_timesheet_qt.ui.theme import Mode
         from jira_timesheet_qt.ui.ticket_board_worker import MODE_TEAM
@@ -424,7 +425,7 @@ class TestLadenUndAktualisieren:
         window._stack.setCurrentIndex(_VIEWS.index("Mein Team"))
         window.reload_current()
 
-        assert geladen == ["monat", MODE_TEAM]
+        assert geladen == ["monat", MODE_TEAM, "monat"]
 
 
 class TestBeschriftungen:
