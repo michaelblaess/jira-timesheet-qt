@@ -74,12 +74,17 @@ MARKER_HINTS: dict[Marker, str] = {
     Marker.BLOCKED: "Ein Vorgänger ist noch offen.",
 }
 
-# Erklaerungen unter der Maus. Nur dort, wo die Ueberschrift allein nicht
-# reicht - eine Abkuerzung muss man einmal nachlesen koennen.
-HEADER_HINTS: dict[int, str] = {
-    4: "AT = Arbeitstage seit der letzten Änderung (Mo-Fr, 8-18 Uhr).",
-    5: "Handlungsbedarf. Ein Ticket kann mehrere Merkmale gleichzeitig tragen.",
-}
+# Spaltenindizes. Als Namen gefuehrt, weil eine eingeschobene Spalte sonst
+# jede Zahl in _display, _sort_key und den Hinweisen verschiebt - und ein
+# uebersehener Index faellt erst am laufenden Fenster auf.
+COL_KEY = 0
+COL_STATUS = 1
+COL_PRIORITY = 2
+COL_TYPE = 3
+COL_IDLE = 4
+COL_MARKERS = 5
+COL_ASSIGNEE = 6
+COL_SUMMARY = 7
 
 COLUMNS: tuple[str, ...] = (
     "Ticket",
@@ -88,8 +93,17 @@ COLUMNS: tuple[str, ...] = (
     "Art",
     "Liegezeit (AT)",
     "Merkmale",
+    "Bearbeiter",
     "Titel",
 )
+
+# Erklaerungen unter der Maus. Nur dort, wo die Ueberschrift allein nicht
+# reicht - eine Abkuerzung muss man einmal nachlesen koennen.
+HEADER_HINTS: dict[int, str] = {
+    COL_IDLE: "AT = Arbeitstage seit der letzten Änderung (Mo-Fr, 8-18 Uhr).",
+    COL_MARKERS: "Handlungsbedarf. Ein Ticket kann mehrere Merkmale gleichzeitig tragen.",
+    COL_ASSIGNEE: "Wer das Ticket aktuell zugewiesen hat. Leer = niemand zugewiesen.",
+}
 
 
 @dataclass
@@ -240,7 +254,7 @@ class TicketBoardModel(QAbstractItemModel):
             return self._display(ticket, column)
         if role == SORT_ROLE:
             return self._sort_key(ticket, column)
-        if role == Qt.ItemDataRole.TextAlignmentRole and column == 4:
+        if role == Qt.ItemDataRole.TextAlignmentRole and column == COL_IDLE:
             return int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         if role == Qt.ItemDataRole.ForegroundRole and ticket.has(Marker.PILE_OF_SHAME):
             return QColor("#c0392b")
@@ -251,21 +265,23 @@ class TicketBoardModel(QAbstractItemModel):
     @staticmethod
     def _display(ticket: Ticket, column: int) -> str:
         """Anzeigetext einer Zelle."""
-        if column == 0:
+        if column == COL_KEY:
             return ticket.key
-        if column == 1:
+        if column == COL_STATUS:
             return ticket.status
-        if column == 2:
+        if column == COL_PRIORITY:
             return ticket.priority
-        if column == 3:
+        if column == COL_TYPE:
             return ticket.issue_type
-        if column == 4:
+        if column == COL_IDLE:
             # Nur die Zahl - die Einheit steht im Spaltenkopf. Ein "At"
             # hinter jedem Wert liest sich wie ein Teil der Zahl.
             return f"{ticket.idle_workdays:.0f}"
-        if column == 5:
+        if column == COL_MARKERS:
             return ", ".join(MARKER_LABELS.get(m, m.value) for m in ticket.markers)
-        if column == 6:
+        if column == COL_ASSIGNEE:
+            return ticket.assignee
+        if column == COL_SUMMARY:
             return ticket.summary
         return ""
 
@@ -276,17 +292,21 @@ class TicketBoardModel(QAbstractItemModel):
         Eine Liegezeit als "5 At" sortiert als Zeichenkette falsch, und eine
         Prioritaet erst recht: "Kritisch" stuende hinter "Low".
         """
-        if column == 2:
+        if column == COL_PRIORITY:
             return ticket.priority_rank
-        if column == 3:
+        if column == COL_TYPE:
             return (not ticket.is_bug, ticket.issue_type)
-        if column == 4:
+        if column == COL_IDLE:
             return ticket.idle_workdays
-        if column == 5:
+        if column == COL_MARKERS:
             return -len(ticket.markers)
-        if column == 6:
+        if column == COL_ASSIGNEE:
+            # Ohne Bearbeiter ans Ende, nicht an den Anfang: eine leere Zelle
+            # oben sieht aus, als waere die Sortierung nicht angekommen.
+            return (not ticket.assignee, ticket.assignee.casefold())
+        if column == COL_SUMMARY:
             return ticket.summary.casefold()
-        if column == 1:
+        if column == COL_STATUS:
             return ticket.status.casefold()
         return ticket.key
 
@@ -296,6 +316,7 @@ class TicketBoardModel(QAbstractItemModel):
         lines = [f"{ticket.key} - {ticket.summary}", ""]
         lines.append(f"Status: {ticket.status}")
         lines.append(f"Autor: {ticket.reporter or '-'}")
+        lines.append(f"Bearbeiter: {ticket.assignee or '-'}")
         lines.append(
             f"Liegezeit: {ticket.idle_workdays:.0f} Arbeitstage "
             f"({ticket.idle_days} Kalendertage)"

@@ -54,6 +54,7 @@ def ticket(
     markers: tuple[Marker, ...] = (),
     idle: float = 1.0,
     is_bug: bool = False,
+    assignee: str = "",
 ) -> Ticket:
     """Baut ein Ticket fuer die Anzeige."""
     return Ticket(
@@ -64,6 +65,7 @@ def ticket(
         idle_workdays=idle,
         idle_days=int(idle),
         is_bug=is_bug,
+        assignee=assignee,
         url=f"https://example.invalid/browse/{key}",
     )
 
@@ -529,6 +531,65 @@ class TestSpalteLiegezeit:
         hinweis = model.headerData(4, Qt.Orientation.Horizontal, Qt.ItemDataRole.ToolTipRole)
         assert hinweis is not None
         assert "Arbeitstage" in hinweis
+
+
+class TestSpalteBearbeiter:
+    """In "Meine Aktivitaeten" stehen eigene und fremde Tickets nebeneinander -
+    ohne diese Spalte ist der Gruppe "Andere sind dran" nicht anzusehen, WER
+    dran ist."""
+
+    def test_kopf_und_zelle_nennen_den_bearbeiter(self, qapp: QApplication) -> None:
+        from PySide6.QtCore import Qt
+
+        from jira_timesheet_qt.ui.ticket_board_model import COL_ASSIGNEE
+
+        model = TicketBoardModel()
+        kopf = model.headerData(
+            COL_ASSIGNEE, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole
+        )
+        model.set_board(
+            board(Group(role=Role.ACTIVE, tickets=[ticket("A-1", assignee="Mustermann, Max")]))
+        )
+        zelle = model.index(0, COL_ASSIGNEE, model.index(0, 0)).data()
+        assert kopf == "Bearbeiter"
+        assert zelle == "Mustermann, Max"
+
+    def test_titel_bleibt_die_letzte_spalte(self, qapp: QApplication) -> None:
+        # Nur die letzte Spalte streckt sich ueber die Restbreite. Waere der
+        # Bearbeiter hinten, bekaeme ein kurzer Name den ganzen Platz und der
+        # Titel bliebe abgeschnitten.
+        from jira_timesheet_qt.ui.ticket_board_model import COLUMNS
+
+        assert COLUMNS[-1] == "Titel"
+
+    def test_ohne_bearbeiter_wird_hinten_einsortiert(self, qapp: QApplication) -> None:
+        # Eine leere Zelle ganz oben sieht aus, als waere die Sortierung nicht
+        # angekommen.
+        from jira_timesheet_qt.ui.ticket_board_model import COL_ASSIGNEE, SORT_ROLE
+
+        model = TicketBoardModel()
+        model.set_board(
+            board(
+                Group(
+                    role=Role.ACTIVE,
+                    tickets=[ticket("A-1"), ticket("A-2", assignee="Musterfrau, Erika")],
+                )
+            )
+        )
+        parent = model.index(0, 0)
+        ohne = model.index(0, COL_ASSIGNEE, parent).data(SORT_ROLE)
+        mit = model.index(1, COL_ASSIGNEE, parent).data(SORT_ROLE)
+        assert mit < ohne
+
+    def test_hinweis_unter_der_maus_nennt_den_bearbeiter(self, qapp: QApplication) -> None:
+        from PySide6.QtCore import Qt
+
+        model = TicketBoardModel()
+        model.set_board(
+            board(Group(role=Role.ACTIVE, tickets=[ticket("A-1", assignee="Mustermann, Max")]))
+        )
+        hinweis = model.index(0, 0, model.index(0, 0)).data(Qt.ItemDataRole.ToolTipRole)
+        assert "Bearbeiter: Mustermann, Max" in hinweis
 
 
 class TestDetailfenster:
