@@ -279,7 +279,12 @@ class TestLangePhasen:
             [],
             BASE,
         )
-        lang = [segment for segment in report.segments if segment.long]
+        # Nur ABGESCHLOSSENE Phasen pruefen. Die letzte laeuft bis heute und
+        # ueberschreitet die Schwelle irgendwann von selbst - seit dem
+        # 08.09.2026 stand deshalb "IN ARBEIT" mit in der Liste, und der Test
+        # war rot, ohne dass sich am Code etwas geaendert haette. Derselbe
+        # Grundsatz wie im Test darueber: ein Test darf nicht am Kalender haengen.
+        lang = [segment for segment in report.segments if segment.long and segment.end is not None]
         assert [segment.status for segment in lang] == ["Schätzen"]
         assert lang[0].workdays > viewmodel.LONG_PHASE_WORKDAYS
         # Der Befund muss den Beleg mitbringen.
