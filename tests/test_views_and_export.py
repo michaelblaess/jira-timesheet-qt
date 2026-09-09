@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from datetime import date
 from pathlib import Path
@@ -134,28 +135,81 @@ class TestYearView:
 
 
 class TestExport:
-    def test_excel_is_written(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    @staticmethod
+    def _mit_ziel(service: ExportService, ziel: Path, filter_text: str = "") -> None:
+        """Laesst den Speichern-Dialog ein festes Ziel liefern.
+
+        Der Dialog gibt Pfad UND gewaehlten Filter zurueck - beides muss die
+        Attrappe nachbilden, sonst prueft der Test einen anderen Weg als den
+        echten.
+        """
+        service._ask_target = lambda *a, **k: (str(ziel), filter_text)  # type: ignore[method-assign]
+
+    def test_excel_is_written(self, qapp: QApplication, tmp_path: Path) -> None:
         service = ExportService(Settings())
-        target = tmp_path / "Stundenzettel.xlsx"
-        monkeypatch.setattr(service, "_ask_target", lambda *a, **k: str(target))
-        result = service.export_excel(demo_timesheet(), None)  # type: ignore[arg-type]
+        self._mit_ziel(service, tmp_path / "Stundenzettel.xlsx")
+        result = service.export(demo_timesheet(), None)  # type: ignore[arg-type]
         assert not result.cancelled
         assert Path(result.path).is_file()
         assert Path(result.path).stat().st_size > 0
 
-    def test_pdf_is_written(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_pdf_is_written(self, qapp: QApplication, tmp_path: Path) -> None:
         service = ExportService(Settings())
-        target = tmp_path / "Stundenzettel.pdf"
-        monkeypatch.setattr(service, "_ask_target", lambda *a, **k: str(target))
-        result = service.export_pdf(demo_timesheet(), None)  # type: ignore[arg-type]
+        self._mit_ziel(service, tmp_path / "Stundenzettel.pdf")
+        result = service.export(demo_timesheet(), None)  # type: ignore[arg-type]
         assert not result.cancelled
-        assert Path(result.path).is_file()
         assert Path(result.path).read_bytes()[:4] == b"%PDF"
 
-    def test_cancelling_writes_nothing(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_json_is_written(self, qapp: QApplication, tmp_path: Path) -> None:
         service = ExportService(Settings())
-        monkeypatch.setattr(service, "_ask_target", lambda *a, **k: "")
-        assert service.export_excel(demo_timesheet(), None).cancelled  # type: ignore[arg-type]
+        self._mit_ziel(service, tmp_path / "Stundenzettel.json")
+        result = service.export(demo_timesheet(), None)  # type: ignore[arg-type]
+        daten = json.loads(Path(result.path).read_text(encoding="utf-8"))
+        assert daten["zeitraum"]["von"] == "2026-07-01"
+        assert daten["summen"]["gesamt_stunden"] == 54.0
+
+    def test_markdown_is_written(self, qapp: QApplication, tmp_path: Path) -> None:
+        service = ExportService(Settings())
+        self._mit_ziel(service, tmp_path / "Stundenzettel.md")
+        result = service.export(demo_timesheet(), None)  # type: ignore[arg-type]
+        text = Path(result.path).read_text(encoding="utf-8")
+        assert text.startswith("# Stundenzettel")
+        assert "PROJ-101" in text
+
+    def test_das_format_kommt_aus_der_endung(self, qapp: QApplication, tmp_path: Path) -> None:
+        # Wer ".md" tippt, obwohl im Auswahlfeld die Arbeitsmappe steht,
+        # bekommt Markdown - die Endung schlaegt den Filter.
+        service = ExportService(Settings())
+        self._mit_ziel(service, tmp_path / "Auswertung.md", "Arbeitsmappe (*.xlsx)")
+        result = service.export(demo_timesheet(), None)  # type: ignore[arg-type]
+        assert Path(result.path).suffix == ".md"
+
+    def test_ohne_endung_entscheidet_der_filter(self, qapp: QApplication, tmp_path: Path) -> None:
+        # Der Systemdialog haengt die Endung sonst an. Tut er es nicht, darf
+        # keine Datei entstehen, die ihr eigenes Format verschweigt.
+        service = ExportService(Settings())
+        self._mit_ziel(service, tmp_path / "Auswertung", "JSON-Datei (*.json)")
+        result = service.export(demo_timesheet(), None)  # type: ignore[arg-type]
+        assert Path(result.path).name == "Auswertung.json"
+
+    def test_cancelling_writes_nothing(self, qapp: QApplication, tmp_path: Path) -> None:
+        service = ExportService(Settings())
+        service._ask_target = lambda *a, **k: ("", "")  # type: ignore[method-assign]
+        assert service.export(demo_timesheet(), None).cancelled  # type: ignore[arg-type]
+
+    def test_der_dialog_bietet_alle_vier_formate_an(self, qapp: QApplication, tmp_path: Path) -> None:
+        gesehen: list[str] = []
+        service = ExportService(Settings())
+
+        def merken(parent: object, vorschlag: str, filter_text: str) -> tuple[str, str]:
+            gesehen.append(filter_text)
+            return str(tmp_path / "x.json"), ""
+
+        service._ask_target = merken  # type: ignore[method-assign]
+        service.export(demo_timesheet(), None)  # type: ignore[arg-type]
+        assert gesehen and gesehen[0].count(";;") == 3
+        for endung in (".xlsx", ".pdf", ".json", ".md"):
+            assert f"*{endung}" in gesehen[0]
 
     def test_print_html_contains_the_entries(self, qapp: QApplication) -> None:
         html = ExportService(Settings()).build_print_html(demo_timesheet())
@@ -186,7 +240,7 @@ class TestExport:
     def test_export_without_data_is_refused(self, qapp: QApplication) -> None:
         window = MainWindow(Settings(), Mode.DARK)
         window.set_timesheet(None)
-        window.export_excel()
+        window.export_file()
         assert window._status.property("state") == "error"
 
 

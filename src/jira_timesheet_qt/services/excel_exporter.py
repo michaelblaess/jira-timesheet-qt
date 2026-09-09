@@ -20,6 +20,7 @@ from jira_timesheet_qt.models.export_column import (
     default_columns,
     excel_width,
 )
+from jira_timesheet_qt.models.export_format import EXCEL, suggested_name
 from jira_timesheet_qt.models.timesheet import Timesheet, TimesheetDay, WorklogEntry
 
 _WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
@@ -61,11 +62,16 @@ class ExcelExporter:
 
     @staticmethod
     def suggested_filename(timesheet: Timesheet) -> str:
-        """Liefert einen vorgeschlagenen Dateinamen fuer den Speichern-Dialog."""
-        from datetime import datetime
+        """Liefert einen vorgeschlagenen Dateinamen fuer den Speichern-Dialog.
 
-        now = datetime.now()
-        return f"Stundenzettel_{timesheet.date_from:%Y-%m-%d}_{timesheet.date_to:%Y-%m-%d}_{now:%Y%m%d_%H%M%S}.xlsx"
+        Args:
+            timesheet: Der zu exportierende Stundenzettel.
+
+        Returns:
+            Der Dateiname, ohne Verzeichnis.
+        """
+
+        return suggested_name(EXCEL, timesheet.date_from, timesheet.date_to)
 
     def export(
         self,

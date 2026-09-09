@@ -16,10 +16,43 @@ from PySide6.QtGui import QDesktopServices, QPageLayout, QPageSize, QTextDocumen
 from PySide6.QtPrintSupport import QPrintPreviewDialog
 from PySide6.QtWidgets import QFileDialog, QWidget
 
+from jira_timesheet_qt.models.export_format import (
+    DEFAULT_FORMAT,
+    EXPORT_FORMATS,
+    ExportFormat,
+    format_for_path,
+    swap_suffix,
+)
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.models.timesheet import Timesheet
-from jira_timesheet_qt.services.excel_exporter import ExcelExporter
-from jira_timesheet_qt.services.pdf_exporter import PdfExporter
+from jira_timesheet_qt.services.exporters import build_exporter, suggested_filename
+
+# Beschriftung je Format im Auswahlfeld des Speichern-Dialogs. Die
+# i18n-Schluessel der Formatliste sind fuer die Textual-Fassung gedacht -
+# hier stehen die Texte direkt, wie ueberall sonst in dieser Oberflaeche.
+FILTER_LABELS = {
+    "excel": "Arbeitsmappe",
+    "pdf": "PDF-Dokument",
+    "json": "JSON-Datei",
+    "markdown": "Markdown-Datei",
+}
+
+
+def _format_for_filter(label: str) -> ExportFormat:
+    """Ermittelt das Format aus dem gewaehlten Filtereintrag.
+
+    Rueckfall fuer den Fall, dass der Dateiname keine bekannte Endung traegt.
+
+    Args:
+        label: Der vom Dialog gemeldete Filtertext.
+
+    Returns:
+        Das passende Format, sonst das vorausgewaehlte.
+    """
+    for export_format in EXPORT_FORMATS:
+        if FILTER_LABELS[export_format.key] in label:
+            return export_format
+    return DEFAULT_FORMAT
 
 
 @dataclass(frozen=True)
@@ -38,62 +71,54 @@ class ExportService:
 
     # --- Dateien --------------------------------------------------------
 
-    def export_excel(
+    def export(
         self,
         timesheet: Timesheet,
         parent: QWidget,
         missing_days: list[tuple[date, str]] | None = None,
     ) -> ExportResult:
-        """Fragt nach dem Ziel und schreibt die Arbeitsmappe."""
-        target = self._ask_target(parent, ExcelExporter.suggested_filename(timesheet), "Arbeitsmappe (*.xlsx)")
+        """Fragt nach Ziel und Format und schreibt die Datei.
+
+        Frueher gab es je Format einen eigenen Menuepunkt und einen eigenen
+        Dialog. Das Format gehoert in den Speichern-Dialog - dort steht es
+        ohnehin als Auswahlfeld, und so kommen weitere Formate ohne neuen
+        Menuepunkt dazu.
+
+        Anders als in der Textual-Fassung braucht es dafuer keinen eigenen
+        Dialog: `QFileDialog.getSaveFileName` liefert den gewaehlten Filter
+        mit zurueck, und der Systemdialog tauscht die Endung beim Umschalten
+        von selbst.
+
+        Args:
+            timesheet: Der zu exportierende Stundenzettel.
+            parent: Das Fenster, ueber dem der Dialog aufgeht.
+            missing_days: Tage ohne Buchung mit ihrem Grund.
+
+        Returns:
+            Der geschriebene Pfad, oder ein abgebrochenes Ergebnis.
+        """
+        vorschlag = suggested_filename(DEFAULT_FORMAT, timesheet)
+        filter_text = ";;".join(f"{FILTER_LABELS[f.key]} (*{f.suffix})" for f in EXPORT_FORMATS)
+        target, gewaehlt = self._ask_target(parent, vorschlag, filter_text)
         if not target:
             return ExportResult("", cancelled=True)
 
-        s = self._settings
-        exporter = ExcelExporter(
-            logo_path=s.logo_path,
-            jira_host=s.jira_host,
-            hours_per_day=s.hours_per_day,
-            show_ticket_links=s.show_ticket_links_in_export,
-            columns=s.export_columns,
-            default_customer=s.default_customer,
-            mark_manual=s.mark_manual_entries,
-            manual_color=s.manual_entry_color,
-        )
+        export_format = format_for_path(target) or _format_for_filter(gewaehlt)
+        # Der Systemdialog haengt die Endung normalerweise an. Tut er es nicht
+        # (getippter Name mit fremder Endung), wird sie hier ergaenzt - sonst
+        # entstuende eine Datei, die ihr eigenes Format verschweigt.
+        ziel = Path(target)
+        if format_for_path(ziel) is None:
+            ziel = ziel.with_name(swap_suffix(ziel.name, export_format))
+
+        exporter = build_exporter(export_format, self._settings)
         path = exporter.export(
             timesheet,
             missing_days=missing_days or [],
-            target_hours=self._target_hours(timesheet) if s.show_target_hours_in_export else 0.0,
-            output_path=target,
-        )
-        return ExportResult(path)
-
-    def export_pdf(
-        self,
-        timesheet: Timesheet,
-        parent: QWidget,
-        missing_days: list[tuple[date, str]] | None = None,
-    ) -> ExportResult:
-        """Fragt nach dem Ziel und schreibt das PDF."""
-        target = self._ask_target(parent, PdfExporter.suggested_filename(timesheet), "PDF-Dokument (*.pdf)")
-        if not target:
-            return ExportResult("", cancelled=True)
-
-        s = self._settings
-        exporter = PdfExporter(
-            logo_path=s.logo_path,
-            jira_host=s.jira_host,
-            hours_per_day=s.hours_per_day,
-            columns=s.export_columns,
-            default_customer=s.default_customer,
-            mark_manual=s.mark_manual_entries,
-            manual_color=s.manual_entry_color,
-        )
-        path = exporter.export(
-            timesheet,
-            missing_days=missing_days or [],
-            target_hours=self._target_hours(timesheet) if s.show_target_hours_in_export else 0.0,
-            output_path=target,
+            target_hours=(
+                self._target_hours(timesheet) if self._settings.show_target_hours_in_export else 0.0
+            ),
+            output_path=str(ziel),
         )
         return ExportResult(path)
 
@@ -174,15 +199,25 @@ class ExportService:
         workdays = service.count_workdays(timesheet.date_from, timesheet.date_to)
         return workdays * self._settings.hours_per_day
 
-    def _ask_target(self, parent: QWidget, suggestion: str, file_filter: str) -> str:
-        """Speichern-Dialog, vorbelegt mit dem zuletzt genutzten Verzeichnis."""
+    def _ask_target(self, parent: QWidget, suggestion: str, file_filter: str) -> tuple[str, str]:
+        """Speichern-Dialog, vorbelegt mit dem zuletzt genutzten Verzeichnis.
+
+        Args:
+            parent: Das Fenster, ueber dem der Dialog aufgeht.
+            suggestion: Der vorgeschlagene Dateiname.
+            file_filter: Die Filtereintraege, durch ";;" getrennt.
+
+        Returns:
+            Der gewaehlte Pfad und der gewaehlte Filtertext. Beide leer bei
+            Abbruch.
+        """
         start = str(Path(self._settings.last_export_dir or str(Path.home() / "Desktop")) / suggestion)
-        target, _ = QFileDialog.getSaveFileName(parent, "Speichern unter", start, file_filter)
+        target, gewaehlt = QFileDialog.getSaveFileName(parent, "Speichern unter", start, file_filter)
         if target:
             # Beim naechsten Mal dort wieder anfangen.
             self._settings.last_export_dir = str(Path(target).parent)
             self._settings.save()
-        return target
+        return target, gewaehlt
 
 
 def _hours(value: float) -> str:

@@ -157,18 +157,11 @@
         "title": "menu.export",
         "children": [
           {
-            "id": "act.export.excel",
+            "id": "act.export.file",
             "type": "action",
-            "command": "export.excel",
-            "title": "cmd.export.excel",
+            "command": "export.file",
+            "title": "cmd.export.file",
             "shortcut": "Ctrl+E"
-          },
-          {
-            "id": "act.export.pdf",
-            "type": "action",
-            "command": "export.pdf",
-            "title": "cmd.export.pdf",
-            "shortcut": "Ctrl+Shift+E"
           },
           {
             "id": "sep.export.1",

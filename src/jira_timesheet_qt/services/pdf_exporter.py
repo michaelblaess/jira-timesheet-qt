@@ -14,14 +14,14 @@ from jira_timesheet_qt.models.export_column import (
     default_columns,
     pdf_column_widths,
 )
+from jira_timesheet_qt.models.export_format import PDF, suggested_name
 from jira_timesheet_qt.models.timesheet import Timesheet, TimesheetDay, WorklogEntry
+from jira_timesheet_qt.services.export_rows import entry_values, gap_values
 
 # Arial TTF Pfade (Windows)
 _ARIAL_REGULAR = "C:/Windows/Fonts/arial.ttf"
 _ARIAL_BOLD = "C:/Windows/Fonts/arialbd.ttf"
 _FONT_NAME = "Arial"
-
-_WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 
 
 class PdfExporter:
@@ -51,11 +51,16 @@ class PdfExporter:
 
     @staticmethod
     def suggested_filename(timesheet: Timesheet) -> str:
-        """Liefert einen vorgeschlagenen Dateinamen fuer den Speichern-Dialog."""
-        from datetime import datetime
+        """Liefert einen vorgeschlagenen Dateinamen fuer den Speichern-Dialog.
 
-        now = datetime.now()
-        return f"Stundenzettel_{timesheet.date_from:%Y-%m-%d}_{timesheet.date_to:%Y-%m-%d}_{now:%Y%m%d_%H%M%S}.pdf"
+        Args:
+            timesheet: Der zu exportierende Stundenzettel.
+
+        Returns:
+            Der Dateiname, ohne Verzeichnis.
+        """
+
+        return suggested_name(PDF, timesheet.date_from, timesheet.date_to)
 
     def export(
         self,
@@ -235,28 +240,11 @@ class PdfExporter:
 
     def _gap_values(self, d: date, reason: str) -> list[str]:
         """Zellwerte einer Luecken-/Feiertagszeile fuer die aktiven Spalten."""
-        values = {
-            "week": str(d.isocalendar()[1]),
-            "weekday": _WEEKDAYS[d.weekday()],
-            "date": f"{d:%d.%m.}",
-            "description": reason,
-            "day_hours": "0.00",
-        }
-        return [values.get(c.key, "") for c in self._columns]
+        return gap_values(self._columns, d, reason)
 
     def _entry_values(self, entry: WorklogEntry, day: TimesheetDay, is_first: bool) -> list[str]:
         """Zellwerte eines Worklog-Eintrags fuer die aktiven Spalten."""
-        values = {
-            "week": str(entry.date.isocalendar()[1]) if is_first else "",
-            "weekday": _WEEKDAYS[entry.date.weekday()] if is_first else "",
-            "date": f"{entry.date:%d.%m.}" if is_first else "",
-            "ticket": entry.ticket,
-            "description": entry.summary,
-            "customer": entry.customer or self._default_customer,
-            "hours": f"{entry.hours:.2f}",
-            "day_hours": f"{day.total_hours:.2f}" if is_first else "",
-        }
-        return [values.get(c.key, "") for c in self._columns]
+        return entry_values(self._columns, entry, day, is_first, self._default_customer)
 
     @staticmethod
     def _hex_to_rgb(value: str) -> tuple[int, int, int]:

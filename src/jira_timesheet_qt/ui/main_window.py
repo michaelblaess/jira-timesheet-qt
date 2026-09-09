@@ -513,8 +513,7 @@ class MainWindow(QMainWindow):
         add(Command("view.anonymize", run=self._toggle_anonymize,
                     is_checked=lambda: self._anonymize))
         add(Command("view.theme", run=self._toggle_theme))
-        add(Command("export.excel", run=self.export_excel))
-        add(Command("export.pdf", run=self.export_pdf))
+        add(Command("export.file", run=self.export_file))
         add(Command("export.print", run=self.print_preview))
         add(Command("tools.ticket_report", run=self.open_ticket_report))
         add(Command("settings.open", run=self.open_settings))
@@ -782,8 +781,7 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+L"), self, self.toggle_log)
         QShortcut(QKeySequence("Ctrl+N"), self, self.action_new_manual)
         QShortcut(QKeySequence.StandardKey.Print, self, self.print_preview)
-        QShortcut(QKeySequence("Ctrl+E"), self, self.export_excel)
-        QShortcut(QKeySequence("Ctrl+Shift+E"), self, self.export_pdf)
+        QShortcut(QKeySequence("Ctrl+E"), self, self.export_file)
         # Zoom wie im Browser: Ctrl++ / Ctrl+- / Ctrl+0.
         QShortcut(QKeySequence.StandardKey.ZoomIn, self, lambda: self._zoom(1))
         QShortcut(QKeySequence("Ctrl+="), self, lambda: self._zoom(1))
@@ -1822,26 +1820,19 @@ class MainWindow(QMainWindow):
 
     # --- Export ---------------------------------------------------------
 
-    def export_excel(self) -> None:
-        """Schreibt den aktuellen Stundenzettel als Arbeitsmappe."""
-        self._export("excel")
+    def export_file(self) -> None:
+        """Schreibt den aktuellen Stundenzettel.
 
-    def export_pdf(self) -> None:
-        """Schreibt den aktuellen Stundenzettel als PDF."""
-        self._export("pdf")
-
-    def _export(self, kind: str) -> None:
-        """Gemeinsamer Weg fuer beide Dateiformate."""
+        Das Format waehlt der Anwender im Speichern-Dialog - Excel, PDF, JSON
+        oder Markdown. Frueher lag jedes Format auf einem eigenen Menuepunkt,
+        obwohl alle denselben Dialog oeffneten.
+        """
         if self._timesheet is None:
             self._set_status("Erst Daten laden, dann exportieren.", "error")
             return
         service = ExportService(self._settings)
         try:
-            result = (
-                service.export_excel(self._timesheet, self)
-                if kind == "excel"
-                else service.export_pdf(self._timesheet, self)
-            )
+            result = service.export(self._timesheet, self)
         except Exception as exc:  # noqa: BLE001 - der Grund gehoert in die Anzeige
             self._set_status(f"Export fehlgeschlagen: {exc}", "error")
             return
