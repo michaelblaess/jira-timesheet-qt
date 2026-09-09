@@ -27,7 +27,7 @@ from jira_timesheet_qt.services.ticket_board import (
 from jira_timesheet_qt.ui.main_window import _VIEWS, MainWindow
 from jira_timesheet_qt.ui.theme import Mode
 from jira_timesheet_qt.ui.ticket_board_model import TICKET_ROLE, TicketBoardModel
-from jira_timesheet_qt.ui.ticket_board_view import TicketBoardView
+from jira_timesheet_qt.ui.ticket_board_view import NO_ASSIGNEE, TicketBoardView
 from jira_timesheet_qt.ui.ticket_board_worker import (
     MODE_ASSIGNED,
     MODE_RELEVANT,
@@ -232,6 +232,126 @@ class TestAnsicht:
         assert view.board is not None
         assert view.board.count == 3
         assert len(view.board.with_marker(Marker.PILE_OF_SHAME)) == 1
+
+
+class TestBearbeiterfilter:
+    """Die Ansicht "Meine Aktivitaeten" zeigt Tickets mehrerer Personen.
+
+    Ohne Filter ueber die Bearbeiter-Spalte laesst sich daraus nicht
+    herausloesen, was bei einer bestimmten Person liegt.
+    """
+
+    def _view(self) -> TicketBoardView:
+        view = TicketBoardView("Aktivitaeten", with_assignees=True)
+        view.set_board(
+            board(
+                Group(
+                    role=Role.ACTIVE,
+                    tickets=[
+                        ticket("A-1", assignee="Platzhalter, Paula"),
+                        ticket("A-2", assignee="Platzhalter, Paula"),
+                        ticket("A-3", assignee="Beispiel, Bruno"),
+                        ticket("A-4"),
+                    ],
+                )
+            )
+        )
+        return view
+
+    def _sichtbare_schluessel(self, view: TicketBoardView) -> list[str]:
+        proxy = view._proxy
+        keys: list[str] = []
+        for group_row in range(proxy.rowCount()):
+            parent = proxy.index(group_row, 0)
+            for row in range(proxy.rowCount(parent)):
+                data = proxy.index(row, 0, parent).data(TICKET_ROLE)
+                if data is not None:
+                    keys.append(data.key)
+        return keys
+
+    def test_es_gibt_ihn_nur_in_meine_aktivitaeten(self, qapp: QApplication) -> None:
+        # In "Meine Tickets" ist der Bearbeiter immer derselbe, in "Mein Team"
+        # waehlt schon das Feld darueber die Person aus.
+        ohne = TicketBoardView("Meine Tickets")
+        assert ohne.findChild(QComboBox, "BoardAssigneeFilter") is None
+        mit = TicketBoardView("Aktivitaeten", with_assignees=True)
+        assert mit.findChild(QComboBox, "BoardAssigneeFilter") is not None
+
+    def test_namen_kommen_aus_den_vorkommenden_werten(self, qapp: QApplication) -> None:
+        view = self._view()
+        eintraege = [
+            view._assignee_box.itemText(i) for i in range(view._assignee_box.count())
+        ]
+        assert eintraege == ["alle", "Beispiel, Bruno", "Platzhalter, Paula", "ohne Bearbeiter"]
+
+    def test_ohne_unzugewiesene_fehlt_der_eintrag(self, qapp: QApplication) -> None:
+        # Ein Filtereintrag, der garantiert nichts findet, hilft niemandem.
+        view = TicketBoardView("Aktivitaeten", with_assignees=True)
+        view.set_board(
+            board(Group(role=Role.ACTIVE, tickets=[ticket("A-1", assignee="Platzhalter, Paula")]))
+        )
+        eintraege = [
+            view._assignee_box.itemData(i) for i in range(view._assignee_box.count())
+        ]
+        assert NO_ASSIGNEE not in eintraege
+
+    def test_eine_person_blendet_die_anderen_aus(self, qapp: QApplication) -> None:
+        view = self._view()
+        view._assignee_box.setCurrentIndex(view._assignee_box.findData("Platzhalter, Paula"))
+        assert self._sichtbare_schluessel(view) == ["A-1", "A-2"]
+
+    def test_ohne_bearbeiter_findet_genau_die_unzugewiesenen(self, qapp: QApplication) -> None:
+        view = self._view()
+        view._assignee_box.setCurrentIndex(view._assignee_box.findData(NO_ASSIGNEE))
+        assert self._sichtbare_schluessel(view) == ["A-4"]
+
+    def test_zurueck_auf_alle_zeigt_wieder_alles(self, qapp: QApplication) -> None:
+        view = self._view()
+        view._assignee_box.setCurrentIndex(view._assignee_box.findData("Beispiel, Bruno"))
+        assert self._sichtbare_schluessel(view) == ["A-3"]
+        view._assignee_box.setCurrentIndex(view._assignee_box.findData(""))
+        assert self._sichtbare_schluessel(view) == ["A-1", "A-2", "A-3", "A-4"]
+
+    def test_verschwundene_person_faellt_auf_alle_zurueck(self, qapp: QApplication) -> None:
+        # Nach dem Neuladen kann die gewaehlte Person aus dem Bestand raus
+        # sein. Bliebe der Filter stehen, staende die Ansicht ohne erkennbaren
+        # Grund leer.
+        view = self._view()
+        view._assignee_box.setCurrentIndex(view._assignee_box.findData("Beispiel, Bruno"))
+        assert self._sichtbare_schluessel(view) == ["A-3"]
+        view.set_board(
+            board(Group(role=Role.ACTIVE, tickets=[ticket("A-1", assignee="Platzhalter, Paula")]))
+        )
+        assert self._sichtbare_schluessel(view) == ["A-1"]
+
+    def test_er_greift_zusammen_mit_dem_status(self, qapp: QApplication) -> None:
+        # Die Filter schliessen sich nicht aus, sie verengen gemeinsam.
+        view = TicketBoardView("Aktivitaeten", with_assignees=True)
+        view.set_board(
+            board(
+                Group(
+                    role=Role.ACTIVE,
+                    tickets=[
+                        ticket("A-1", assignee="Platzhalter, Paula"),
+                        ticket("A-2", assignee="Platzhalter, Paula", status="Im Review"),
+                        ticket("A-3", assignee="Beispiel, Bruno", status="Im Review"),
+                    ],
+                )
+            )
+        )
+        view._assignee_box.setCurrentIndex(view._assignee_box.findData("Platzhalter, Paula"))
+        view._status_box.setCurrentIndex(view._status_box.findData("Im Review"))
+        assert self._sichtbare_schluessel(view) == ["A-2"]
+
+    def test_das_feld_hat_eine_lesbare_mindestbreite(self, qapp: QApplication) -> None:
+        # "Nachname, Vorname" wird lang - dieselbe Falle wie beim Status.
+        view = self._view()
+        breite_von_18_zeichen = view._assignee_box.fontMetrics().horizontalAdvance("x" * 18)
+        assert view._assignee_box.sizeHint().width() >= breite_von_18_zeichen
+        assert (
+            view._assignee_box.sizeAdjustPolicy()
+            is QComboBox.SizeAdjustPolicy.AdjustToContents
+        )
 
 
 class TestEinstellungsbruecke:

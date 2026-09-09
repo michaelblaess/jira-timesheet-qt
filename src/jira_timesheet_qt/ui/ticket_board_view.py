@@ -53,8 +53,13 @@ ACTIONABLE = (
 )
 
 
+# Wert des Bearbeiterfilters fuer die Tickets ohne Bearbeiter. Ein leerer
+# String kann das nicht ausdruecken - der steht schon fuer "alle".
+NO_ASSIGNEE = "\x00ohne-bearbeiter"
+
+
 class TicketFilterProxy(QSortFilterProxyModel):
-    """Filtert nach Suchtext, Status und Handlungsbedarf.
+    """Filtert nach Suchtext, Status, Bearbeiter und Handlungsbedarf.
 
     Gruppenzeilen bestehen den Filter nie aus eigener Kraft - sie ueberleben
     ausschliesslich ueber die rekursive Pruefung, wenn ein Kind passt. Sonst
@@ -65,6 +70,7 @@ class TicketFilterProxy(QSortFilterProxyModel):
         super().__init__(parent)
         self._needle = ""
         self._status = ""
+        self._assignee = ""
         self._only_actionable = False
         self.setSortRole(SORT_ROLE)
         self.setRecursiveFilteringEnabled(True)
@@ -79,10 +85,35 @@ class TicketFilterProxy(QSortFilterProxyModel):
         self._status = status
         self.invalidate()
 
+    def set_assignee(self, assignee: str) -> None:
+        """Beschraenkt auf einen Bearbeiter.
+
+        Args:
+            assignee: Der Anzeigename, leer fuer alle, `NO_ASSIGNEE` fuer die
+                Tickets, die niemandem zugewiesen sind.
+        """
+        self._assignee = assignee
+        self.invalidate()
+
     def set_only_actionable(self, only: bool) -> None:
         """Blendet Tickets ohne Handlungsbedarf aus."""
         self._only_actionable = only
         self.invalidate()
+
+    def _assignee_matches(self, ticket: Ticket) -> bool:
+        """Prueft ein Ticket gegen den Bearbeiterfilter.
+
+        Args:
+            ticket: Das zu pruefende Ticket.
+
+        Returns:
+            True, wenn das Ticket sichtbar bleiben soll.
+        """
+        if not self._assignee:
+            return True
+        if self._assignee == NO_ASSIGNEE:
+            return not ticket.assignee
+        return ticket.assignee == self._assignee
 
     def filterAcceptsRow(  # noqa: N802 - Qt-Schreibweise
         self, source_row: int, source_parent: AnyIndex
@@ -97,6 +128,8 @@ class TicketFilterProxy(QSortFilterProxyModel):
             # Gruppenzeile: nur ueber die rekursive Pruefung sichtbar.
             return False
         if self._status and ticket.status != self._status:
+            return False
+        if not self._assignee_matches(ticket):
             return False
         if self._only_actionable and not any(ticket.has(m) for m in ACTIONABLE):
             return False
@@ -126,6 +159,7 @@ class TicketBoardView(QWidget):
         with_charts: bool = False,
         mode: Mode = Mode.DARK,
         with_members: bool = False,
+        with_assignees: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         """Baut die Ansicht.
@@ -144,12 +178,18 @@ class TicketBoardView(QWidget):
                 Merkliste. Ein Feld, das erst mit dem ersten Eintrag
                 auftaucht, ist der Grund, warum in der Textual-Fassung
                 gespeicherte Personen im Reiter nicht ankamen.
+            with_assignees:
+                Ob das Auswahlfeld fuer den Bearbeiter entsteht. Nur dort
+                sinnvoll, wo Tickets mehrerer Personen zusammenstehen: in
+                "Meine Tickets" ist der Bearbeiter immer derselbe, und in
+                "Mein Team" waehlt schon das Feld darueber die Person aus.
             parent:
                 Das Qt-Elternobjekt.
         """
         super().__init__(parent)
         self._title = title
         self._with_members = with_members
+        self._with_assignees = with_assignees
         self._members: list[str] = []
         # Die Auswertung zeigt den eigenen Durchsatz. Bei fremden Tickets
         # waere sie eine Zahl ueber jemand anderen - deshalb nur dort, wo
@@ -198,6 +238,20 @@ class TicketBoardView(QWidget):
         self._status_box.addItem("alle", "")
         self._status_box.currentIndexChanged.connect(self._on_status_changed)
         head.addWidget(self._status_box)
+
+        if self._with_assignees:
+            # Hinter dem Status: beide waehlen aus demselben Bestand aus, und
+            # der Status ist der haeufiger benutzte von beiden.
+            head.addWidget(QLabel("Bearbeiter:"))
+            self._assignee_box = QComboBox()
+            self._assignee_box.setObjectName("BoardAssigneeFilter")
+            # Namen im Format "Nachname, Vorname" werden lang. Ohne das zeigt
+            # das Feld nur noch den Anfang, wie beim Status daneben.
+            self._assignee_box.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+            self._assignee_box.setMinimumContentsLength(18)
+            self._assignee_box.addItem("alle", "")
+            self._assignee_box.currentIndexChanged.connect(self._on_assignee_changed)
+            head.addWidget(self._assignee_box)
 
         self._actionable = QCheckBox("nur mit Handlungsbedarf")
         self._actionable.toggled.connect(self._proxy.set_only_actionable)
@@ -276,6 +330,7 @@ class TicketBoardView(QWidget):
         self._board = board
         self._model.set_board(board)
         self._fill_status_filter(board)
+        self._fill_assignee_filter(board)
         self._tree.expandAll()
         self._collapse_done()
         self._resize_columns()
@@ -435,6 +490,34 @@ class TicketBoardView(QWidget):
         self._status_box.blockSignals(False)
         self._proxy.set_status(str(self._status_box.currentData() or ""))
 
+    def _fill_assignee_filter(self, board: Board | None) -> None:
+        """Fuellt die Bearbeiterauswahl aus den tatsaechlich vorkommenden Namen.
+
+        Wie beim Status kommen die Namen aus dem Ergebnis. Dazu ein Eintrag
+        fuer die Tickets ohne Bearbeiter - genau die sind in "Meine
+        Aktivitaeten" oft das Interessante, und ueber das Suchfeld sind sie
+        gar nicht zu treffen. Der Eintrag erscheint nur, wenn es solche
+        Tickets gibt: ein Filter, der garantiert nichts findet, hilft niemandem.
+
+        Args:
+            board: Das uebernommene Ergebnis, oder None.
+        """
+        if not self._with_assignees:
+            return
+        previous = self._assignee_box.currentData()
+        self._assignee_box.blockSignals(True)
+        self._assignee_box.clear()
+        self._assignee_box.addItem("alle", "")
+        if board is not None:
+            for name in sorted({t.assignee for t in board.tickets if t.assignee}):
+                self._assignee_box.addItem(name, name)
+            if any(not t.assignee for t in board.tickets):
+                self._assignee_box.addItem("ohne Bearbeiter", NO_ASSIGNEE)
+        position = self._assignee_box.findData(previous)
+        self._assignee_box.setCurrentIndex(max(0, position))
+        self._assignee_box.blockSignals(False)
+        self._proxy.set_assignee(str(self._assignee_box.currentData() or ""))
+
     def _resize_columns(self) -> None:
         """Passt die Spaltenbreiten an, Titel bekommt den Rest."""
         header = self._tree.header()
@@ -447,6 +530,9 @@ class TicketBoardView(QWidget):
 
     def _on_status_changed(self) -> None:
         self._proxy.set_status(str(self._status_box.currentData() or ""))
+
+    def _on_assignee_changed(self) -> None:
+        self._proxy.set_assignee(str(self._assignee_box.currentData() or ""))
 
     def _ticket_at(self, index: AnyIndex) -> Ticket | None:
         """Ticket einer Zeile der ANGEZEIGTEN Liste.

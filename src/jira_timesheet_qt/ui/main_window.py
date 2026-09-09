@@ -328,7 +328,7 @@ class MainWindow(QMainWindow):
         )
         self._assigned_board.detail_requested.connect(self._show_detail)
         self._assigned_board.report_requested.connect(self.open_ticket_report)
-        self._relevant_board = TicketBoardView("Meine Aktivitäten")
+        self._relevant_board = TicketBoardView("Meine Aktivitäten", with_assignees=True)
         self._relevant_board.detail_requested.connect(self._show_detail)
         self._relevant_board.report_requested.connect(self.open_ticket_report)
         # Ohne Auswertung: der Durchsatz je Monat waere ueber eine andere
