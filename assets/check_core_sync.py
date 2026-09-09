@@ -52,6 +52,7 @@ SHARED = (
     "services/manual_entry_service.py",
     "services/markdown_exporter.py",
     "services/pdf_exporter.py",
+    "services/ssl_support.py",
     "services/timesheet_service.py",
     # Ticket-Ansichten: der fachliche Kern, UI-frei und in beiden Fassungen
     # wortgleich.

@@ -38,6 +38,7 @@ from jira_timesheet_qt.models.settings import (
 )
 from jira_timesheet_qt.services.cache_service import CACHE_DIR
 from jira_timesheet_qt.services.manual_entry_service import DB_FILE
+from jira_timesheet_qt.services.ssl_support import TlsSettings
 from jira_timesheet_qt.services.team import (
     AccountCandidate,
     Roster,
@@ -118,19 +119,25 @@ class SettingsDialog(SettingsDialogBase):
         self.finished.connect(self._await_detect_worker)
 
     def eigene_seiten(self) -> Sequence[tuple[str, QWidget]]:
-        """Die sechs Seiten dieser Anwendung.
+        """Die sieben Seiten dieser Anwendung.
+
+        Namen und Reihenfolge sind mit der Textual-Fassung abgeglichen - wer
+        zwischen beiden wechselt, soll dieselben Reiter in derselben Folge
+        finden. Der Proxy steht deshalb auf "Netzwerk" und nicht mehr beim
+        Zugang, und "Zugang" heisst "Jira".
 
         Appearance und Speicherort kommen aus der Bibliothek und haengen sich
         dahinter. Was auf der Darstellungs-Seite zusaetzlich steht - Markierung
         und Soll-Ist-Ampel -, liefert darstellung_erweitern().
         """
         return [
-            ("Zugang", self._page_access()),
+            ("Jira", self._page_access()),
+            ("Netzwerk", self._page_network()),
+            ("Export", self._page_export()),
+            ("Spalten", self._page_columns()),
             ("Arbeitszeit", self._page_worktime()),
             ("Tickets", self._page_tickets()),
             ("Mein Team", self._page_team()),
-            ("Export", self._page_export()),
-            ("Spalten", self._page_columns()),
         ]
 
     def uebernehmen(self) -> None:
@@ -175,11 +182,6 @@ class SettingsDialog(SettingsDialogBase):
         self.legacy.setChecked(self._settings.use_legacy_api)
         form.addRow(self.beschriftung(""), self.legacy)
 
-        self.proxy = QLineEdit(self._settings.proxy_url)
-        self.proxy.setFixedWidth(FIELD_WIDTH)
-        self.proxy.setPlaceholderText("http://proxy:8080 - leer lässt die Umgebung entscheiden")
-        form.addRow(self.beschriftung("Proxy"), self.proxy)
-
         self.budget_field = QLineEdit(self._settings.budget_field)
         self.budget_field.setFixedWidth(FIELD_WIDTH)
         self.budget_field.setPlaceholderText("customfield_XXXXX")
@@ -213,6 +215,84 @@ class SettingsDialog(SettingsDialogBase):
         if self._import_button is not None:
             form.addRow(self.beschriftung(""), self._import_button)
         return page
+
+    def _page_network(self) -> QWidget:
+        """Zertifikate und Proxy - wortgleich mit dem Reiter "Netzwerk" der TUI.
+
+        Bis v0.10.0 stand in jedem HTTPS-Aufruf `verify=False`, ohne Schalter:
+        die Verbindung war verschluesselt, aber niemand pruefte, mit wem. Der
+        Grund ist nachvollziehbar - ein TLS-aufbrechender Firmenproxy legt sein
+        eigenes Zertifikat vor. Die Loesung ist, dessen Wurzelzertifikat
+        bekannt zu machen, nicht die Pruefung abzuschalten.
+
+        Returns:
+            Die fertige Seite.
+        """
+        page, form = self.seite("Netzwerk")
+
+        form.addRow(self.hinweis("Zertifikate"))
+
+        self.verify_ssl = QCheckBox("Serverzertifikat prüfen")
+        self.verify_ssl.setChecked(self._settings.verify_ssl)
+        self.verify_ssl.setToolTip(
+            "Aus heißt: Die Verbindung ist verschlüsselt, aber niemand prüft, mit wem. "
+            "Nur abschalten, wenn kein CA-Bundle zu beschaffen ist."
+        )
+        form.addRow(self.beschriftung(""), self.verify_ssl)
+
+        self.ca_bundle = QLineEdit(self._settings.ca_bundle)
+        self.ca_bundle.setFixedWidth(FIELD_WIDTH)
+        self.ca_bundle.setPlaceholderText("Pfad zur PEM-Datei")
+        self.ca_bundle.setToolTip(
+            "Wurzelzertifikat des Firmenproxys. Leer = Zertifikatsspeicher des Systems "
+            "bzw. SSL_CERT_FILE aus der Umgebung."
+        )
+        form.addRow(self.beschriftung("CA-Bundle (PEM)"), self.ca_bundle)
+
+        self.client_cert = QLineEdit(self._settings.client_cert)
+        self.client_cert.setFixedWidth(FIELD_WIDTH)
+        form.addRow(self.beschriftung("Client-Zertifikat"), self.client_cert)
+
+        self.client_key = QLineEdit(self._settings.client_key)
+        self.client_key.setFixedWidth(FIELD_WIDTH)
+        form.addRow(self.beschriftung("Schlüsseldatei"), self.client_key)
+
+        self.client_key_password = QLineEdit(self._settings.client_key_password)
+        self.client_key_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.client_key_password.setFixedWidth(FIELD_WIDTH)
+        form.addRow(self.beschriftung("Schlüssel-Passwort"), self.client_key_password)
+
+        form.addRow(self.hinweis("Verbindung"))
+
+        self.proxy = QLineEdit(self._settings.proxy_url)
+        self.proxy.setFixedWidth(FIELD_WIDTH)
+        self.proxy.setPlaceholderText("http://proxy.example.com:8080")
+        self.proxy.setToolTip(
+            "Optionaler HTTP-Proxy für die Jira-Verbindung. Leer lassen für die "
+            "Direktverbindung; httpx liest dann weiterhin HTTP_PROXY/HTTPS_PROXY "
+            "aus der Umgebung."
+        )
+        form.addRow(self.beschriftung("Proxy-URL"), self.proxy)
+        return page
+
+    def _tls_from_fields(self) -> TlsSettings:
+        """Baut die TLS-Angaben aus den AKTUELLEN Feldern des Dialogs.
+
+        Nicht aus den gespeicherten Einstellungen: Wer das CA-Bundle gerade
+        erst eingetragen hat, soll die Budget-Erkennung sofort nutzen koennen,
+        ohne vorher zu speichern. Dieselbe Ueberlegung wie bei Host, E-Mail
+        und Token.
+
+        Returns:
+            Die TLS-Angaben, wie sie gerade im Dialog stehen.
+        """
+        return TlsSettings(
+            verify=self.verify_ssl.isChecked(),
+            ca_bundle=self.ca_bundle.text().strip(),
+            client_cert=self.client_cert.text().strip(),
+            client_key=self.client_key.text().strip(),
+            client_key_password=self.client_key_password.text(),
+        )
 
     def _import_knopf(self) -> QPushButton | None:
         """Uebernahme aus der Textual-Fassung - nur, wenn die hier etwas hinterlassen hat.
@@ -292,7 +372,7 @@ class SettingsDialog(SettingsDialogBase):
 
         self.detect_budget.setEnabled(False)
         self.detect_budget.setText("Ermittle ...")
-        worker = BudgetFieldWorker(host, email, token, proxy, self)
+        worker = BudgetFieldWorker(host, email, token, proxy, self._tls_from_fields(), self)
         worker.found.connect(self._on_budget_found)
         worker.failed.connect(self._on_budget_failed)
         worker.finished.connect(self._on_detect_finished)
@@ -960,6 +1040,11 @@ class SettingsDialog(SettingsDialogBase):
         s.jira_token = self.token.text().strip()
         s.use_legacy_api = self.legacy.isChecked()
         s.proxy_url = self.proxy.text().strip()
+        s.verify_ssl = self.verify_ssl.isChecked()
+        s.ca_bundle = self.ca_bundle.text().strip()
+        s.client_cert = self.client_cert.text().strip()
+        s.client_key = self.client_key.text().strip()
+        s.client_key_password = self.client_key_password.text()
         s.budget_field = self.budget_field.text().strip()
         s.hours_per_day = self.hours_per_day.value()
         s.max_yearly_hours = self.max_yearly.value()

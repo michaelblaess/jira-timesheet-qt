@@ -21,6 +21,7 @@ import httpx
 from jira_timesheet_qt.i18n import t
 from jira_timesheet_qt.models.ticket_lifecycle import TicketLifecycleData
 from jira_timesheet_qt.models.timesheet import WorklogEntry
+from jira_timesheet_qt.services.ssl_support import TlsSettings, build_verify, is_ssl_error
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ class JiraClient:
         budget_field: str = "",
         legacy: bool = False,
         proxy: str = "",
+        tls: TlsSettings | None = None,
         on_log: Callable[[str], None] | None = None,
     ) -> None:
         """Initialisiert den Client.
@@ -60,6 +62,9 @@ class JiraClient:
                 Optionale Proxy-URL (z.B. Corporate-Proxy,
                 "http://host:port"). Leer = kein expliziter Proxy; httpx
                 liest dann weiterhin HTTP(S)_PROXY aus der Umgebung.
+            tls:
+                Einstellungen fuer die Zertifikatspruefung. Ohne Angabe wird
+                geprueft - bis v0.10.0 war die Pruefung hier fest abgeschaltet.
             on_log:
                 Optionaler Callback fuer Log-Ausgaben.
         """
@@ -69,11 +74,64 @@ class JiraClient:
         self._budget_field = budget_field
         self._legacy = legacy
         self._proxy = proxy.strip()
+        # Einmal bauen statt bei jedem der acht Aufrufe: ein SSLContext liest
+        # dabei Zertifikatsdateien von der Platte.
+        try:
+            self._verify = build_verify(tls or TlsSettings())
+        except FileNotFoundError as exc:
+            raise JiraClientError(t("jira.tls_file_missing", path=exc.args[0])) from exc
         self._log = on_log or (lambda _: None)
         # Cloud-Modus: accountId des angemeldeten Benutzers (fuer Matching).
         self._account_id = ""
 
     async def get_worklogs(
+        self,
+        date_from: date,
+        date_to: date,
+    ) -> list[WorklogEntry]:
+        """Holt alle Worklogs des Benutzers in einem Zeitraum.
+
+        Duenne Huelle um `_get_worklogs`, die Verbindungsfehler in eine
+        lesbare Meldung uebersetzt. Vor allem den TLS-Fall: Seit die
+        Zertifikatspruefung eingeschaltet ist, scheitert eine Verbindung hinter
+        einem Firmenproxy mit einer httpx-Meldung, aus der niemand ableitet,
+        dass ein Wurzelzertifikat fehlt.
+
+        Args:
+            date_from:
+                Erster Tag des Zeitraums (inklusive).
+            date_to:
+                Letzter Tag des Zeitraums (inklusive).
+
+        Returns:
+            Liste der Worklog-Eintraege, sortiert nach Datum und Ticket.
+
+        Raises:
+            JiraClientError:
+                Bei jedem Verbindungsfehler, mit einem Hinweis auf die
+                TLS-Einstellungen, wenn die Ursache dort liegt.
+        """
+        try:
+            return await self._get_worklogs(date_from, date_to)
+        except httpx.HTTPError as exc:
+            raise self._as_client_error(exc) from exc
+
+    def _as_client_error(self, exc: Exception) -> JiraClientError:
+        """Uebersetzt einen Verbindungsfehler in eine Meldung fuer den Anwender.
+
+        Args:
+            exc:
+                Der aufgetretene Fehler.
+
+        Returns:
+            Ein `JiraClientError`. Bei einer gescheiterten Zertifikatspruefung
+            mit dem Hinweis auf die Einstellungen, sonst mit dem Originaltext.
+        """
+        if is_ssl_error(exc):
+            return JiraClientError(t("jira.tls_failed", error=exc))
+        return JiraClientError(str(exc))
+
+    async def _get_worklogs(
         self,
         date_from: date,
         date_to: date,
@@ -119,7 +177,7 @@ class JiraClient:
         auth = None if self._legacy else (self._email, self._token)
 
         async with httpx.AsyncClient(
-            verify=False,
+            verify=self._verify,
             timeout=60.0,
             follow_redirects=True,
             auth=auth,
@@ -162,7 +220,7 @@ class JiraClient:
         base = f"{self._host}/rest/api/{version}/issue/{key}"
 
         async with httpx.AsyncClient(
-            verify=False,
+            verify=self._verify,
             timeout=60.0,
             follow_redirects=True,
             auth=None if self._legacy else (self._email, self._token),
@@ -227,7 +285,7 @@ class JiraClient:
         titles: dict[str, str] = {}
         try:
             async with httpx.AsyncClient(
-                verify=False,
+                verify=self._verify,
                 timeout=30.0,
                 follow_redirects=True,
                 auth=None if self._legacy else (self._email, self._token),
@@ -262,7 +320,7 @@ class JiraClient:
         matches: list[tuple[str, str]] = []
 
         async with httpx.AsyncClient(
-            verify=False,
+            verify=self._verify,
             timeout=30.0,
             follow_redirects=True,
             auth=(self._email, self._token),
@@ -317,7 +375,7 @@ class JiraClient:
         account_id = ""
 
         async with httpx.AsyncClient(
-            verify=False,
+            verify=self._verify,
             timeout=60.0,
             follow_redirects=True,
             auth=auth,
@@ -359,7 +417,7 @@ class JiraClient:
         result: dict[str, tuple[int, str]] = {}
 
         async with httpx.AsyncClient(
-            verify=False,
+            verify=self._verify,
             timeout=60.0,
             follow_redirects=True,
             auth=auth,
@@ -405,7 +463,7 @@ class JiraClient:
 
         url = f"{self._host}/rest/api/3/user/search"
         async with httpx.AsyncClient(
-            verify=False,
+            verify=self._verify,
             timeout=60.0,
             follow_redirects=True,
             auth=(self._email, self._token),
@@ -456,7 +514,7 @@ class JiraClient:
 
         result: dict[str, tuple[int, list[dict[str, Any]]]] = {}
         async with httpx.AsyncClient(
-            verify=False,
+            verify=self._verify,
             timeout=60.0,
             follow_redirects=True,
             auth=(self._email, self._token),

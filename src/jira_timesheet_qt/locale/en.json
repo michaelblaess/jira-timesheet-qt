@@ -83,6 +83,8 @@
   "jira.issues_found": "{count} issues found",
   "jira.jql": "JQL: {jql}",
   "jira.login_failed": "Jira login failed. Please check the token.",
+  "jira.tls_failed": "[red]Certificate verification failed: {error}[/red]\n[yellow]Behind a corporate proxy its root certificate is usually missing. Add it under Settings -> Network as a CA bundle.[/yellow]",
+  "jira.tls_file_missing": "Certificate file not found: {path}",
   "jira.worklog_fetch_failed": "Worklog fetch for {issue} failed",
   "jira.worklogs_found": "{count} worklogs found in range",
   "log.cache_cleared": "[yellow]Cache cleared ({count} files)[/yellow]",

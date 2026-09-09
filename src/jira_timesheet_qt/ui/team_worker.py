@@ -14,6 +14,7 @@ from PySide6.QtCore import QObject, QThread, Signal
 
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.services.jira_client import JiraClient, JiraClientError
+from jira_timesheet_qt.services.ssl_support import tls_from_settings
 from jira_timesheet_qt.services.team import (
     AccountCandidate,
     parse_search,
@@ -77,6 +78,7 @@ class TeamSearchWorker(QThread):
             budget_field=settings.budget_field,
             legacy=settings.use_legacy_api,
             proxy=settings.proxy_url,
+            tls=tls_from_settings(settings),
         )
 
         found = parse_search(await client.fetch_people(self._query))

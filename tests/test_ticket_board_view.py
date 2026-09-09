@@ -234,6 +234,31 @@ class TestAnsicht:
         assert len(view.board.with_marker(Marker.PILE_OF_SHAME)) == 1
 
 
+def seite_waehlen(dialog: object, name: str) -> None:
+    """Waehlt eine Seite des Einstellungsdialogs ueber ihren Namen.
+
+    Ein fester Index bricht, sobald die Reihenfolge der Seiten sich aendert -
+    genau das ist beim Angleichen an die Textual-Fassung passiert: aus Index 2
+    wurde "Export" statt "Tickets", und der Test mass eine kurze Seite ohne
+    Bildlaufleiste.
+
+    Args:
+        dialog: Der geoeffnete Einstellungsdialog.
+        name: Die Beschriftung der Seite, z.B. "Tickets".
+
+    Raises:
+        AssertionError: Wenn es keine Seite dieses Namens gibt.
+    """
+    nav = dialog._nav  # type: ignore[attr-defined]
+    for zeile in range(nav.count()):
+        eintrag = nav.item(zeile)
+        if eintrag is not None and eintrag.text() == name:
+            nav.setCurrentRow(zeile)
+            return
+    vorhanden = [nav.item(i).text() for i in range(nav.count()) if nav.item(i) is not None]
+    raise AssertionError(f"Seite {name!r} gibt es nicht. Vorhanden: {vorhanden}")
+
+
 class TestBearbeiterfilter:
     """Die Ansicht "Meine Aktivitaeten" zeigt Tickets mehrerer Personen.
 
@@ -494,7 +519,7 @@ class TestEinstellungsseite:
         dialog.show()
         # Erst die sichtbare Seite wird ausgelegt - ohne den Wechsel steht das
         # Feld noch auf Position 0 und der Test misst nichts.
-        dialog._nav.setCurrentRow(2)
+        seite_waehlen(dialog, "Tickets")
         qapp.processEvents()
         try:
             feld = dialog.board_priorities
@@ -516,7 +541,7 @@ class TestEinstellungsseite:
         dialog = SettingsDialog(Settings())
         dialog.resize(dialog.minimumSize())
         dialog.show()
-        dialog._nav.setCurrentRow(2)
+        seite_waehlen(dialog, "Tickets")
         qapp.processEvents()
         try:
             bereich = dialog._stapel.currentWidget()

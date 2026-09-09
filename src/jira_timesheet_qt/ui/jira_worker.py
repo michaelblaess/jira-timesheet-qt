@@ -22,6 +22,7 @@ from jira_timesheet_qt.models.ticket_lifecycle import TicketLifecycleData
 from jira_timesheet_qt.models.timesheet import Timesheet
 from jira_timesheet_qt.services.jira_client import JiraClient, JiraClientError
 from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
+from jira_timesheet_qt.services.ssl_support import TlsSettings, tls_from_settings
 from jira_timesheet_qt.services.ticket_report import lifecycle
 from jira_timesheet_qt.services.timesheet_service import TimesheetService
 
@@ -72,6 +73,7 @@ class WorklogWorker(QThread):
             budget_field=settings.budget_field,
             legacy=settings.use_legacy_api,
             proxy=settings.proxy_url,
+            tls=tls_from_settings(settings),
             on_log=self.log.emit,
         )
         entries = await client.get_worklogs(self._from, self._to)
@@ -143,6 +145,7 @@ class TicketReportWorker(QThread):
             token=settings.jira_token,
             legacy=settings.use_legacy_api,
             proxy=settings.proxy_url,
+            tls=tls_from_settings(settings),
             on_log=self.log.emit,
         )
         daten = await client.get_ticket_lifecycle(self._key)
@@ -173,6 +176,7 @@ class BudgetFieldWorker(QThread):
         email: str,
         token: str,
         proxy: str = "",
+        tls: TlsSettings | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -180,6 +184,10 @@ class BudgetFieldWorker(QThread):
         self._email = email
         self._token = token
         self._proxy = proxy
+        # Auch die Autoerkennung geht ueber TLS. Ohne die Angaben liefe sie
+        # hinter einem Firmenproxy in einen Zertifikatsfehler, waehrend der
+        # eigentliche Abruf laeuft - und niemand verstuende warum.
+        self._tls = tls or TlsSettings()
 
     def run(self) -> None:
         """Laeuft im Hintergrund-Thread."""
@@ -200,5 +208,6 @@ class BudgetFieldWorker(QThread):
             token=self._token,
             legacy=False,
             proxy=self._proxy,
+            tls=self._tls,
         )
         return await client.detect_budget_field("budget")

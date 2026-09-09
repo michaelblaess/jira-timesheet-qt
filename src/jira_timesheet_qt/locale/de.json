@@ -83,6 +83,8 @@
   "jira.issues_found": "{count} Issues gefunden",
   "jira.jql": "JQL: {jql}",
   "jira.login_failed": "Jira Login fehlgeschlagen. Bitte Token prüfen.",
+  "jira.tls_failed": "[red]Die Zertifikatsprüfung ist fehlgeschlagen: {error}[/red]\n[yellow]Hinter einem Firmenproxy fehlt meist dessen Wurzelzertifikat. Trage es unter Einstellungen -> Netzwerk als CA-Bundle ein.[/yellow]",
+  "jira.tls_file_missing": "Die Zertifikatsdatei wurde nicht gefunden: {path}",
   "jira.worklog_fetch_failed": "Worklog-Abruf für {issue} fehlgeschlagen",
   "jira.worklogs_found": "{count} Worklogs im Zeitraum gefunden",
   "log.cache_cleared": "[yellow]Cache gelöscht ({count} Dateien)[/yellow]",

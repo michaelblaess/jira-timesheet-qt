@@ -118,6 +118,17 @@ class Settings:
     email: str = ""
     use_legacy_api: bool = False
     proxy_url: str = ""
+
+    # --- Zertifikate --------------------------------------------------
+    # Bis v0.10.0 stand in jedem httpx-Client verify=False, ohne Schalter.
+    # Die Vorgabe ist jetzt "pruefen"; wer hinter einem TLS-aufbrechenden
+    # Firmenproxy sitzt, traegt dessen Wurzelzertifikat als CA-Bundle ein.
+    verify_ssl: bool = True
+    ca_bundle: str = ""
+    client_cert: str = ""
+    client_key: str = ""
+    client_key_password: str = ""
+
     logo_path: str = ""
     last_date_from: str = ""
     last_date_to: str = ""
@@ -199,6 +210,11 @@ class Settings:
         "email",
         "use_legacy_api",
         "proxy_url",
+        "verify_ssl",
+        "ca_bundle",
+        "client_cert",
+        "client_key",
+        "client_key_password",
         "logo_path",
         "last_date_from",
         "last_date_to",
@@ -305,6 +321,11 @@ class Settings:
                 email=data.get("email", ""),
                 use_legacy_api=bool(data.get("use_legacy_api", False)),
                 proxy_url=data.get("proxy_url", ""),
+                verify_ssl=bool(data.get("verify_ssl", True)),
+                ca_bundle=str(data.get("ca_bundle", "")),
+                client_cert=str(data.get("client_cert", "")),
+                client_key=str(data.get("client_key", "")),
+                client_key_password=str(data.get("client_key_password", "")),
                 logo_path=data.get("logo_path", ""),
                 last_date_from=data.get("last_date_from", ""),
                 last_date_to=data.get("last_date_to", ""),
