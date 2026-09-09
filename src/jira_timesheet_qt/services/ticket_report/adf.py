@@ -65,6 +65,52 @@ def clean(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
+def collect_urls(node: Any) -> list[str]:
+    """Sammelt alle Verweisziele eines ADF-Knotens.
+
+    `to_text()` gibt von einem Verweis nur den Linktext zurueck, das Ziel faellt
+    weg - die URL steht naemlich nicht im Knoten, sondern in seinen `marks`.
+    Fuer die Anzeige ist das richtig, fuer die Suche nach erwaehnten Tickets
+    nicht: Ein Kommentar mit "Details stehen [in diesem Ticket](.../browse/ABC-1)"
+    nennt ABC-1 nirgends im Text, und das Ticket blieb deshalb unentdeckt.
+
+    Gemessen am 08.09.2026 mit einer ADF-Attrappe: Linktext ohne das Ziel, der
+    Schluessel aus der URL fehlte in der Ausbeute.
+
+    Args:
+        node:
+            ADF-Dokument, Teilbaum oder None.
+
+    Returns:
+        Alle gefundenen Ziele in Reihenfolge des Auftretens, ohne Dubletten.
+        Deckt `link`-Marks ebenso ab wie `inlineCard` und `blockCard`.
+    """
+    gefunden: list[str] = []
+
+    def sammeln(current: Any) -> None:
+        if not isinstance(current, dict):
+            if isinstance(current, list):
+                for eintrag in current:
+                    sammeln(eintrag)
+            return
+
+        attrs = current.get("attrs") or {}
+        if current.get("type") in ("inlineCard", "blockCard") and attrs.get("url"):
+            gefunden.append(str(attrs["url"]))
+
+        for mark in current.get("marks") or []:
+            if isinstance(mark, dict) and mark.get("type") == "link":
+                href = (mark.get("attrs") or {}).get("href")
+                if href:
+                    gefunden.append(str(href))
+
+        sammeln(current.get("content"))
+
+    sammeln(node)
+    # dict.fromkeys haelt die Reihenfolge und wirft Dubletten raus.
+    return list(dict.fromkeys(gefunden))
+
+
 def field_to_text(value: Any) -> str:
     """Rendert ein beliebiges Jira-Feld als Text.
 

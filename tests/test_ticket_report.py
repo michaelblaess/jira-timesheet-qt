@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from jira_timesheet_qt.services.ticket_report import (
+    adf,
     build_html,
     build_report,
     lifecycle,
@@ -325,3 +326,63 @@ class TestVerwandteTickets:
         )
         erwaehnt = next(item for item in report.related if item["key"] == "ABC-88")
         assert erwaehnt["summary"] == ""
+
+
+class TestVerweisziele:
+    """Ticket-Schluessel, die nur in einer Verweis-URL stehen."""
+
+    @staticmethod
+    def _kommentar_mit_link() -> dict[str, Any]:
+        """Ein Kommentar, dessen Linktext den Schluessel NICHT nennt."""
+        return comment_stub(stamp(2, 11), "Muster, Erika", "Platzhalter") | {
+            "body": {
+                "type": "doc",
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {"type": "text", "text": "Details stehen "},
+                            {
+                                "type": "text",
+                                "text": "in diesem Ticket",
+                                "marks": [
+                                    {
+                                        "type": "link",
+                                        "attrs": {"href": "https://example.atlassian.net/browse/ABC-9"},
+                                    }
+                                ],
+                            },
+                        ],
+                    }
+                ],
+            }
+        }
+
+    def test_der_linktext_allein_nennt_den_schluessel_nicht(self) -> None:
+        # Gegenprobe: ohne die URL waere ABC-9 nicht zu finden. Faellt dieser
+        # Test um, prueft der Test darunter nichts mehr.
+        body = self._kommentar_mit_link()["body"]
+        assert "ABC-9" not in adf.field_to_text(body)
+
+    def test_schluessel_aus_der_verweis_url_wird_gefunden(self) -> None:
+        report = build_report(
+            issue_stub(),
+            changelog_stub(),
+            [self._kommentar_mit_link()],
+            BASE,
+        )
+        assert "ABC-9" in {eintrag["key"] for eintrag in report.related}
+
+    def test_ziel_einer_inline_card_zaehlt_auch(self) -> None:
+        urls = adf.collect_urls(
+            {
+                "type": "doc",
+                "content": [
+                    {
+                        "type": "inlineCard",
+                        "attrs": {"url": "https://example.atlassian.net/browse/ABC-7"},
+                    }
+                ],
+            }
+        )
+        assert urls == ["https://example.atlassian.net/browse/ABC-7"]

@@ -340,7 +340,9 @@ def from_raw(
         if summary:
             life.titles[str(other.get("key"))] = summary
 
-    _collect_keys(adf.field_to_text(fields.get("description")), life.mentioned, "Beschreibung")
+    beschreibung = fields.get("description")
+    _collect_keys(adf.field_to_text(beschreibung), life.mentioned, "Beschreibung")
+    _collect_keys(" ".join(adf.collect_urls(beschreibung)), life.mentioned, "Beschreibung")
 
     if life.reporter:
         _actor(life.actors, life.reporter, ROLE_REPORTER, created)
@@ -531,7 +533,12 @@ def _add_comments(comments: list[dict[str, Any]], life: Lifecycle) -> None:
 
         body = adf.field_to_text(comment.get("body"))
         life.events.append(Event(when, "comment", who, f"Kommentar [{index}]", _preview(body)))
-        _collect_keys(body, life.mentioned, f"Kommentar [{index}] ({who})")
+        # Die Verweisziele kommen getrennt dazu: sie stehen in den ADF-Marks,
+        # nicht im Text. Ohne sie bleibt ein Ticket unentdeckt, das nur hinter
+        # einem Linktext wie "siehe hier" steckt.
+        herkunft = f"Kommentar [{index}] ({who})"
+        _collect_keys(body, life.mentioned, herkunft)
+        _collect_keys(" ".join(adf.collect_urls(comment.get("body"))), life.mentioned, herkunft)
 
     life.mentioned.pop(life.key, None)
 
