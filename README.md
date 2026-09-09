@@ -27,7 +27,7 @@ A native desktop application (PySide6 / Qt 6) for timesheets from Jira worklogs 
 This is the native desktop port of the Textual TUI
 [jira-timesheet](https://github.com/michaelblaess/jira-timesheet). Both are built on the
 **same code** - the same Jira integration, timesheet logic, manual time tracking, holiday
-calendar and Excel/PDF export - so they produce identical results. Both run on **Windows,
+calendar and the same export - so they produce identical results. Both run on **Windows,
 macOS and Linux**. They differ in how you work with them, and each has genuine strengths:
 
 - **[Terminal (TUI)](https://github.com/michaelblaess/jira-timesheet)** - runs in any
@@ -119,8 +119,14 @@ The application follows the light or dark theme and a configurable accent colour
   the detail dialog
 - **Year view** - Twelve month tiles with progress bar, forecast, revenue totals and the top
   tickets per month; every ticket is a link to its detail dialog
-- **Excel export** - Formatted timesheet with logo and signature line
-- **PDF export** - Adobe-signable, Unicode font
+- **Export to four formats** - pick the format in the save dialog: Excel
+  (formatted timesheet with logo and signature line), PDF (Adobe-signable,
+  Unicode font), JSON (complete data set for further processing) and
+  Markdown (table for tickets, mails and docs)
+- **Verified connection** - HTTPS to Jira is checked against the system
+  certificate store. Behind a TLS-intercepting corporate proxy, add its root
+  certificate under Settings, page **Network**, as a CA bundle - the client
+  certificate and the proxy URL live there too
 - **Print preview** - Preview and print the timesheet straight from the app (`Ctrl+P`)
 - **Public holidays** - German public holidays per federal state, gap detection
 - **Target/actual &amp; forecast** - Working-time comparison with difference; yearly forecast
@@ -382,8 +388,7 @@ The software is provided without warranty of any kind ("as is"), as set out in t
 | `Ctrl+N` | Record manual time |
 | `Ctrl+D` | Show ticket details |
 | `Ctrl+T` | Ticket analysis (interactive report as an HTML file) |
-| `Ctrl+E` | Excel export |
-| `Ctrl+Shift+E` | PDF export |
+| `Ctrl+E` | Export (format chosen in the save dialog) |
 | `Ctrl+P` | Print preview |
 | `Ctrl+L` | Show / hide the log panel |
 | `Ctrl` +/- / 0 | Zoom in / out / reset (also `Ctrl` + mouse wheel) |
@@ -401,6 +406,10 @@ Settings are stored in `~/.jira-timesheet-qt/settings.json`:
 | Token | API token (Cloud) or bearer token (Data Center) | - |
 | Email | Atlassian login (Cloud) or Jira username (Data Center) | - |
 | Jira mode (legacy API) | Off = Jira Cloud (v3), on = Data Center (v2) | off |
+| Proxy URL | HTTP proxy for the Jira connection, empty = environment decides | - |
+| Verify server certificate | Off means: encrypted, but unverified | on |
+| CA bundle (PEM) | Root certificate of the corporate proxy, empty = system store | - |
+| Client certificate | If the other side asks for one | - |
 | Budget custom field | Custom field ID; Cloud supports **Auto-detect** | customfield_... |
 | Federal state | For the public-holiday calculation | SN |
 | Target hours/day | Working hours per day | 8.0 |

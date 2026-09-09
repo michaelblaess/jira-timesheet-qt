@@ -27,7 +27,7 @@ Eine native Desktop-Anwendung (PySide6 / Qt 6) für Stundenzettel aus Jira-Workl
 Das ist der native Desktop-Port für die Textual-TUI
 [jira-timesheet](https://github.com/michaelblaess/jira-timesheet). Beide bauen auf **demselben
 Code** auf - dieselbe Jira-Anbindung, dieselbe Stundenzettel-Logik, manuelle Zeiterfassung,
-Feiertagskalender und Excel-/PDF-Export - und liefern deshalb identische Ergebnisse. Beide
+Feiertagskalender und denselben Export - und liefern deshalb identische Ergebnisse. Beide
 laufen unter **Windows, macOS und Linux**. Sie unterscheiden sich nur darin, wie Du mit ihnen
 arbeitest, und jede hat echte Stärken:
 
@@ -121,9 +121,15 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   öffnen den Detail-Dialog
 - **Jahresansicht** - Zwölf Monatskacheln mit Fortschrittsbalken, Prognose, Umsatz-Summen und
   den Top-Tickets je Monat; jedes Ticket ist ein Link zum Detail-Dialog
-- **Excel-Export** - Formatierter Stundenzettel mit Logo und Unterschriftszeile
-- **PDF-Export** - Adobe-signierbar, Unicode-Schrift
+- **Export in vier Formate** - das Format wählst Du im Speichern-Dialog:
+  Excel (formatierter Stundenzettel mit Logo und Unterschriftszeile), PDF
+  (Adobe-signierbar, Unicode-Schrift), JSON (vollständiger Datensatz zum
+  Weiterverarbeiten) und Markdown (Tabelle für Tickets, Mails und Doku)
 - **Druckvorschau** - Vorschau und Druck des Stundenzettels direkt aus der Anwendung (`Strg+P`)
+- **Geprüfte Verbindung** - HTTPS zu Jira wird gegen den Zertifikatsspeicher des
+  Systems geprüft. Hinter einem TLS-aufbrechenden Firmenproxy trägst Du dessen
+  Wurzelzertifikat unter Einstellungen, Seite **Netzwerk**, als CA-Bundle ein -
+  dort liegen auch Client-Zertifikat und Proxy-URL
 - **Feiertage** - Deutsche Feiertage pro Bundesland, Lücken-Erkennung
 - **Soll/Ist &amp; Prognose** - Arbeitszeitvergleich mit Differenz; Jahres-Prognose mit
   Urlaubstagen und einer Netto-/Brutto-Umsatzprognose (Stundensatz und MwSt einstellbar)
@@ -394,8 +400,7 @@ Die Software wird ohne jede Gewährleistung bereitgestellt ("as is"), wie in der
 | `Strg+N` | Manuelle Zeit erfassen |
 | `Strg+D` | Ticket-Details anzeigen |
 | `Strg+T` | Ticket-Analyse (interaktiver Bericht als HTML-Datei) |
-| `Strg+E` | Excel-Export |
-| `Strg+Umschalt+E` | PDF-Export |
+| `Strg+E` | Export (Format im Speichern-Dialog) |
 | `Strg+P` | Druckvorschau |
 | `Strg+L` | Meldungsfenster ein-/ausblenden |
 | `Strg` +/- / 0 | Zoom rein / raus / zurücksetzen (auch `Strg` + Mausrad) |
@@ -413,6 +418,10 @@ Die Einstellungen liegen in `~/.jira-timesheet-qt/settings.json`:
 | Token | API-Token (Cloud) oder Bearer-Token (Data Center) | - |
 | E-Mail | Atlassian-Login (Cloud) oder Jira-Benutzername (Data Center) | - |
 | Jira-Modus (Legacy-API) | Aus = Jira Cloud (v3), an = Data Center (v2) | aus |
+| Proxy-URL | HTTP-Proxy für die Jira-Verbindung, leer = Umgebung entscheidet | - |
+| Serverzertifikat prüfen | Aus heißt: verschlüsselt, aber ungeprüft | an |
+| CA-Bundle (PEM) | Wurzelzertifikat des Firmenproxys, leer = Systemspeicher | - |
+| Client-Zertifikat | Falls die Gegenstelle eines verlangt | - |
 | Budget-Custom-Field | Custom-Field-ID; Cloud unterstützt **Automatisch ermitteln** | customfield_... |
 | Bundesland | Für die Feiertagsberechnung | SN |
 | Soll-Stunden/Tag | Arbeitsstunden pro Tag | 8,0 |
