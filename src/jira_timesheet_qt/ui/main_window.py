@@ -1821,7 +1821,7 @@ class MainWindow(QMainWindow):
         # ueber theme_changed im Einstiegspunkt.
         set_accent(self._settings.accent)
         set_scale(self._settings.ui_scale)
-        set_color_scheme(self._settings.color_scheme)
+        set_color_scheme(self._settings.color_scheme if self._settings.use_color_scheme else "")
         if self._settings.theme in ("dark", "light"):
             self._mode = Mode(self._settings.theme)
         self._reapply_theme()

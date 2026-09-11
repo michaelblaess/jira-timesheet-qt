@@ -113,6 +113,10 @@ class Settings:
     # Heisst NICHT theme - das ist hier seit jeher das Erscheinungsbild
     # (hell/dunkel/System), und die beiden zu vertauschen waere teuer.
     color_scheme: str = ""
+    # Ob das Theme ueberhaupt gilt. Aus heisst: Grundpalette ueber `theme`
+    # (Erscheinungsbild) und `accent`, wie es immer war. Der Name in
+    # `color_scheme` bleibt dabei stehen.
+    use_color_scheme: bool = False
     accent: str = "orange"
     # Oberflaechen-Zoom in Prozent (skaliert alle Schriftgroessen).
     ui_scale: int = 100
@@ -207,6 +211,7 @@ class Settings:
     _FIELDS = (
         "theme",
         "color_scheme",
+        "use_color_scheme",
         "accent",
         "ui_scale",
         "language",
@@ -315,10 +320,14 @@ class Settings:
     @staticmethod
     def _from_dict(data: dict[str, Any]) -> Settings:
         """Baut Einstellungen aus einem Dictionary (defensiv, mit Vorgaben)."""
+        gewaehltes_schema = str(data.get("color_scheme", ""))
         try:
             return Settings(
                 theme=Settings._parse_theme(data.get("theme")),
-                color_scheme=str(data.get("color_scheme", "")),
+                color_scheme=gewaehltes_schema,
+                # Fehlt der Schalter, stammt die Datei aus der Zeit vor ihm:
+                # wer ein Theme gewaehlt hatte, wollte es auch sehen.
+                use_color_scheme=bool(data.get("use_color_scheme", bool(gewaehltes_schema))),
                 accent=str(data.get("accent", "orange")),
                 ui_scale=int(data.get("ui_scale", 100)),
                 language=data.get("language", "de"),

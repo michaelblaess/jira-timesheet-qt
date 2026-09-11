@@ -108,6 +108,7 @@ class SettingsDialog(SettingsDialogBase):
                 accent=settings.accent,
                 zoom=settings.ui_scale,
                 theme=settings.color_scheme,
+                themes_enabled=settings.use_color_scheme,
             ),
             parent,
         )
@@ -1039,6 +1040,7 @@ class SettingsDialog(SettingsDialogBase):
         # Die Darstellungs-Seite gehoert der Bibliothek - ihre Werte kommen
         # ueber `darstellung` zurueck, nicht ueber eigene Felder.
         s.color_scheme = self.darstellung.theme
+        s.use_color_scheme = self.darstellung.themes_enabled
         s.jira_host = self.host.text().strip().rstrip("/")
         s.email = self.email.text().strip()
         s.jira_token = self.token.text().strip()

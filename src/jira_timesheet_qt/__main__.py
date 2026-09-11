@@ -98,7 +98,7 @@ def main() -> int:
     set_scale(settings.ui_scale)
     # Zuletzt: ein gesetztes Farbschema bestimmt die Farben vollstaendig
     # und sticht Erscheinungsbild und Akzent aus.
-    set_color_scheme(settings.color_scheme)
+    set_color_scheme(settings.color_scheme if settings.use_color_scheme else "")
 
     def apply_theme(name: str) -> None:
         """Setzt Palette und Stylesheet der Anwendung neu.

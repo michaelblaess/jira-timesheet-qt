@@ -94,3 +94,31 @@ class TestColorScheme:
         s.save()
         roh = json.loads(_isolated_settings.read_text(encoding="utf-8"))
         assert roh["color_scheme"] == "minty"
+
+    def test_ein_gewaehltes_schema_ueberlebt_die_einfuehrung_des_schalters(
+        self, _isolated_settings: Path
+    ) -> None:
+        """Wer eines gewählt hatte, wollte es auch sehen.
+
+        Ohne diese Regel wäre es nach dem Update kommentarlos verschwunden.
+        """
+        _isolated_settings.write_text(
+            json.dumps({"theme": "dark", "color_scheme": "marley"}), encoding="utf-8"
+        )
+        geladen = Settings.load()
+        assert geladen.color_scheme == "marley"
+        assert geladen.use_color_scheme is True
+
+    def test_ohne_schema_bleibt_der_schalter_aus(self, _isolated_settings: Path) -> None:
+        """Gegenprobe - die Wanderung darf niemanden ungefragt beglücken."""
+        _isolated_settings.write_text(json.dumps({"theme": "dark"}), encoding="utf-8")
+        assert Settings.load().use_color_scheme is False
+
+    def test_der_schalter_ueberlebt_den_neustart(self, _isolated_settings: Path) -> None:
+        s = Settings()
+        s.color_scheme = "warp"
+        s.use_color_scheme = True
+        s.save()
+        geladen = Settings.load()
+        assert geladen.use_color_scheme is True
+        assert geladen.color_scheme == "warp"
