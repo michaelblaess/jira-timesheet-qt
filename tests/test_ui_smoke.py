@@ -379,3 +379,88 @@ class TestWindow:
         win.set_timesheet(None)
         assert win._month_label.text() == "März 2026"
         assert win._current_entry is None
+
+
+class TestThemeBedienung:
+    """Die Themeauswahl in der Werkzeugleiste.
+
+    Uebernommen aus SiteHammer, nachdem Michael sie dort ausprobiert hat.
+    Sie steht nur bei eingeschalteten Themes - wer sie nicht nutzt, soll
+    kein Bedienelement ohne Wirkung in der Leiste liegen haben.
+    """
+
+    def test_ohne_themes_steht_die_auswahl_nicht(self, window: MainWindow) -> None:
+        from QAppFramework import set_themes_enabled
+
+        set_themes_enabled(False)
+        try:
+            window._refresh_theme_combo()
+            assert window._theme_combo_action.isVisible() is False
+            assert window._theme_label_action.isVisible() is False
+        finally:
+            set_themes_enabled(False)
+
+    def test_mit_themes_ist_die_auswahl_gefuellt(self, window: MainWindow) -> None:
+        from QAppFramework import available_themes, set_themes_enabled
+
+        set_themes_enabled(True)
+        try:
+            window._refresh_theme_combo()
+            assert window._theme_combo.count() == len(available_themes())
+            assert window._theme_combo_action.isVisible() is True
+        finally:
+            set_themes_enabled(False)
+            window._refresh_theme_combo()
+
+    def test_die_liste_zeigt_kurznamen(self, window: MainWindow) -> None:
+        """Der volle Name steht im Hinweisfenster - er sprengt die Breite."""
+        from QAppFramework import set_themes_enabled, short_theme_names
+
+        set_themes_enabled(True)
+        try:
+            window._refresh_theme_combo()
+            schluessel = window._theme_combo.itemData(0)
+            assert window._theme_combo.itemText(0) == short_theme_names()[schluessel]
+            assert window._theme_combo.itemData(0, Qt.ItemDataRole.ToolTipRole)
+        finally:
+            set_themes_enabled(False)
+            window._refresh_theme_combo()
+
+    def test_durchschalten_aendert_das_theme(self, window: MainWindow) -> None:
+        from QAppFramework import current_theme, set_theme, set_themes_enabled
+
+        set_theme("")
+        set_themes_enabled(True)
+        try:
+            window._cycle_theme(1)
+            assert current_theme(), "Ein Schritt von Standard aus muss ein Theme ergeben"
+            window._cycle_theme(-1)
+            assert current_theme() == "", "Ein Schritt zurueck muss zu Standard fuehren"
+        finally:
+            set_theme("")
+            set_themes_enabled(False)
+            window._refresh_theme_combo()
+
+    def test_durchschalten_ruht_ohne_themes(self, window: MainWindow) -> None:
+        """Ein Kurzbefehl, der etwas Unsichtbares umschaltet, waere schlimmer als keiner."""
+        from QAppFramework import current_theme, set_theme, set_themes_enabled
+
+        set_theme("")
+        set_themes_enabled(False)
+        window._cycle_theme(1)
+        assert current_theme() == ""
+
+    def test_das_protokoll_folgt_dem_theme(self, window: MainWindow) -> None:
+        """Die Farben standen bis zum 11.09.2026 fest im Quelltext."""
+        from QAppFramework import set_theme, set_themes_enabled
+
+        from jira_timesheet_qt.ui.log_dock import _colors_for_level
+
+        vorher = dict(_colors_for_level())
+        set_theme("marley")
+        set_themes_enabled(True)
+        try:
+            assert _colors_for_level() != vorher
+        finally:
+            set_theme("")
+            set_themes_enabled(False)

@@ -33,6 +33,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QCloseEvent, QColor, QIcon, QKeySequence, QShortcut, QWheelEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QFrame,
     QHeaderView,
     QLabel,
@@ -464,6 +465,22 @@ class MainWindow(QMainWindow):
 
         toolbar.addWidget(self._stretch())
 
+        # Die Themeauswahl steht nur, wenn die Themes eingeschaltet sind.
+        # Beschriftung, Feld und Trenner haengen an derselben Sichtbarkeit -
+        # sonst bliebe eine Beschriftung ohne Inhalt stehen.
+        self._theme_label = QLabel("Theme:")
+        self._theme_label_action = toolbar.addWidget(self._theme_label)
+        self._theme_combo = QComboBox()
+        self._theme_combo.setObjectName("ToolbarTheme")
+        self._theme_combo.setToolTip("Theme wählen")
+        self._theme_combo.setMinimumWidth(150)
+        self._theme_combo.currentIndexChanged.connect(self._on_theme_chosen)
+        self._theme_combo_action = toolbar.addWidget(self._theme_combo)
+        # Trennt die Darstellung von der Suche - zwei Felder unmittelbar
+        # nebeneinander lesen sich wie eines.
+        self._theme_separator = toolbar.addSeparator()
+        self._refresh_theme_combo()
+
         self._search = QLineEdit()
         self._search.setObjectName("ToolbarSearch")
         self._search.setPlaceholderText("Suchen ...")
@@ -471,6 +488,98 @@ class MainWindow(QMainWindow):
         self._search.setFixedWidth(240)
         self._search.textChanged.connect(self._on_search_changed)
         toolbar.addWidget(self._search)
+
+    def _refresh_theme_combo(self) -> None:
+        """Fuellt die Auswahl und setzt sie auf das aktive Theme.
+
+        Sie steht nur, wenn die Themes eingeschaltet sind - sonst waere es
+        ein Bedienelement ohne Wirkung.
+        """
+        from QAppFramework import (
+            all_themes,
+            current_theme,
+            selectable_themes,
+            short_theme_names,
+            themes_enabled,
+        )
+
+        on = themes_enabled()
+        for part in (self._theme_label_action, self._theme_combo_action, self._theme_separator):
+            part.setVisible(on)
+        for name in ("_theme_next_action", "_theme_prev_action"):
+            kuerzel = getattr(self, name, None)
+            if kuerzel is not None:
+                kuerzel.setEnabled(on)
+        if not on:
+            return
+
+        # Kurzname in der Leiste, Beschreibung als Hinweisfenster.
+        long_names = selectable_themes(current_theme()) or all_themes()
+        short = short_theme_names()
+
+        # Waehrend des Fuellens keine Signale: sonst loeste jedes addItem
+        # einen Themewechsel aus.
+        self._theme_combo.blockSignals(True)
+        try:
+            self._theme_combo.clear()
+            for key, label in long_names.items():
+                self._theme_combo.addItem(short.get(key, label), key)
+                self._theme_combo.setItemData(
+                    self._theme_combo.count() - 1, label, Qt.ItemDataRole.ToolTipRole
+                )
+            self._theme_combo.setCurrentIndex(max(0, self._theme_combo.findData(current_theme())))
+        finally:
+            self._theme_combo.blockSignals(False)
+
+    def _on_theme_chosen(self, index: int) -> None:
+        """Uebernimmt die Wahl aus der Werkzeugleiste.
+
+        Args:
+            index:
+                Zeile in der Liste. Unter null waehrend des Neuaufbaus.
+        """
+        if index < 0:
+            return
+        from QAppFramework import current_theme
+
+        chosen = str(self._theme_combo.currentData() or "")
+        if chosen != current_theme():
+            self._apply_color_scheme(chosen)
+
+    def _cycle_theme(self, step: int) -> None:
+        """Schaltet ein Theme vor oder zurueck.
+
+        Die Grundpalette ist der erste Eintrag der Runde, kein Sonderfall
+        daneben: wer durchschaltet, kommt an ihr vorbei und wieder zu ihr.
+
+        Args:
+            step:
+                1 fuer vorwaerts, -1 fuer rueckwaerts.
+        """
+        from QAppFramework import current_theme, selectable_themes, themes_enabled
+
+        if not themes_enabled():
+            return
+        names = ["", *selectable_themes(current_theme())]
+        now = current_theme()
+        index = names.index(now) if now in names else 0
+        self._apply_color_scheme(names[(index + step) % len(names)])
+
+    def _apply_color_scheme(self, name: str) -> None:
+        """Setzt ein Theme, merkt es sich und faerbt die Oberflaeche neu.
+
+        Args:
+            name:
+                Der Theme-Name, oder "" fuer die Grundpalette.
+        """
+        from QAppFramework import all_themes
+
+        set_color_scheme(name)
+        self._settings.color_scheme = name
+        self._settings.save()
+        self._reapply_theme()
+        self._refresh_theme_combo()
+        self._log.write(f"Theme: {all_themes().get(name) or 'Standard'}")
 
     @staticmethod
     def _stretch() -> QWidget:
@@ -794,6 +903,13 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+="), self, lambda: self._zoom(1))
         QShortcut(QKeySequence.StandardKey.ZoomOut, self, lambda: self._zoom(-1))
         QShortcut(QKeySequence("Ctrl+0"), self, self._zoom_reset)
+        # Durchschalten der Themes. Ruht, solange sie abgeschaltet sind -
+        # ein Kurzbefehl, der etwas Unsichtbares umschaltet, ist schlimmer
+        # als keiner.
+        self._theme_next_action = QShortcut(QKeySequence("Ctrl+T"), self, lambda: self._cycle_theme(1))
+        self._theme_prev_action = QShortcut(
+            QKeySequence("Ctrl+Shift+T"), self, lambda: self._cycle_theme(-1)
+        )
 
     # --- Inhalte --------------------------------------------------------
 
@@ -2043,6 +2159,8 @@ class MainWindow(QMainWindow):
         self._year_view.apply_mode(self._mode)
         self._summary.apply_mode(self._mode)
         self._recolor_menu_icons()
+        # Das Protokoll traegt seine Farben als HTML und bleibt sonst stehen.
+        self._log.apply_theme()
         self.theme_changed.emit(self._mode.value)
 
     @property

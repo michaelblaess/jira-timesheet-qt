@@ -25,6 +25,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from QAppFramework.theme import is_dark
+
+from jira_timesheet_qt.ui.theme import Mode, palette_for
 
 
 class Level(StrEnum):
@@ -101,10 +104,10 @@ class LogDock(QDockWidget):
 
     def _append_html(self, stamp: str, message: str, level: Level) -> None:
         """Haengt eine bereits bekannte Meldung als eingefaerbte HTML-Zeile an."""
-        color = _COLORS[level]
+        color = _colors_for_level()[level]
         # appendHtml, weil nur so einzelne Zeilen eingefaerbt werden koennen.
         self._view.appendHtml(
-            f'<span style="color:{_STAMP_COLOR}">{stamp}</span>&nbsp;&nbsp;'
+            f'<span style="color:{_stamp_color()}">{stamp}</span>&nbsp;&nbsp;'
             f'<span style="color:{color}">{_escape(self._apply_censor(message))}</span>'
         )
 
@@ -122,6 +125,16 @@ class LogDock(QDockWidget):
         dem sichtbaren Meldungsfenster - wichtig fuer Screenshots.
         """
         self._censor = dict(mapping)
+        self._rerender()
+
+    def apply_theme(self) -> None:
+        """Baut das Protokoll in den aktuellen Farben neu auf.
+
+        Nach einem Themewechsel. Geschriebenes HTML traegt seine Farben
+        fest - ohne diesen Aufruf bliebe die bisherige Ausgabe in den alten
+        Farben stehen, mitten in einer Flaeche, die inzwischen anders
+        aussieht.
+        """
         self._rerender()
 
     def _rerender(self) -> None:
@@ -170,13 +183,30 @@ class LogDock(QDockWidget):
 
 # Farben je Ebene. Bewusst hier und nicht im Stylesheet: die Auszeichnung
 # passiert pro Zeile in HTML, nicht ueber einen Selektor.
-_COLORS = {
-    Level.INFO: "#9ba3b0",
-    Level.SUCCESS: "#34d399",
-    Level.WARNING: "#fbbf24",
-    Level.ERROR: "#f87171",
-}
-_STAMP_COLOR = "#6b7280"
+# Bis zum 11.09.2026 standen hier feste Hexwerte. Damit blieb das
+# Protokoll in seinen Farben stehen, egal welches Theme lief - dieselbe
+# Falle wie an einem halben Dutzend anderer Stellen an diesem Tag.
+def _colors_for_level() -> dict[Level, str]:
+    """Die Farbe je Stufe, aus der aktuellen Palette.
+
+    Wird bei jedem Zeichnen neu abgefragt statt einmal gemerkt: so folgt
+    das Protokoll einem Themewechsel ohne eigenes Zutun.
+
+    Returns:
+        Je Stufe ein Hexwert.
+    """
+    p = palette_for(Mode.DARK if is_dark() else Mode.LIGHT)
+    return {
+        Level.INFO: p.text_secondary,
+        Level.SUCCESS: p.green,
+        Level.WARNING: p.orange,
+        Level.ERROR: p.red,
+    }
+
+
+def _stamp_color() -> str:
+    """Die Farbe des Zeitstempels - gedaempfter als jede Meldung."""
+    return palette_for(Mode.DARK if is_dark() else Mode.LIGHT).text_tertiary
 
 
 def _escape(text: str) -> str:
