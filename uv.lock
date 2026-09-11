@@ -995,11 +995,12 @@ wheels = [
 [[package]]
 name = "qappframework"
 version = "0.11.0"
-source = { git = "https://github.com/michaelblaess/QAppFramework.git#48006c62b274ebbee3a2f72f74e68f8a94560b91" }
+source = { git = "https://github.com/michaelblaess/QAppFramework.git#e8d34eeca691d4ea25413f413cd16a7b60e50870" }
 dependencies = [
     { name = "pynacl" },
     { name = "pyside6" },
     { name = "qtawesome" },
+    { name = "textual-themes" },
 ]
 
 [[package]]
@@ -1071,6 +1072,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
 ]
+
+[[package]]
+name = "textual-themes"
+version = "0.14.0"
+source = { git = "https://github.com/michaelblaess/textual-themes.git#a86ff9cbd1596a109c20c82af2f00174f29b6299" }
 
 [[package]]
 name = "types-openpyxl"

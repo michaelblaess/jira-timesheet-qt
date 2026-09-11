@@ -40,6 +40,10 @@ from QAppFramework.theme import build_stylesheet as _baue_qss
 from QAppFramework.theme import colors as _farben
 from QAppFramework.theme import scale as _skaliere
 from QAppFramework.theme import set_accent as set_accent
+
+# Das Retro-Farbschema. Heisst hier bewusst set_color_scheme: `theme`
+# ist in dieser Anwendung seit jeher das Erscheinungsbild.
+from QAppFramework.theme import set_theme as set_color_scheme
 from QAppFramework.theme import set_zoom as set_scale
 from QAppFramework.theme import zoom as current_scale
 
@@ -81,6 +85,7 @@ __all__ = [
     "current_scale",
     "palette_for",
     "set_accent",
+    "set_color_scheme",
     "set_scale",
 ]
 

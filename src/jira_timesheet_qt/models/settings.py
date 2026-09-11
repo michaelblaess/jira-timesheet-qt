@@ -109,6 +109,10 @@ class Settings:
     """Einstellungen gespeichert in ~/.jira-timesheet-qt/settings.json."""
 
     theme: str = DEFAULT_THEME
+    # Eines der 40 Retro-Farbschemata, oder "" fuer die Standardpalette.
+    # Heisst NICHT theme - das ist hier seit jeher das Erscheinungsbild
+    # (hell/dunkel/System), und die beiden zu vertauschen waere teuer.
+    color_scheme: str = ""
     accent: str = "orange"
     # Oberflaechen-Zoom in Prozent (skaliert alle Schriftgroessen).
     ui_scale: int = 100
@@ -202,6 +206,7 @@ class Settings:
 
     _FIELDS = (
         "theme",
+        "color_scheme",
         "accent",
         "ui_scale",
         "language",
@@ -313,6 +318,7 @@ class Settings:
         try:
             return Settings(
                 theme=Settings._parse_theme(data.get("theme")),
+                color_scheme=str(data.get("color_scheme", "")),
                 accent=str(data.get("accent", "orange")),
                 ui_scale=int(data.get("ui_scale", 100)),
                 language=data.get("language", "de"),
@@ -469,7 +475,9 @@ class Settings:
         """Nimmt nur bekannte Themen an, sonst die Vorgabe.
 
         Aeltere Dateien aus der TUI koennen einen Textual-Theme-Namen
-        enthalten (z.B. "brotkasten") - der ergibt hier keinen Sinn.
+        enthalten (z.B. "brotkasten"). Der gehoert seit 09/2026 nach
+        `color_scheme` und wird hier weiterhin verworfen - an dieser Stelle
+        steht das Erscheinungsbild, nicht das Farbschema.
         """
         value = str(raw) if raw is not None else ""
         return value if value in THEMES else DEFAULT_THEME

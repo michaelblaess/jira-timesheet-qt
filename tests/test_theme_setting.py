@@ -49,3 +49,48 @@ class TestThemeSetting:
         """Eine kaputte Datei darf den Start nicht verhindern."""
         _write(_isolated_settings, theme)
         assert Settings.load().theme == DEFAULT_THEME
+
+
+class TestColorScheme:
+    """Das Retro-Farbschema - ein zweites Feld neben dem Erscheinungsbild.
+
+    Die beiden auseinanderzuhalten ist hier die halbe Miete: `theme` ist in
+    dieser Anwendung seit jeher hell/dunkel/System, das Farbschema steht
+    unter `color_scheme`. Ein Textual-Name wie "brotkasten" gehoert also ins
+    zweite Feld und muss im ersten weiterhin verworfen werden.
+    """
+
+    def test_ohne_angabe_gilt_die_standardpalette(self) -> None:
+        assert Settings().color_scheme == ""
+
+    def test_die_wahl_ueberlebt_den_neustart(self, _isolated_settings: Path) -> None:
+        s = Settings()
+        s.color_scheme = "brotkasten"
+        s.save()
+        assert Settings.load().color_scheme == "brotkasten"
+
+    def test_eine_datei_ohne_farbschema_bleibt_lesbar(self, _isolated_settings: Path) -> None:
+        """Jede Einstellungsdatei von vor 09/2026 hat das Feld nicht."""
+        _isolated_settings.write_text(json.dumps({"theme": "dark"}), encoding="utf-8")
+        geladen = Settings.load()
+        assert geladen.color_scheme == ""
+        assert geladen.theme == "dark"
+
+    def test_die_beiden_felder_kommen_sich_nicht_ins_gehege(
+        self, _isolated_settings: Path
+    ) -> None:
+        """Der Kern des Ganzen: ein Retro-Name im falschen Feld faellt weiter durch."""
+        _isolated_settings.write_text(
+            json.dumps({"theme": "brotkasten", "color_scheme": "warp"}), encoding="utf-8"
+        )
+        geladen = Settings.load()
+        assert geladen.theme == DEFAULT_THEME, "Ein Retro-Name ist kein Erscheinungsbild"
+        assert geladen.color_scheme == "warp"
+
+    def test_das_feld_wird_auch_wirklich_geschrieben(self, _isolated_settings: Path) -> None:
+        """Fehlt es in _FIELDS, geht die Wahl beim Speichern lautlos verloren."""
+        s = Settings()
+        s.color_scheme = "minty"
+        s.save()
+        roh = json.loads(_isolated_settings.read_text(encoding="utf-8"))
+        assert roh["color_scheme"] == "minty"

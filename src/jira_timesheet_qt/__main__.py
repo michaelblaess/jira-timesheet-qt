@@ -51,7 +51,14 @@ def main() -> int:
     _setup_logging(Settings.SETTINGS_DIR)
     from jira_timesheet_qt.ui.fonts import load_fonts
     from jira_timesheet_qt.ui.main_window import MainWindow
-    from jira_timesheet_qt.ui.theme import Mode, build_palette, build_qss, set_accent, set_scale
+    from jira_timesheet_qt.ui.theme import (
+        Mode,
+        build_palette,
+        build_qss,
+        set_accent,
+        set_color_scheme,
+        set_scale,
+    )
 
     app = QApplication(sys.argv)
     app.setApplicationName("jira-timesheet-qt")
@@ -89,6 +96,9 @@ def main() -> int:
 
     set_accent(settings.accent)
     set_scale(settings.ui_scale)
+    # Zuletzt: ein gesetztes Farbschema bestimmt die Farben vollstaendig
+    # und sticht Erscheinungsbild und Akzent aus.
+    set_color_scheme(settings.color_scheme)
 
     def apply_theme(name: str) -> None:
         """Setzt Palette und Stylesheet der Anwendung neu.

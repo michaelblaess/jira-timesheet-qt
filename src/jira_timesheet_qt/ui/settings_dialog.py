@@ -107,6 +107,7 @@ class SettingsDialog(SettingsDialogBase):
                 mode=Mode(settings.theme) if settings.theme in {m.value for m in Mode} else Mode.SYSTEM,
                 accent=settings.accent,
                 zoom=settings.ui_scale,
+                theme=settings.color_scheme,
             ),
             parent,
         )
@@ -1035,6 +1036,9 @@ class SettingsDialog(SettingsDialogBase):
     def result_settings(self) -> Settings:
         """Liefert die Einstellungen mit den Werten aus dem Dialog."""
         s = self._settings
+        # Die Darstellungs-Seite gehoert der Bibliothek - ihre Werte kommen
+        # ueber `darstellung` zurueck, nicht ueber eigene Felder.
+        s.color_scheme = self.darstellung.theme
         s.jira_host = self.host.text().strip().rstrip("/")
         s.email = self.email.text().strip()
         s.jira_token = self.token.text().strip()

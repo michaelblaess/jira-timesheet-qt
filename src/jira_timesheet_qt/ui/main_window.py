@@ -81,7 +81,14 @@ from jira_timesheet_qt.ui.manual_entry_dialog import ManualEntryDialog
 from jira_timesheet_qt.ui.menu import Command, CommandRegistry, MenuBuilder, MenuDefinition, missing_commands
 from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
 from jira_timesheet_qt.ui.summary_bar import SummaryBar, SummarySegment
-from jira_timesheet_qt.ui.theme import SCALES, Mode, palette_for, set_accent, set_scale
+from jira_timesheet_qt.ui.theme import (
+    SCALES,
+    Mode,
+    palette_for,
+    set_accent,
+    set_color_scheme,
+    set_scale,
+)
 from jira_timesheet_qt.ui.ticket_board_view import TicketBoardView
 from jira_timesheet_qt.ui.ticket_board_worker import (
     MODE_ASSIGNED,
@@ -1814,6 +1821,7 @@ class MainWindow(QMainWindow):
         # ueber theme_changed im Einstiegspunkt.
         set_accent(self._settings.accent)
         set_scale(self._settings.ui_scale)
+        set_color_scheme(self._settings.color_scheme)
         if self._settings.theme in ("dark", "light"):
             self._mode = Mode(self._settings.theme)
         self._reapply_theme()
