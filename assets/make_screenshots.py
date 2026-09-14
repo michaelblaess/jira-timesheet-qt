@@ -39,6 +39,7 @@ from jira_timesheet_qt.services.anonymizer import (  # noqa: E402
     anonymize_board,
     anonymize_timesheet,
 )
+from jira_timesheet_qt.services.ticket_preview import TicketPreviewData  # noqa: E402
 from jira_timesheet_qt.ui.about_dialog import AboutDialog  # noqa: E402
 from jira_timesheet_qt.ui.demo import demo_timesheet  # noqa: E402
 from jira_timesheet_qt.ui.demo_board import demo_board, demo_statistics  # noqa: E402
@@ -114,13 +115,84 @@ def _data() -> Timesheet:
     return anonymize_timesheet(demo_timesheet())
 
 
+def _show_month_of(win: MainWindow, data: Timesheet) -> None:
+    """Stellt das Fenster auf den Monat der Demodaten.
+
+    Das Fenster startet im heutigen Monat. Liegen die Demodaten in einem
+    anderen, zeigt die Monatsansicht nur fehlende Tage, und die Jahresansicht
+    bucht die Stunden in den falschen Monat.
+    """
+    if not data.all_entries:
+        return
+    first = data.all_entries[0].date
+    win._year, win._month = first.year, first.month
+    win._update_period_labels()
+
+
 def _window(mode: Mode, *, with_data: bool = True) -> MainWindow:
     """Erzeugt ein Hauptfenster mit Demodaten (oder leer), flache Liste."""
     win = MainWindow(Settings(), mode)
     # Deterministisch die flache Liste zeigen - der Gruppierzustand kommt sonst
     # aus der Registry und schwankt zwischen Rechnern.
     win._grouped = False
-    win.set_timesheet(_data() if with_data else None)
+    data = _data() if with_data else None
+    if data is not None:
+        _show_month_of(win, data)
+    win.set_timesheet(data)
+    return win
+
+
+def _preview_window(mode: Mode) -> MainWindow:
+    """Erzeugt ein Hauptfenster mit eingeschalteter Ticket-Vorschau.
+
+    Die Vorschau zeigt ein erfundenes Ticket. Es wird direkt gesetzt, nicht
+    abgerufen - ohne Zugang gaebe es sonst nur den Hinweis auf fehlende Daten.
+
+    Args:
+        mode:
+            Helles oder dunkles Erscheinungsbild.
+
+    Returns:
+        Das vorbereitete Fenster, noch nicht angezeigt.
+    """
+    win = MainWindow(Settings(show_ticket_preview=True, jira_host="https://beispiel.atlassian.net"), mode)
+    win._grouped = False
+    data = _data()
+    _show_month_of(win, data)
+    win.set_timesheet(data)
+    win._tabs.setCurrentIndex(0)
+    win._table.selectRow(2)
+    win._preview_timer.stop()
+    entry = win._current_entry
+    key = entry.ticket if entry is not None else "PROJ-1003"
+    win._preview.show_data(
+        TicketPreviewData(
+            key=key,
+            summary=entry.summary if entry is not None and entry.summary else "Refactor database connection pool",
+            status="In Arbeit",
+            status_category="indeterminate",
+            issue_type="Aufgabe",
+            priority="Hoch",
+            assignee="Mustermann, Max",
+            creator="Beispiel, Bernd",
+            due_date="2026-09-30",
+            updated="2026-09-14T10:42:00",
+            time_spent_seconds=4 * 3600 + 30 * 60,
+            original_estimate_seconds=8 * 3600,
+            fix_versions="2026.10",
+            extra=[("Environments", "test, prod"), ("Team", "Team A")],
+            description_html=(
+                "<p>Unter Last laufen die Datenbankverbindungen aus. Der Pool soll "
+                "wiederverwenden statt neu aufbauen.</p>"
+                "<ul><li>Größe und Wartezeit konfigurierbar machen</li>"
+                "<li>Verbindungen vor der Ausgabe prüfen</li>"
+                "<li>Kennzahlen ins Log schreiben</li></ul>"
+                '<p>Messung: <a href="https://example.com/lasttest">Lasttest vom 10.09.</a></p>'
+            ),
+            fetched_at="2026-09-14T11:05:00",
+        )
+    )
+    win._list_splitter.setSizes([900, 560])
     return win
 
 
@@ -142,6 +214,7 @@ def _board_window(mode: Mode, *, relevant: bool = False) -> MainWindow:
         Das vorbereitete Fenster, noch nicht angezeigt.
     """
     win = MainWindow(Settings(), mode)
+    _show_month_of(win, _data())
     board_mode = MODE_RELEVANT if relevant else MODE_ASSIGNED
     board = anonymize_board(demo_board(relevant=relevant))
     view = win._board_view(board_mode)
@@ -184,6 +257,9 @@ def main() -> int:
         win._tabs.setCurrentIndex(0)
         win._search.setText("Fix")
         _grab(win, OUT / f"search-{tag}.png", W, H)
+
+        # Ticket-Vorschau neben der Liste
+        _grab(_preview_window(mode), OUT / f"preview-{tag}.png", W, H)
 
         # Monat
         win = _window(mode)

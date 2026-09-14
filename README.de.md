@@ -61,6 +61,13 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   <img src="docs/screenshots/search-light.png" width="49%" alt="Suchfilter (hell)">
 </p>
 
+### Ticket-Vorschau - das gewählte Ticket neben der Liste, read-only
+
+<p align="center">
+  <img src="docs/screenshots/preview-dark.png" width="49%" alt="Ticket-Vorschau (dunkel)">
+  <img src="docs/screenshots/preview-light.png" width="49%" alt="Ticket-Vorschau (hell)">
+</p>
+
 ### Monats- und Jahresansicht
 
 <p align="center">
