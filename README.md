@@ -59,6 +59,13 @@ The application follows the light or dark theme and a configurable accent colour
   <img src="docs/screenshots/search-light.png" width="49%" alt="Search filter (light)">
 </p>
 
+### Ticket preview - the selected ticket next to the list, read-only
+
+<p align="center">
+  <img src="docs/screenshots/preview-dark.png" width="49%" alt="Ticket preview (dark)">
+  <img src="docs/screenshots/preview-light.png" width="49%" alt="Ticket preview (light)">
+</p>
+
 ### Month and year view
 
 <p align="center">
