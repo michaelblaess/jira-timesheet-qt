@@ -140,7 +140,7 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   Zeitachse des Lebenszyklus, Liegezeit je Status (Kalenderzeit gegen echte Arbeitszeit),
   die Beteiligten, Kennzahlen wie Flow-Effizienz und erste Reaktion, dazu Befunde, die
   jeweils ihren Beleg mitbringen. Ergebnis ist eine einzelne HTML-Datei, die offline läuft
-  und sich weitergeben lässt (`Strg+T`) Auffällig lange Liegezeiten werden rot markiert, verwandte Tickets zeigen ihren Titel, und der fertige Bericht öffnet sich gleich im Browser.
+  und sich weitergeben lässt (`Strg+Umschalt+A`) Auffällig lange Liegezeiten werden rot markiert, verwandte Tickets zeigen ihren Titel, und der fertige Bericht öffnet sich gleich im Browser.
 - **Meine Tickets** - Alle Tickets, die Dir zugewiesen sind, gruppiert danach, wer am Zug ist:
   ich bin dran, andere sind dran, Backlog, live und wartet auf Test, Übergabe, abgeschlossen. Dazu Merkmale für
   Handlungsbedarf, die Liegezeit in Arbeitstagen und drei Diagramme (Zulauf gegen Abgang,
@@ -400,7 +400,8 @@ Die Software wird ohne jede Gewährleistung bereitgestellt ("as is"), wie in der
 | `Strg+F` | Suchfeld fokussieren |
 | `Strg+N` | Manuelle Zeit erfassen |
 | `Strg+D` | Ticket-Details anzeigen |
-| `Strg+T` | Ticket-Analyse (interaktiver Bericht als HTML-Datei) |
+| `Strg+Umschalt+A` | Ticket-Analyse (interaktiver Bericht als HTML-Datei) |
+| `Strg+T` / `Strg+Umschalt+T` | Nächstes / voriges Theme (wenn die Themes eingeschaltet sind) |
 | `Strg+E` | Export (Format im Speichern-Dialog) |
 | `Strg+P` | Druckvorschau |
 | `Strg+L` | Meldungsfenster ein-/ausblenden |

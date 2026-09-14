@@ -165,6 +165,11 @@ class Settings:
     color_day_totals: bool = True
     day_over_color: str = DEFAULT_DAY_OVER_COLOR
     day_under_color: str = DEFAULT_DAY_UNDER_COLOR
+    # Vorschau des gewaehlten Tickets rechts neben dem Stundenzettel.
+    show_ticket_preview: bool = False
+    # Zusaetzliche Jira-Felder im Kopf der Vorschau, als Feldnamen. Bewusst
+    # leer: die Namen sind je Instanz verschieden (siehe services.ticket_preview).
+    preview_extra_fields: list[str] = field(default_factory=list)
     default_customer: str = "Vertrieb"
     # Zuletzt im Speichern-Dialog gewaehltes Verzeichnis.
     last_export_dir: str = ""
@@ -248,6 +253,8 @@ class Settings:
         "color_day_totals",
         "day_over_color",
         "day_under_color",
+        "show_ticket_preview",
+        "preview_extra_fields",
         "default_customer",
         "customers",
         "last_export_dir",
@@ -368,6 +375,8 @@ class Settings:
                 day_under_color=normalize_color(
                     str(data.get("day_under_color", DEFAULT_DAY_UNDER_COLOR)), DEFAULT_DAY_UNDER_COLOR
                 ),
+                show_ticket_preview=bool(data.get("show_ticket_preview", False)),
+                preview_extra_fields=Settings._parse_str_list(data.get("preview_extra_fields")),
                 default_customer=str(data.get("default_customer", "Vertrieb")),
                 customers=Settings._parse_customers(data.get("customers")),
                 last_export_dir=str(data.get("last_export_dir", "")),

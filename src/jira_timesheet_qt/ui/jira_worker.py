@@ -12,7 +12,8 @@ Signale zurueck, die Qt in den Hauptfaden zustellt.
 from __future__ import annotations
 
 import asyncio
-from datetime import date
+from dataclasses import replace
+from datetime import date, datetime
 
 from PySide6.QtCore import QObject, QThread, Signal
 
@@ -23,6 +24,17 @@ from jira_timesheet_qt.models.timesheet import Timesheet
 from jira_timesheet_qt.services.jira_client import JiraClient, JiraClientError
 from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
 from jira_timesheet_qt.services.ssl_support import TlsSettings, tls_from_settings
+from jira_timesheet_qt.services.ticket_preview import (
+    BASE_FIELDS,
+    IssuePreviewCache,
+    TicketPreviewData,
+    field_value_text,
+    image_sources,
+    parse_issue,
+    resolve_field_ids,
+    rewrite_images,
+    seconds_value,
+)
 from jira_timesheet_qt.services.ticket_report import lifecycle
 from jira_timesheet_qt.services.timesheet_service import TimesheetService
 
@@ -211,3 +223,122 @@ class BudgetFieldWorker(QThread):
             tls=self._tls,
         )
         return await client.detect_budget_field("budget")
+
+
+class TicketPreviewWorker(QThread):
+    """Holt ein Ticket fuer die Vorschau im Stundenzettel.
+
+    Mit gemerktem Stand fragt der Faden zuerst nur updated und die gebuchte
+    Zeit ab. Sind beide unveraendert, meldet er unchanged und spart den vollen
+    Abruf samt HTML. Die gebuchte Zeit steht dabei ausdruecklich mit drin -
+    ohne Beleg, dass eine neue Buchung auch updated aendert, verlassen wir uns
+    nicht darauf. Das Ergebnis schreibt der Faden selbst in den Cache, damit
+    die Oberflaeche keine Datei anfasst.
+    """
+
+    finished_ok = Signal(object)
+    unchanged = Signal(str)
+    failed = Signal(str)
+    log = Signal(str)
+
+    def __init__(
+        self,
+        settings: Settings,
+        key: str,
+        cache: IssuePreviewCache,
+        cached: TicketPreviewData | None = None,
+        parent: QObject | None = None,
+    ) -> None:
+        """Merkt sich Zugang, Ticket und Cache.
+
+        Args:
+            settings:
+                Zugangsdaten und die Namen der Zusatzfelder.
+            key:
+                Ticket-Key, z.B. "ABC-123".
+            cache:
+                Der Cache des aktuellen Jira-Hosts.
+            cached:
+                Der gemerkte Stand, oder None fuer einen vollen Abruf.
+            parent:
+                Qt-Elternobjekt.
+        """
+        super().__init__(parent)
+        self._settings = settings
+        self._key = key
+        self._cache = cache
+        self._cached = cached
+
+    def run(self) -> None:
+        """Laeuft im Hintergrund-Thread."""
+        try:
+            data = asyncio.run(self._fetch())
+        except JiraClientError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:  # noqa: BLE001 - der Faden darf nie unbemerkt sterben
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+        else:
+            if data is None:
+                self.unchanged.emit(self._key)
+            else:
+                self.finished_ok.emit(data)
+
+    async def _fetch(self) -> TicketPreviewData | None:
+        """Prueft den Stand, holt bei Bedarf das Ticket und merkt es sich."""
+        settings = self._settings
+        client = JiraClient(
+            host=settings.jira_host,
+            email=settings.email,
+            token=settings.jira_token,
+            legacy=settings.use_legacy_api,
+            proxy=settings.proxy_url,
+            tls=tls_from_settings(settings),
+            on_log=self.log.emit,
+        )
+        if self._cached is not None:
+            stand = (await client.get_issue(self._key, ["updated", "timespent"])).get("fields") or {}
+            if (
+                field_value_text(stand.get("updated")) == self._cached.updated
+                and seconds_value(stand.get("timespent")) == self._cached.time_spent_seconds
+            ):
+                return None
+
+        names = list(settings.preview_extra_fields)
+        ids = self._cache.load_field_ids(names) if names else {}
+        if ids is None:
+            ids = resolve_field_ids(await client.get_fields(), names)
+            self._cache.save_field_ids(names, ids)
+            fehlend = [name for name in names if name not in ids]
+            if fehlend:
+                self.log.emit(f"Vorschau: diese Felder kennt Jira nicht: {', '.join(fehlend)}")
+
+        raw = await client.get_issue(self._key, [*BASE_FIELDS, *ids.values()], rendered=True)
+        data = parse_issue(raw, ids, datetime.now())
+        data = await self._load_images(client, data)
+        self._cache.save(data)
+        return data
+
+    async def _load_images(self, client: JiraClient, data: TicketPreviewData) -> TicketPreviewData:
+        """Holt die Bilder der Beschreibung in den Cache und setzt die Adressen um.
+
+        Die Anhaenge brauchen eine Anmeldung, QTextBrowser laedt sie deshalb
+        nie selbst. Ein Bild, das nicht kommt, kostet nur sich selbst: es
+        wird zu einem kurzen Hinweis statt eines kaputten Symbols.
+        """
+        quellen = image_sources(data.description_html, self._settings.jira_host)
+        lokal: dict[str, str] = {}
+        grenze = asyncio.Semaphore(4)
+
+        async def holen(src: str) -> None:
+            async with grenze:
+                try:
+                    inhalt, typ = await client.get_attachment(src)
+                except Exception as exc:  # noqa: BLE001 - ein fehlendes Bild bricht die Vorschau nicht ab
+                    self.log.emit(f"Vorschau {data.key}: ein Bild wurde nicht geladen ({type(exc).__name__})")
+                    return
+                name = self._cache.save_image(data.key, src, inhalt, typ)
+                if name is not None:
+                    lokal[src] = name
+
+        await asyncio.gather(*(holen(src) for src in quellen))
+        return replace(data, description_html=rewrite_images(data.description_html, lokal), images=lokal)

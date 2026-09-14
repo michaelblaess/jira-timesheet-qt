@@ -72,6 +72,11 @@ ACCENT_LABELS: dict[str, str] = accent_names("de")
 SCALES = ZOOM_LEVELS
 DEFAULT_SCALE = DEFAULT_ZOOM
 
+# Grund der Ticket-Beschreibung in der Vorschau - in jedem Theme weiss, wie in
+# Jira selbst. Der Wechsel auf helles Papier trennt fremden Inhalt von der
+# eigenen Oberflaeche. Text kommt aus der hellen Grundpalette (16,5:1).
+PREVIEW_PAPER = "#ffffff"
+
 __all__ = [
     "ACCENTS",
     "ACCENT_LABELS",
@@ -79,6 +84,7 @@ __all__ = [
     "DEFAULT_ACCENT",
     "DEFAULT_SCALE",
     "LIGHT",
+    "PREVIEW_PAPER",
     "SCALES",
     "Accent",
     "Mode",
@@ -197,6 +203,23 @@ def build_qss(mode: Mode, font_sans: str, font_mono: str) -> str:
     #ToastIcon {{ background: transparent; border: none; }}
     #LogView {{ background-color: {p.bg_tertiary}; border: none; {mono_rule} font-size: 12px; padding: 8px 12px; }}
     #LogButtons {{ background-color: {p.bg_secondary}; border-top: 1px solid {p.border}; }}
+    QSplitter#PreviewSplitter::handle {{ background-color: {p.bg_secondary}; border-left: 1px solid {p.border}; border-right: 1px solid {p.border}; width: 7px; }}
+    QSplitter#PreviewSplitter::handle:hover {{ background-color: {p.accent_subtle}; }}
+    #PreviewHeader {{ background-color: {p.bg_secondary}; border-bottom: 1px solid {p.border}; }}
+    #PreviewKey {{ font-size: 14px; font-weight: 700; background: transparent; }}
+    #PreviewHours {{ color: {p.accent}; font-size: 18px; font-weight: 800; background: transparent; }}
+    #PreviewHoursHint {{ color: {p.text_secondary}; font-size: 13px; background: transparent; }}
+    #PreviewStatus {{ color: {p.text_secondary}; background-color: {p.bg_elevated}; border: 1px solid {p.border_hover}; border-radius: {RADIUS_SM}px; padding: 2px 8px; font-size: 12px; font-weight: 700; }}
+    #PreviewStatus[category="indeterminate"] {{ color: {p.orange}; border-color: {p.orange}; }}
+    #PreviewStatus[category="done"] {{ color: {p.green}; border-color: {p.green}; }}
+    #PreviewStand {{ color: {p.text_tertiary}; font-size: 12px; background: transparent; }}
+    #PreviewStand[state="error"] {{ color: {p.red}; }}
+    #PreviewLabel {{ color: {p.text_tertiary}; font-size: 12px; font-weight: 700; background: transparent; }}
+    #PreviewValue {{ color: {p.text_primary}; font-size: 13px; background: transparent; }}
+    #PreviewTitle {{ color: {p.text_primary}; font-size: 18px; font-weight: 700; padding: 12px 14px 6px 14px; }}
+    #PreviewBody {{ background-color: {PREVIEW_PAPER}; color: {LIGHT.text_primary}; border: 1px solid {p.border}; border-radius: {RADIUS_SM}px; font-size: 13px; padding: 8px 12px; margin: 0px 14px 14px 14px; selection-background-color: {LIGHT.accent_subtle}; selection-color: {LIGHT.text_primary}; }}
+    #PreviewPlaceholder {{ color: {p.text_tertiary}; font-size: 14px; }}
+    #PreviewPlaceholder[state="error"] {{ color: {p.red}; }}
     """
     # Der eigene Teil muss durch dieselbe Zoom-Skalierung wie der der
     # Bibliothek - sonst bleibt er als einziger auf fester Groesse.

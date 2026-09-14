@@ -1030,6 +1030,24 @@ class SettingsDialog(SettingsDialogBase):
         self.day_under_color = self.farbknopf(self._settings.day_under_color, "Farbe unter Soll")
         form.addRow(self.beschriftung("Farbe unter Soll"), self.day_under_color)
 
+        # Vorschau des gewaehlten Tickets rechts neben dem Stundenzettel.
+        self.show_preview = QCheckBox("Ticket-Vorschau im Stundenzettel anzeigen")
+        self.show_preview.setChecked(self._settings.show_ticket_preview)
+        form.addRow(self.beschriftung(""), self.show_preview)
+
+        self.preview_fields = QLineEdit(", ".join(self._settings.preview_extra_fields))
+        self.preview_fields.setPlaceholderText("z. B. Environments, Team")
+        self.preview_fields.setFixedWidth(FIELD_WIDTH)
+        form.addRow(self.beschriftung("Zusatzfelder"), self.preview_fields)
+        form.addRow(
+            self.hinweis(
+                "Jira-Feldnamen, durch Komma getrennt. Sie erscheinen im Kopf der Vorschau, "
+                "sofern das Ticket sie führt."
+            )
+        )
+        self.show_preview.toggled.connect(self.preview_fields.setEnabled)
+        self.preview_fields.setEnabled(self.show_preview.isChecked())
+
         for widget in (self.day_over_color, self.day_under_color):
             self.color_day_totals.toggled.connect(widget.setEnabled)
             widget.setEnabled(self.color_day_totals.isChecked())
@@ -1094,6 +1112,10 @@ class SettingsDialog(SettingsDialogBase):
         s.color_day_totals = self.color_day_totals.isChecked()
         s.day_over_color = self.farbe_von(self.day_over_color)
         s.day_under_color = self.farbe_von(self.day_under_color)
+        from jira_timesheet_qt.services.ticket_preview import parse_extra_field_names
+
+        s.show_ticket_preview = self.show_preview.isChecked()
+        s.preview_extra_fields = parse_extra_field_names(self.preview_fields.text())
         return s
 
     def _customers_from_input(self) -> list[str]:

@@ -221,7 +221,12 @@ class TestVerdrahtung:
                     belegt.setdefault(kuerzel, []).append(aktion.text())
         doppelt = {k: v for k, v in belegt.items() if len(v) > 1}
         assert not doppelt, f"doppelt belegte Kuerzel: {doppelt}"
-        assert "Ctrl+T" in belegt
+        assert "Ctrl+Shift+A" in belegt
+        # Strg+T lag bis 09/2026 zugleich auf der Ticket-Analyse und dem
+        # Theme-Wechsel. Der liegt nicht im Menue, sondern ist ein QShortcut -
+        # der Vergleich der Menueaktionen untereinander konnte das nie sehen.
+        theme_kuerzel = {"Ctrl+T", "Ctrl+Shift+T"}
+        assert not (theme_kuerzel & set(belegt)), belegt
 
 
 class TestClientAufruf:
