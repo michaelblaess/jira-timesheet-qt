@@ -13,7 +13,7 @@ import calendar
 import contextlib
 import webbrowser
 from collections.abc import Callable
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import qtawesome as qta
@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSizePolicy,
+    QSplitter,
     QStackedWidget,
     QStatusBar,
     QTabBar,
@@ -69,6 +70,7 @@ from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
 from jira_timesheet_qt.services.team import TeamMember, from_storage
 from jira_timesheet_qt.services.ticket_board import Board, Marker, Role
 from jira_timesheet_qt.services.ticket_board import Ticket as BoardTicket
+from jira_timesheet_qt.services.ticket_preview import IssuePreviewCache, TicketPreviewData, german_datetime
 from jira_timesheet_qt.ui.about_dialog import AboutDialog
 from jira_timesheet_qt.ui.calendar_view import CalendarView, DayCell
 from jira_timesheet_qt.ui.cell_delegate import CellDelegate
@@ -76,7 +78,7 @@ from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
 from jira_timesheet_qt.ui.export_service import ExportService
 from jira_timesheet_qt.ui.hero_background import HeroBackground
 from jira_timesheet_qt.ui.icons import app_icon, load_icon
-from jira_timesheet_qt.ui.jira_worker import WorklogWorker
+from jira_timesheet_qt.ui.jira_worker import TicketPreviewWorker, WorklogWorker
 from jira_timesheet_qt.ui.log_dock import Level, LogDock
 from jira_timesheet_qt.ui.manual_entry_dialog import ManualEntryDialog
 from jira_timesheet_qt.ui.menu import Command, CommandRegistry, MenuBuilder, MenuDefinition, missing_commands
@@ -100,6 +102,7 @@ from jira_timesheet_qt.ui.ticket_board_worker import (
     TicketStatsWorker,
     config_from,
 )
+from jira_timesheet_qt.ui.ticket_preview import TicketPreview
 from jira_timesheet_qt.ui.timesheet_model import ENTRY_ROLE, SORT_ROLE, TimesheetModel
 from jira_timesheet_qt.ui.timesheet_tree_model import TimesheetTreeModel
 from jira_timesheet_qt.ui.toast import Toast
@@ -220,6 +223,15 @@ class MainWindow(QMainWindow):
         # Zuletzt in der Liste gewaehlter Eintrag - fuer den Details-Befehl aus
         # Toolbar/Menue (Doppelklick und Kontextmenue bringen ihren mit).
         self._current_entry: WorklogEntry | None = None
+        # Ticket-Vorschau: eigener Zaehler, damit ein ueberholter Abruf nicht in
+        # der Vorschau landet, wenn inzwischen eine andere Zeile gewaehlt ist.
+        self._preview_generation = 0
+        # Entprellt die Auswahl - wer mit den Pfeiltasten durch die Liste
+        # laeuft, soll nicht jede Zeile einzeln abrufen.
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(250)
+        self._preview_timer.timeout.connect(self._update_preview)
         self._qsettings = QSettings("michaelblaess", "jira-timesheet-qt")
 
         # Nur der reine Name: QApplication traegt den Anzeigenamen selbst bei,
@@ -350,8 +362,21 @@ class MainWindow(QMainWindow):
         self._team_board.member_changed.connect(self._on_member_changed)
         self._apply_board_settings()
 
+        # Stundenzettel links, Ticket-Vorschau rechts. Die Vorschau steht nur,
+        # wenn sie in den Einstellungen eingeschaltet ist.
+        self._preview = TicketPreview(self._mode)
+        self._preview.refresh_requested.connect(lambda: self._update_preview(force=True))
+        self._list_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._list_splitter.setObjectName("PreviewSplitter")
+        self._list_splitter.setChildrenCollapsible(False)
+        self._list_splitter.addWidget(self._list_stack)
+        self._list_splitter.addWidget(self._preview)
+        self._list_splitter.setStretchFactor(0, 3)
+        self._list_splitter.setStretchFactor(1, 2)
+        self._apply_preview_setting()
+
         self._stack = QStackedWidget()
-        self._stack.addWidget(self._list_stack)
+        self._stack.addWidget(self._list_splitter)
         self._stack.addWidget(self._calendar)
         self._stack.addWidget(self._year_view)
         self._stack.addWidget(self._assigned_board)
@@ -1731,6 +1756,7 @@ class MainWindow(QMainWindow):
             if real is not None:
                 view.set_board(self._display_board(real))
         self._refresh_summary_bar()
+        self._update_preview()
         # Verbindungszustand mit dem nun ggf. verschleierten Host neu schreiben.
         if self._real_ts is not None or self._year_ts is not None:
             self._set_status(f"Verbunden mit {self._host_label()}")
@@ -1936,6 +1962,7 @@ class MainWindow(QMainWindow):
         self._apply_manual_color()
         self._apply_day_total_colors()
         self._apply_board_settings()
+        self._apply_preview_setting()
         # Der Modell-Reset beim Anwenden klappt den Baum zu - gemerkten Zustand
         # wiederherstellen, sonst steht die gruppierte Liste voellig eingeklappt.
         self._apply_group_state()
@@ -2094,8 +2121,126 @@ class MainWindow(QMainWindow):
             self.load_month()
 
     def _on_row_changed(self, current: QModelIndex, _previous: QModelIndex) -> None:
-        """Merkt sich den gewaehlten Eintrag fuer den Details-Befehl."""
+        """Merkt sich den gewaehlten Eintrag fuer den Details-Befehl und die Vorschau."""
         self._current_entry = current.data(ENTRY_ROLE) if current.isValid() else None
+        if self._settings.show_ticket_preview:
+            self._preview_timer.start()
+
+    # --- Ticket-Vorschau ------------------------------------------------
+
+    def _preview_cache(self) -> IssuePreviewCache:
+        """Der Cache des aktuellen Hosts.
+
+        Zur Laufzeit aufgeloest statt beim Import: Tests verlegen
+        Settings.SETTINGS_DIR, und ein Host-Wechsel in den Einstellungen
+        greift ohne Neustart.
+        """
+        return IssuePreviewCache(Settings.SETTINGS_DIR / "cache" / "issues", self._settings.jira_host)
+
+    def _apply_preview_setting(self) -> None:
+        """Blendet die Vorschau ein oder aus. Beim Einschalten gehen alte Cache-Eintraege."""
+        on = self._settings.show_ticket_preview
+        self._preview.setVisible(on)
+        self._preview.set_host(self._settings.jira_host)
+        # Unter dem Cache des Hosts liegen die Bilder je Ticket.
+        self._preview.set_image_root(self._preview_cache().directory)
+        if not on:
+            self._preview_timer.stop()
+            return
+        self._preview_cache().prune(datetime.now())
+        self._update_preview()
+
+    def _update_preview(self, force: bool = False) -> None:
+        """Zeigt das gewaehlte Ticket: sofort aus dem Cache, dann frisch aus Jira.
+
+        Mit gemerktem Stand prueft der Faden nur, ob sich das Ticket geaendert
+        hat. force (Refresh-Knopf) holt es in jedem Fall neu.
+
+        Args:
+            force:
+                True, um den gemerkten Stand zu uebergehen.
+        """
+        if not self._settings.show_ticket_preview:
+            return
+        # Jede neue Anfrage entwertet die laufende, auch wenn sie gar nicht abruft.
+        self._preview_generation += 1
+        entry = self._current_entry
+        if entry is None:
+            self._preview.show_placeholder("Kein Eintrag gewählt")
+            return
+        if self._anonymize:
+            # Eine Beschreibung laesst sich nicht sinnvoll anonymisieren.
+            self._preview.show_placeholder("Im Screenshot-Modus zeigt die Vorschau keine Inhalte.")
+            return
+        if not entry.ticket:
+            self._preview.show_placeholder("Manuell erfasst - zu diesem Eintrag gibt es kein Jira-Ticket.")
+            return
+
+        cached = self._preview_cache().load(entry.ticket)
+        if cached is not None:
+            self._preview.show_data(cached)
+        if not self._settings_complete():
+            if cached is None:
+                self._preview.show_placeholder("Zugang unvollständig - bitte in den Einstellungen hinterlegen.")
+            else:
+                self._preview.set_note(f"Stand {german_datetime(cached.fetched_at)} - ohne Zugang nicht aktuell")
+            return
+        if cached is None:
+            self._preview.show_placeholder(f"{entry.ticket} wird geladen ...")
+        else:
+            self._preview.set_note(f"Stand {german_datetime(cached.fetched_at)} - wird geprüft ...")
+        self._start_preview_worker(entry.ticket, None if force else cached)
+
+    def _start_preview_worker(self, key: str, cached: TicketPreviewData | None) -> None:
+        """Startet den Abruf fuer die Vorschau unter der aktuellen Abruf-Nummer.
+
+        Args:
+            key:
+                Das Ticket.
+            cached:
+                Der gemerkte Stand fuer die Pruefung auf Aenderungen, oder None
+                fuer einen vollen Abruf.
+        """
+        generation = self._preview_generation
+        worker = TicketPreviewWorker(self._settings, key, self._preview_cache(), cached, self)
+        worker.log.connect(self._log.write)
+        worker.finished_ok.connect(lambda data, g=generation: self._on_preview_loaded(data, g))
+        worker.unchanged.connect(lambda _key, g=generation: self._on_preview_unchanged(g))
+        worker.failed.connect(lambda message, g=generation: self._on_preview_failed(message, g))
+        # Erst bei QThread.finished freigeben - das eigene Ergebnis-Signal
+        # kommt an, waehrend run() noch laeuft.
+        worker.finished.connect(self._forget_finished_workers)
+        worker.finished.connect(worker.deleteLater)
+        self._running_workers.append(worker)
+        worker.start()
+
+    def _forget_finished_workers(self) -> None:
+        """Nimmt beendete Faeden aus der Liste, auf die closeEvent wartet."""
+        self._running_workers = [w for w in self._running_workers if w.isRunning()]
+
+    def _on_preview_loaded(self, data: object, generation: int) -> None:
+        """Zeigt ein frisch abgerufenes Ticket - sofern noch dieses gewaehlt ist."""
+        if generation != self._preview_generation or not isinstance(data, TicketPreviewData):
+            return
+        self._preview.show_data(data)
+
+    def _on_preview_unchanged(self, generation: int) -> None:
+        """Der gemerkte Stand ist aktuell."""
+        if generation != self._preview_generation:
+            return
+        cached = self._preview.current_data
+        if cached is not None:
+            self._preview.set_note(f"Stand {german_datetime(cached.fetched_at)} - unverändert")
+
+    def _on_preview_failed(self, message: str, generation: int) -> None:
+        """Meldet einen gescheiterten Abruf. Ein gemerkter Stand bleibt stehen."""
+        self._log.write(f"Vorschau: {message}", Level.WARNING)
+        if generation != self._preview_generation:
+            return
+        if self._preview.current_data is None:
+            self._preview.show_placeholder(message, error=True)
+        else:
+            self._preview.set_note(f"Aktualisieren fehlgeschlagen: {message}", error=True)
 
     def _on_row_activated(self, index: QModelIndex) -> None:
         """Doppelklick auf eine Zeile oeffnet die Details.
@@ -2174,6 +2319,7 @@ class MainWindow(QMainWindow):
         self._calendar.apply_mode(self._mode)
         self._year_view.apply_mode(self._mode)
         self._summary.apply_mode(self._mode)
+        self._preview.apply_mode(self._mode)
         self._recolor_menu_icons()
         # Das Protokoll traegt seine Farben als HTML und bleibt sonst stehen.
         self._log.apply_theme()
@@ -2198,6 +2344,9 @@ class MainWindow(QMainWindow):
         splitter = self._qsettings.value("board/splitter")
         if splitter is not None:
             self._assigned_board.restore_splitter_state(bytes(splitter))
+        preview_splitter = self._qsettings.value("list/preview_splitter")
+        if preview_splitter is not None:
+            self._list_splitter.restoreState(preview_splitter)
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802
         """Laesst die Beschreibungs-Spalte mitwachsen, wenn ein Viewport waechst.
@@ -2238,6 +2387,7 @@ class MainWindow(QMainWindow):
         self._qsettings.setValue("window/geometry", self.saveGeometry())
         self._qsettings.setValue("window/state", self.saveState())
         self._qsettings.setValue("board/splitter", self._assigned_board.splitter_state())
+        self._qsettings.setValue("list/preview_splitter", self._list_splitter.saveState())
         # Sichtbarkeit des Log-Docks festhalten - auch wenn es ueber sein eigenes
         # X geschlossen wurde (das laeuft nicht ueber toggle_log).
         self._settings.log_visible = self._log.isVisible()

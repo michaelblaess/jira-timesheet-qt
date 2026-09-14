@@ -156,7 +156,12 @@ class TestVerdrahtung:
         quelle = Path(JiraClient.__module__.replace(".", "/") + ".py")
         text = (Path.cwd() / "src" / quelle).read_text(encoding="utf-8")
         assert "verify=False" not in text
-        assert text.count("verify=self._verify") == 8
+        # Jeder Verbindungsaufbau traegt die Pruefung. Bis 09/2026 stand hier
+        # eine feste Anzahl - die schlug bei jedem neuen Aufruf an, auch wenn
+        # der die Pruefung korrekt mitbrachte.
+        verbindungen = text.count("httpx.AsyncClient(")
+        assert verbindungen > 0
+        assert text.count("verify=self._verify") == verbindungen
 
     def test_eine_fehlende_zertifikatsdatei_meldet_sich_sofort(self) -> None:
         # Nicht erst beim ersten Abruf: der Konstruktor liest die Datei, und

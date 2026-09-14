@@ -255,6 +255,100 @@ class JiraClient:
         )
         return TicketLifecycleData(issue=issue, changelog=changelog, comments=comments)
 
+    async def get_issue(self, key: str, fields: Sequence[str], rendered: bool = False) -> dict[str, Any]:
+        """Holt ausgewaehlte Felder eines Tickets.
+
+        Fuer die Vorschau im Stundenzettel. Mit rendered=True liefert Jira die
+        Beschreibung zusaetzlich als fertiges HTML (renderedFields) - das spart
+        einen eigenen Uebersetzer aus dem Jira-Dokumentformat.
+
+        Args:
+            key:
+                Ticket-Key, z.B. "ABC-123".
+            fields:
+                Die gewuenschten Felder.
+            rendered:
+                True fuer renderedFields.
+
+        Returns:
+            Die Rohantwort der API.
+        """
+        version = "2" if self._legacy else "3"
+        url = f"{self._host}/rest/api/{version}/issue/{key}"
+        params: dict[str, str] = {"fields": ",".join(fields)}
+        if rendered:
+            params["expand"] = "renderedFields"
+        try:
+            async with httpx.AsyncClient(
+                verify=self._verify,
+                timeout=30.0,
+                follow_redirects=True,
+                auth=None if self._legacy else (self._email, self._token),
+                proxy=self._proxy or None,
+            ) as client:
+                response = await client.get(url, params=params, headers=self._headers())
+        except httpx.HTTPError as exc:
+            raise self._as_client_error(exc) from exc
+        self._check_response(response, url)
+        data = response.json()
+        return data if isinstance(data, dict) else {}
+
+    async def get_attachment(self, url: str) -> tuple[bytes, str]:
+        """Holt ein Bild aus einer Ticket-Beschreibung.
+
+        Nur vom eigenen Jira-Host: die Anmeldung geht nie an eine fremde
+        Adresse. Jira leitet auf seinen Mediendienst um, gemessen am
+        14.09.2026 einmal - der Umleitung folgt httpx.
+
+        Args:
+            url:
+                Die Bildadresse aus dem HTML, absolut oder relativ zum Host.
+
+        Returns:
+            Inhalt und content-type.
+        """
+        from urllib.parse import urlparse
+
+        ziel = url if urlparse(url).netloc else f"{self._host}{url}"
+        if urlparse(ziel).netloc.lower() != urlparse(self._host).netloc.lower():
+            raise JiraClientError("Das Bild liegt nicht auf dem Jira-Host.")
+        try:
+            async with httpx.AsyncClient(
+                verify=self._verify,
+                timeout=30.0,
+                follow_redirects=True,
+                auth=None if self._legacy else (self._email, self._token),
+                proxy=self._proxy or None,
+            ) as client:
+                response = await client.get(ziel, headers={**self._headers(), "Accept": "*/*"})
+        except httpx.HTTPError as exc:
+            raise self._as_client_error(exc) from exc
+        self._check_response(response, ziel)
+        return response.content, response.headers.get("content-type", "")
+
+    async def get_fields(self) -> list[dict[str, Any]]:
+        """Holt die Feldliste der Instanz - fuer die Zuordnung Feldname -> customfield-ID.
+
+        Returns:
+            Je Feld die Rohdaten mit id, name und schema.
+        """
+        version = "2" if self._legacy else "3"
+        url = f"{self._host}/rest/api/{version}/field"
+        try:
+            async with httpx.AsyncClient(
+                verify=self._verify,
+                timeout=30.0,
+                follow_redirects=True,
+                auth=None if self._legacy else (self._email, self._token),
+                proxy=self._proxy or None,
+            ) as client:
+                response = await client.get(url, headers=self._headers())
+        except httpx.HTTPError as exc:
+            raise self._as_client_error(exc) from exc
+        self._check_response(response, url)
+        data = response.json()
+        return [item for item in data if isinstance(item, dict)] if isinstance(data, list) else []
+
     async def get_ticket_summaries(self, keys: list[str]) -> dict[str, str]:
         """Holt die Titel mehrerer Tickets in einem Aufruf.
 

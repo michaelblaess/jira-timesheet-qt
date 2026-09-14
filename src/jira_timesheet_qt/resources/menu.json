@@ -187,7 +187,7 @@
             "command": "tools.ticket_report",
             "title": "cmd.ticket_report",
             "icon": "mdi6.chart-timeline",
-            "shortcut": "Ctrl+T",
+            "shortcut": "Ctrl+Shift+A",
             "surfaces": [
               "menu",
               "toolbar"

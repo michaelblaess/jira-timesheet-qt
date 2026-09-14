@@ -138,7 +138,7 @@ The application follows the light or dark theme and a configurable accent colour
   of its life cycle, waiting time per status (calendar time versus actual working hours), the
   people involved, key figures such as flow efficiency and first response, plus findings that
   each carry their evidence. The result is a single self-contained HTML file that works
-  offline and can be shared (`Ctrl+T`) Unusually long waiting times are marked in red, related tickets show their title, and the finished report opens straight in the browser.
+  offline and can be shared (`Ctrl+Shift+A`) Unusually long waiting times are marked in red, related tickets show their title, and the finished report opens straight in the browser.
 - **My tickets** - Every ticket assigned to you, grouped by whose move it is: mine, someone
   else's, backlog, handback, closing. Plus markers for what needs attention, the idle time in
   working days and three charts (inflow against outflow, stock, age distribution)
@@ -388,7 +388,8 @@ The software is provided without warranty of any kind ("as is"), as set out in t
 | `Ctrl+F` | Focus the search field |
 | `Ctrl+N` | Record manual time |
 | `Ctrl+D` | Show ticket details |
-| `Ctrl+T` | Ticket analysis (interactive report as an HTML file) |
+| `Ctrl+Shift+A` | Ticket analysis (interactive report as an HTML file) |
+| `Ctrl+T` / `Ctrl+Shift+T` | Next / previous theme (when themes are switched on) |
 | `Ctrl+E` | Export (format chosen in the save dialog) |
 | `Ctrl+P` | Print preview |
 | `Ctrl+L` | Show / hide the log panel |
