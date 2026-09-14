@@ -106,6 +106,10 @@ The application follows the light or dark theme and a configurable accent colour
   automatically (no manual ID lookup)
 - **List view** - Tabular with calendar week, weekday, day groups and target/actual hours;
   day totals coloured green above and red below the target
+- **Ticket preview** - Optionally (Settings, page **Appearance**) a splitter next to the list
+  shows the selected ticket read-only: status, logged hours, fix versions, assignee, author,
+  due date, environments and team, followed by the title and the description with images. The
+  data comes from the cache, a button reloads the ticket
 - **Live search / filter** - Filter by ticket ID or description as you type (`Ctrl+F`);
   matches are highlighted in the list
 - **Resizable columns** - Drag the divider in the column header, widths are persisted;
@@ -280,7 +284,7 @@ description, customer and effort. The effort may be written the way you note it 
 
 These entries live in their own SQLite file (`~/.jira-timesheet-qt/manual-entries.db`) and
 **never** in the Jira cache. They count everywhere - daily total, monthly total, target/actual,
-calendar, year view, Excel and PDF - and are colour-marked so it is obvious what comes from
+month view, year view, Excel and PDF - and are colour-marked so it is obvious what comes from
 Jira and what does not. A right-click on a row opens a context menu; description and effort of
 a manual entry can be edited directly in the table.
 
@@ -435,6 +439,8 @@ Settings are stored in `~/.jira-timesheet-qt/settings.json`:
 | Stale after | Threshold for the *stale* marker | 180 days |
 | Pile of Shame thresholds | Working days per group, 0 disables | 20 / 10 / 0 |
 | Theme / accent / zoom | Appearance | system / orange / 100 % |
+| Ticket preview | Splitter with the selected ticket next to the list | false |
+| Preview extra fields | Jira fields by name, e.g. Environments, Team | empty |
 | Language | UI language (de / en) | de |
 
 ## Relationship to the Textual version

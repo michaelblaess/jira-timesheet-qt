@@ -108,6 +108,10 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   automatisch (kein manuelles Nachschlagen der Field-ID)
 - **Listenansicht** - Tabellarisch mit Kalenderwoche, Wochentag, Tagesgruppen und Soll-/Ist-Stunden;
   die Tagessummen sind über Soll grün und unter Soll rot eingefärbt
+- **Ticket-Vorschau** - Auf Wunsch (Einstellungen, Seite **Darstellung**) zeigt ein Splitter
+  neben der Liste das gewählte Ticket read-only: Status, gebuchte Stunden, Lösungsversionen,
+  zugewiesene Person, Autor, Fälligkeitsdatum, Environments und Team, darunter Titel und
+  Beschreibung mit Bildern. Die Daten kommen aus dem Cache, ein Knopf lädt das Ticket neu
 - **Live-Suche / Filter** - Filtert beim Tippen nach Ticket-ID oder Beschreibung (`Strg+F`);
   Treffer werden in der Liste hervorgehoben
 - **Verstellbare Spalten** - Zieh den Trenner im Spaltenkopf, die Breiten bleiben erhalten;
@@ -286,7 +290,7 @@ notierst: `3h 30m`, `3:30`, `3,5` oder `45m`.
 
 Diese Einträge liegen in einer eigenen SQLite-Datei (`~/.jira-timesheet-qt/manual-entries.db`)
 und **nie** im Jira-Cache. Sie zählen überall mit - Tagessumme, Monatssumme, Soll/Ist,
-Kalender, Jahresansicht, Excel und PDF - und sind farblich markiert, damit auf einen Blick klar
+Monatsansicht, Jahresansicht, Excel und PDF - und sind farblich markiert, damit auf einen Blick klar
 ist, was aus Jira kommt und was nicht. Ein Rechtsklick auf eine Zeile öffnet ein Kontextmenü;
 Beschreibung und Aufwand eines manuellen Eintrags lassen sich direkt in der Tabelle bearbeiten.
 
@@ -448,6 +452,8 @@ Die Einstellungen liegen in `~/.jira-timesheet-qt/settings.json`:
 | Verwaist ab | Schwelle für das Merkmal *verwaist* | 180 Tage |
 | Pile-of-Shame-Schwellen | Arbeitstage je Gruppe, 0 schaltet ab | 20 / 10 / 0 |
 | Theme / Akzent / Zoom | Erscheinungsbild | System / Orange / 100 % |
+| Ticket-Vorschau | Splitter mit dem gewählten Ticket neben der Liste | falsch |
+| Zusatzfelder der Vorschau | Jira-Felder nach Namen, z. B. Environments, Team | leer |
 | Sprache | Oberflächensprache (de / en) | de |
 
 ## Verhältnis zur Textual-Fassung
