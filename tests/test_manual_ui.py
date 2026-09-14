@@ -114,6 +114,24 @@ class TestManualEntryDialog:
         assert entry.customer == "Corporate"
         assert abs(entry.hours - 3.5) < 1e-9
 
+    def test_abbrechen_steht_zuletzt(self, qapp: object) -> None:
+        """Wie in jedem Windows-Dialog. Bis zum 14.09.2026 stand es links von Speichern."""
+        from PySide6.QtWidgets import QApplication, QPushButton, QWidget
+
+        from jira_timesheet_qt.ui.manual_entry_dialog import ManualEntryDialog
+
+        dialog = ManualEntryDialog(customers=["Vertrieb"], default_customer="Vertrieb")
+        dialog.show()
+        QApplication.processEvents()
+        try:
+            zeile = dialog.findChild(QWidget, "DialogButtons")
+            assert zeile is not None
+            knoepfe = {k.text(): k.mapTo(dialog, k.rect().topLeft()).x() for k in zeile.findChildren(QPushButton)}
+            assert knoepfe["Speichern"] < knoepfe["Abbrechen"], knoepfe
+            assert knoepfe["Abbrechen"] == max(knoepfe.values()), knoepfe
+        finally:
+            dialog.close()
+
     def test_invalid_hours_blocks_result(self, qapp: object) -> None:
         from jira_timesheet_qt.ui.manual_entry_dialog import ManualEntryDialog
 

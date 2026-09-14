@@ -159,13 +159,15 @@ class ManualEntryDialog(QDialog):
         layout.setSpacing(10)
         layout.addStretch(1)
 
-        cancel = QPushButton("Abbrechen")
-        cancel.clicked.connect(self.reject)
-        layout.addWidget(cancel)
-
+        # Abbrechen steht zuletzt, wie in jedem Windows-Dialog. In dieser
+        # Reihenfolge angelegt, damit die Tab-Folge der Anzeige entspricht.
         save = QPushButton("Speichern")
         save.setProperty("variant", "primary")
         save.setDefault(True)
         save.clicked.connect(self._on_save)
         layout.addWidget(save)
+
+        cancel = QPushButton("Abbrechen")
+        cancel.clicked.connect(self.reject)
+        layout.addWidget(cancel)
         return row
