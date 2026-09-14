@@ -995,7 +995,7 @@ wheels = [
 [[package]]
 name = "qappframework"
 version = "0.11.0"
-source = { git = "https://github.com/michaelblaess/QAppFramework.git#59a0dc12cfb622df1ff11f7869b6295a544da555" }
+source = { git = "https://github.com/michaelblaess/QAppFramework.git#538c6f0090c1fd27caac63c96827732c1d2f3a78" }
 dependencies = [
     { name = "pynacl" },
     { name = "pyside6" },
