@@ -61,10 +61,10 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   <img src="docs/screenshots/search-light.png" width="49%" alt="Suchfilter (hell)">
 </p>
 
-### Kalender- und Jahresansicht
+### Monats- und Jahresansicht
 
 <p align="center">
-  <img src="docs/screenshots/calendar-dark.png" width="49%" alt="Kalenderansicht (dunkel)">
+  <img src="docs/screenshots/calendar-dark.png" width="49%" alt="Monatsansicht (dunkel)">
   <img src="docs/screenshots/year-dark.png" width="49%" alt="Jahresansicht (dunkel)">
 </p>
 
@@ -117,8 +117,9 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   farblich markiert in Liste, Excel und PDF
 - **Konfigurierbare Export-Spalten** - Jede Spalte lässt sich getrennt für Anzeige und Export
   schalten und im Export frei benennen (Einstellungsseite "Spalten"), inklusive Kunden-Spalte
-- **Kalenderansicht** - Monatsgrid mit farbcodierten Tageskacheln; anklickbare Ticket-Links
-  öffnen den Detail-Dialog
+- **Monatsansicht** - Monatsraster mit einer Zeile je Ticket (Beschreibung und Stunden),
+  einem Soll-Ist-Balken je Tag und je Woche, vergangene Arbeitstage ohne Buchung sind markiert.
+  Die Ticket-Links öffnen den Detail-Dialog, der Hinweis auf einer Kachel zeigt alle Einträge
 - **Jahresansicht** - Zwölf Monatskacheln mit Fortschrittsbalken, Prognose, Umsatz-Summen und
   den Top-Tickets je Monat; jedes Ticket ist ein Link zum Detail-Dialog
 - **Export in vier Formate** - das Format wählst Du im Speichern-Dialog:

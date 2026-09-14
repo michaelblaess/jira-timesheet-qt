@@ -59,10 +59,10 @@ The application follows the light or dark theme and a configurable accent colour
   <img src="docs/screenshots/search-light.png" width="49%" alt="Search filter (light)">
 </p>
 
-### Calendar and year view
+### Month and year view
 
 <p align="center">
-  <img src="docs/screenshots/calendar-dark.png" width="49%" alt="Calendar view (dark)">
+  <img src="docs/screenshots/calendar-dark.png" width="49%" alt="Month view (dark)">
   <img src="docs/screenshots/year-dark.png" width="49%" alt="Year view (dark)">
 </p>
 
@@ -115,8 +115,9 @@ The application follows the light or dark theme and a configurable accent colour
   and PDF
 - **Configurable export columns** - Every column can be toggled for display and export
   independently and renamed for the export (settings page "Columns"), including a customer column
-- **Calendar view** - Monthly grid with colour-coded day tiles; clickable ticket links open
-  the detail dialog
+- **Month view** - Monthly grid with one line per ticket (description and hours), a
+  target/actual bar per day and per week, and past workdays without bookings marked. Ticket
+  links open the detail dialog, hovering a tile lists all of its entries
 - **Year view** - Twelve month tiles with progress bar, forecast, revenue totals and the top
   tickets per month; every ticket is a link to its detail dialog
 - **Export to four formats** - pick the format in the save dialog: Excel
