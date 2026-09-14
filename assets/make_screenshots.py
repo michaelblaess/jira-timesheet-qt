@@ -185,7 +185,7 @@ def main() -> int:
         win._search.setText("Fix")
         _grab(win, OUT / f"search-{tag}.png", W, H)
 
-        # Kalender
+        # Monat
         win = _window(mode)
         win._tabs.setCurrentIndex(1)
         _grab(win, OUT / f"calendar-{tag}.png", W, H)

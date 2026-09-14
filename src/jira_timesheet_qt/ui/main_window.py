@@ -105,7 +105,7 @@ from jira_timesheet_qt.ui.timesheet_tree_model import TimesheetTreeModel
 from jira_timesheet_qt.ui.toast import Toast
 from jira_timesheet_qt.ui.year_view import YearView
 
-_VIEWS = ("Stundenzettel", "Kalender", "Jahr", "Meine Tickets", "Meine Aktivitäten", "Mein Team")
+_VIEWS = ("Stundenzettel", "Monat", "Jahr", "Meine Tickets", "Meine Aktivitäten", "Mein Team")
 
 # Welche Stapelseite welche Ticket-Ansicht ist. Aus _VIEWS abgeleitet,
 # damit eine neue Ansicht die Zuordnung nicht stillschweigend verschiebt.
@@ -118,6 +118,8 @@ _BOARD_MODES: dict[int, str] = {
 # Stapelseite der Jahresansicht. Aus _VIEWS abgeleitet wie _BOARD_MODES,
 # damit eine neue Ansicht die Nummer nicht stillschweigend verschiebt.
 _YEAR_VIEW: int = _VIEWS.index("Jahr")
+# Stapelseite der Monatsansicht - stand bis 09/2026 als feste 1 im Code.
+_MONTH_VIEW: int = _VIEWS.index("Monat")
 
 # Abruf-Kanaele mit je eigenem Zaehler. Monat und Jahr laufen gleichzeitig,
 # seit F5 den Stundenzettel immer mitzieht - ein gemeinsamer Zaehler wuerde
@@ -619,7 +621,7 @@ class MainWindow(QMainWindow):
         add(Command("view.list", run=lambda: self._go_to_view(0),
                     is_checked=lambda: self._stack.currentIndex() == 0))
         add(Command("view.calendar", run=lambda: self._go_to_view(1),
-                    is_checked=lambda: self._stack.currentIndex() == 1))
+                    is_checked=lambda: self._stack.currentIndex() == _MONTH_VIEW))
         add(Command("view.year", run=lambda: self._go_to_view(2),
                     is_checked=lambda: self._stack.currentIndex() == _YEAR_VIEW))
         add(Command("view.detail", run=self._show_detail_current))
@@ -925,6 +927,9 @@ class MainWindow(QMainWindow):
             color = QColor(f"#{normalize_color(self._settings.manual_entry_color)}")
         self._model.set_manual_color(color)
         self._tree_model.set_manual_color(color)
+        # Die Monatsansicht faerbt die Ticketzeilen manueller Eintraege genauso.
+        if hasattr(self, "_calendar"):
+            self._calendar.set_manual_color(color)
 
     def _apply_day_total_colors(self) -> None:
         """Setzt die Soll-Ist-Ampel der Tagessummen in beiden Listenmodellen.
@@ -1006,7 +1011,7 @@ class MainWindow(QMainWindow):
         mode = _BOARD_MODES.get(view)
         if mode is not None:
             self._summary_board(self._board_view(mode), mode)
-        elif view == 1:
+        elif view == _MONTH_VIEW:
             self._summary_calendar()
         elif view == _YEAR_VIEW:
             self._summary_year()
@@ -1090,14 +1095,18 @@ class MainWindow(QMainWindow):
         self._summary.show_list(self._timesheet, self._settings, target_workdays)
 
     def _summary_calendar(self) -> None:
-        """Kalender: gebuchte Arbeitstage und Ist/Soll des Monats."""
+        """Monat: gebuchte Arbeitstage und Ist/Soll des Monats.
+
+        "Fehlt" zaehlt nur vergangene Arbeitstage ohne Buchung - fuer heute und
+        die kommenden Tage kann noch nichts fehlen.
+        """
         cells = self._calendar.cells
         workdays = [cell for cell in cells if cell.in_month and cell.is_workday]
         booked = [cell for cell in workdays if cell.hours > 0]
         total_hours = sum(cell.hours for cell in cells if cell.in_month)
         target_hours = len(workdays) * self._settings.hours_per_day
         self._summary.show_calendar(
-            len(booked), len(workdays), total_hours, target_hours, len(workdays) - len(booked)
+            len(booked), len(workdays), total_hours, target_hours, len(self._calendar.missing_workdays())
         )
 
     def _summary_year(self) -> None:
@@ -2012,8 +2021,11 @@ class MainWindow(QMainWindow):
             month, year = 1, year + 1
         self._month, self._year = month, year
         self._update_period_labels()
+        # None statt des alten Stundenzettels: der gehoert zum vorigen Monat.
+        # Mit ihm galt bis zum Eintreffen der Daten jeder vergangene Tag als
+        # fehlend, und die Ansicht blitzte rot auf.
         self._calendar.set_month(
-            self._year, self._month, self._timesheet, self._settings.federal_state, self._settings.hours_per_day
+            self._year, self._month, None, self._settings.federal_state, self._settings.hours_per_day
         )
         if self._settings_complete():
             self.load_month()

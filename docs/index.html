@@ -53,7 +53,7 @@
   <section class="hero">
     <div class="hero-badge"><span class="dot"></span> Desktop-GUI für Jira-Worklogs · v0.11.0</div>
     <h1>Jira Timesheet <span class="accent">Desktop</span></h1>
-    <p class="hero-description">Eine native Desktop-Anwendung (PySide6 / Qt 6) für Stundenzettel aus Jira-Worklogs - der einfach zu bedienende Desktop-Port der Textual-Anwendung jira-timesheet. Mit Liste, Kalender und Jahr, Excel- und PDF-Export, Feiertagskalender und Jahres-Prognose.</p>
+    <p class="hero-description">Eine native Desktop-Anwendung (PySide6 / Qt 6) für Stundenzettel aus Jira-Worklogs - der einfach zu bedienende Desktop-Port der Textual-Anwendung jira-timesheet. Mit Liste, Monat und Jahr, Excel- und PDF-Export, Feiertagskalender und Jahres-Prognose.</p>
     <div class="hero-actions">
       <a href="https://github.com/michaelblaess/jira-timesheet-qt" class="btn btn-primary">
         <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
@@ -69,7 +69,7 @@
     <div class="gallery-tabs">
       <button class="gallery-tab active" onclick="showCat(0)">Liste</button>
       <button class="gallery-tab" onclick="showCat(1)">Suche</button>
-      <button class="gallery-tab" onclick="showCat(2)">Kalender</button>
+      <button class="gallery-tab" onclick="showCat(2)">Monat</button>
       <button class="gallery-tab" onclick="showCat(3)">Jahr</button>
       <button class="gallery-tab" onclick="showCat(4)">Meine Tickets</button>
       <button class="gallery-tab" onclick="showCat(5)">Details</button>
@@ -87,8 +87,8 @@
     </div>
 
     <div class="gallery-cat" data-cat="2">
-      <div class="gallery-card"><img src="screenshots/calendar-dark.png" alt="Kalenderansicht (dunkel)"><div class="gallery-caption">Kalenderansicht - dunkel</div></div>
-      <div class="gallery-card"><img src="screenshots/calendar-light.png" alt="Kalenderansicht (hell)"><div class="gallery-caption">Kalenderansicht - hell</div></div>
+      <div class="gallery-card"><img src="screenshots/calendar-dark.png" alt="Monatsansicht (dunkel)"><div class="gallery-caption">Monatsansicht - dunkel</div></div>
+      <div class="gallery-card"><img src="screenshots/calendar-light.png" alt="Monatsansicht (hell)"><div class="gallery-caption">Monatsansicht - hell</div></div>
     </div>
 
     <div class="gallery-cat" data-cat="3">
@@ -163,7 +163,7 @@
       <div class="feature-card">
         <div class="feature-icon">📋</div>
         <h3>Fünf Ansichten</h3>
-        <p>Liste mit KW und Wochentag, Kalender als Monatsgrid, Jahresansicht mit Prognose, dazu die beiden Ticket-Ansichten. Umschalten per Reiter oder Klick.</p>
+        <p>Liste mit KW und Wochentag, Monatsansicht mit einer Zeile je Ticket und Soll-Ist-Balken, Jahresansicht mit Prognose, dazu die beiden Ticket-Ansichten. Umschalten per Reiter oder Klick.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon">🎯</div>
