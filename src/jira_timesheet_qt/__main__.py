@@ -53,10 +53,9 @@ def main() -> int:
     from jira_timesheet_qt.ui.main_window import MainWindow
     from jira_timesheet_qt.ui.theme import (
         Mode,
-        build_palette,
-        build_qss,
+        apply_color_scheme_settings,
+        apply_to_application,
         set_accent,
-        set_color_scheme,
         set_scale,
     )
 
@@ -98,7 +97,7 @@ def main() -> int:
     set_scale(settings.ui_scale)
     # Zuletzt: ein gesetztes Farbschema bestimmt die Farben vollstaendig
     # und sticht Erscheinungsbild und Akzent aus.
-    set_color_scheme(settings.color_scheme if settings.use_color_scheme else "")
+    apply_color_scheme_settings(settings.color_scheme, settings.use_color_scheme)
 
     def apply_theme(name: str) -> None:
         """Setzt Palette und Stylesheet der Anwendung neu.
@@ -107,9 +106,7 @@ def main() -> int:
         QSS uebernimmt nur die strukturellen Flaechen und die Typografie. Die
         Akzentfarbe wird zuvor ueber set_accent gesetzt (siehe MainWindow).
         """
-        mode = Mode(name)
-        app.setPalette(build_palette(mode))
-        app.setStyleSheet(build_qss(mode, fonts.sans, fonts.mono))
+        apply_to_application(app, Mode(name), fonts.sans, fonts.mono)
 
     apply_theme(mode.value)
 

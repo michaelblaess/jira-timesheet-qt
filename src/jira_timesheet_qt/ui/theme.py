@@ -21,6 +21,7 @@ from __future__ import annotations
 from enum import StrEnum
 
 from PySide6.QtGui import QPalette
+from PySide6.QtWidgets import QApplication
 from QAppFramework.theme import (
     ACCENTS,
     DARK,
@@ -44,8 +45,11 @@ from QAppFramework.theme import set_accent as set_accent
 # Das Retro-Farbschema. Heisst hier bewusst set_color_scheme: `theme`
 # ist in dieser Anwendung seit jeher das Erscheinungsbild.
 from QAppFramework.theme import set_theme as set_color_scheme
+from QAppFramework.theme import set_themes_enabled as _schalte_themes
 from QAppFramework.theme import set_zoom as set_scale
 from QAppFramework.theme import zoom as current_scale
+from QAppFramework.titlebar import style_all_windows as _faerbe_titelleisten
+from QAppFramework.titlebar import watch_new_windows as _beobachte_neue_fenster
 
 
 class Mode(StrEnum):
@@ -85,10 +89,51 @@ __all__ = [
     "current_scale",
     "palette_for",
     "set_accent",
+    "apply_color_scheme_settings",
+    "apply_to_application",
     "set_color_scheme",
     "set_scale",
 ]
 
+
+def apply_color_scheme_settings(name: str, enabled: bool) -> None:
+    """Übernimmt Farbschema und Theme-Schalter aus den Einstellungen.
+
+    Die Bibliothek führt beides getrennt, und ihr Schalter steht anfangs auf
+    aus. Nur den Namen zu setzen reicht deshalb nicht: das Schema gilt dann
+    nicht, und die Auswahl in der Werkzeugleiste bleibt verborgen.
+
+    Args:
+        name: Der Theme-Name, oder "" für die Grundpalette.
+        enabled: Ob die Themes gelten.
+    """
+    set_color_scheme(name)
+    _schalte_themes(enabled)
+
+
+def apply_to_application(app: QApplication, mode: Mode, font_sans: str, font_mono: str) -> int:
+    """Setzt Palette, Stylesheet und die Farbe der Titelleisten.
+
+    Die Titelleiste zeichnet Windows, nicht Qt, und vom Stylesheet erfährt sie
+    nichts. QAppFramework färbt sie in seinem `apply_theme` mit. Diese
+    Anwendung baut Palette und Stylesheet selbst und muss den Schritt deshalb
+    hier nachholen.
+
+    Args:
+        app: Die laufende Anwendung.
+        mode: Das Erscheinungsbild.
+        font_sans: Schriftfamilie der Oberfläche.
+        font_mono: Schriftfamilie für Zahlen, Vorgangsschlüssel und Zeiten.
+
+    Returns:
+        Wie viele Fenster eine gefärbte Titelleiste bekommen haben. Außerhalb von Windows 0.
+    """
+    app.setPalette(build_palette(mode))
+    app.setStyleSheet(build_qss(mode, font_sans, font_mono))
+    # Kuenftige Fenster beim ersten Anzeigen, die offenen sofort - sonst
+    # behielte ein offenes Fenster nach dem Themewechsel seine alte Leiste.
+    _beobachte_neue_fenster()
+    return _faerbe_titelleisten(palette_for(mode))
 
 
 def palette_for(mode: Mode) -> Palette:

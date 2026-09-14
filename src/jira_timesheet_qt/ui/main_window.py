@@ -85,6 +85,7 @@ from jira_timesheet_qt.ui.summary_bar import SummaryBar, SummarySegment
 from jira_timesheet_qt.ui.theme import (
     SCALES,
     Mode,
+    apply_color_scheme_settings,
     palette_for,
     set_accent,
     set_color_scheme,
@@ -1937,10 +1938,13 @@ class MainWindow(QMainWindow):
         # ueber theme_changed im Einstiegspunkt.
         set_accent(self._settings.accent)
         set_scale(self._settings.ui_scale)
-        set_color_scheme(self._settings.color_scheme if self._settings.use_color_scheme else "")
+        apply_color_scheme_settings(self._settings.color_scheme, self._settings.use_color_scheme)
         if self._settings.theme in ("dark", "light"):
             self._mode = Mode(self._settings.theme)
         self._reapply_theme()
+        # Der Schalter kann sich gerade geaendert haben - die Auswahl in der
+        # Werkzeugleiste haengt an ihm.
+        self._refresh_theme_combo()
 
     # --- Export ---------------------------------------------------------
 

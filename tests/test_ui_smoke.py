@@ -381,6 +381,44 @@ class TestWindow:
         assert win._current_entry is None
 
 
+class TestTitelleiste:
+    """Die Titelleiste zeichnet Windows - sie muss ausdrücklich mitgefärbt werden."""
+
+    def test_das_anwenden_faerbt_die_titelleisten(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Bis zum 14.09.2026 setzte die Anwendung nur Palette und Stylesheet."""
+        import inspect
+
+        from jira_timesheet_qt import __main__ as einstieg
+        from jira_timesheet_qt.ui import theme as theme_module
+
+        aufrufe: list[object] = []
+
+        def wache() -> bool:
+            aufrufe.append("wache")
+            return True
+
+        def faerben(farben: object) -> int:
+            aufrufe.append(farben)
+            return 1
+
+        monkeypatch.setattr(theme_module, "_beobachte_neue_fenster", wache)
+        monkeypatch.setattr(theme_module, "_faerbe_titelleisten", faerben)
+        vorher_qss = qapp.styleSheet()
+        vorher_palette = qapp.palette()
+        fonts = load_fonts()
+        try:
+            theme_module.apply_to_application(qapp, Mode.DARK, fonts.sans, fonts.mono)
+        finally:
+            qapp.setStyleSheet(vorher_qss)
+            qapp.setPalette(vorher_palette)
+
+        assert aufrufe == ["wache", theme_module.palette_for(Mode.DARK)]
+        # Der Einstiegspunkt muss genau diesen Weg nehmen, sonst bleibt es beim Test.
+        assert "apply_to_application" in inspect.getsource(einstieg.main)
+
+
 class TestThemeBedienung:
     """Die Themeauswahl in der Werkzeugleiste.
 
@@ -449,6 +487,66 @@ class TestThemeBedienung:
         set_themes_enabled(False)
         window._cycle_theme(1)
         assert current_theme() == ""
+
+    def test_die_einstellungen_schalten_die_themes_ein(self, window: MainWindow) -> None:
+        """Bis zum 14.09.2026 setzte die Anwendung nur den Namen.
+
+        Der Schalter der Bibliothek blieb auf aus - das Schema galt nicht, und
+        die Auswahl in der Werkzeugleiste fehlte, obwohl die Einstellung an war.
+        """
+        from QAppFramework import set_theme, set_themes_enabled, themes_enabled
+
+        from jira_timesheet_qt.ui.theme import apply_color_scheme_settings, palette_for
+
+        set_theme("")
+        set_themes_enabled(False)
+        try:
+            apply_color_scheme_settings("ascot", True)
+            assert themes_enabled() is True
+            assert palette_for(Mode.DARK).expressive is True
+            apply_color_scheme_settings("ascot", False)
+            assert palette_for(Mode.DARK).expressive is False
+        finally:
+            set_theme("")
+            set_themes_enabled(False)
+
+    def test_nach_dem_speichern_steht_die_auswahl(
+        self, window: MainWindow, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Der Weg über den Einstellungsdialog, ohne Neustart."""
+        from QAppFramework import current_theme, set_theme, set_themes_enabled
+
+        from jira_timesheet_qt.ui import main_window as main_window_module
+        from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
+
+        gespeichert = Settings()
+        gespeichert.color_scheme = "ascot"
+        gespeichert.use_color_scheme = True
+
+        class _Dialog:
+            DialogCode = SettingsDialog.DialogCode
+
+            def __init__(self, *_args: object) -> None: ...
+
+            def exec(self) -> int:
+                return int(self.DialogCode.Accepted)
+
+            def result_settings(self) -> Settings:
+                return gespeichert
+
+        monkeypatch.setattr(main_window_module, "SettingsDialog", _Dialog)
+        set_theme("")
+        set_themes_enabled(False)
+        try:
+            window._refresh_theme_combo()
+            assert window._theme_combo_action.isVisible() is False
+            window.open_settings()
+            assert window._theme_combo_action.isVisible() is True
+            assert current_theme() == "ascot"
+            assert window._theme_combo.currentData() == "ascot"
+        finally:
+            set_theme("")
+            set_themes_enabled(False)
 
     def test_das_protokoll_folgt_dem_theme(self, window: MainWindow) -> None:
         """Die Farben standen bis zum 11.09.2026 fest im Quelltext."""
