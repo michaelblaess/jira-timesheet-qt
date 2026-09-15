@@ -59,13 +59,13 @@ def _entry(
 
 class TestTicketZeilen:
     def test_buchungen_eines_tickets_werden_zusammengezaehlt(self) -> None:
-        erste = _entry("DMZ-1", 1.0)
-        zeilen = ticket_rows([erste, _entry("DMZ-2", 3.0), _entry("DMZ-1", 2.5)])
-        assert [(z.ticket, z.hours) for z in zeilen] == [("DMZ-1", 3.5), ("DMZ-2", 3.0)]
+        erste = _entry("ABC-1", 1.0)
+        zeilen = ticket_rows([erste, _entry("ABC-2", 3.0), _entry("ABC-1", 2.5)])
+        assert [(z.ticket, z.hours) for z in zeilen] == [("ABC-1", 3.5), ("ABC-2", 3.0)]
         assert zeilen[0].entry is erste, "Ein Klick oeffnet den ersten Eintrag des Tickets"
 
     def test_manuell_bleibt_erhalten_auch_wenn_nur_eine_buchung_manuell_ist(self) -> None:
-        zeilen = ticket_rows([_entry("DMZ-1", 1.0), _entry("DMZ-1", 1.0, manual=True)])
+        zeilen = ticket_rows([_entry("ABC-1", 1.0), _entry("ABC-1", 1.0, manual=True)])
         assert zeilen[0].manual is True
 
     def test_eintraege_ohne_ticket_bleiben_nach_beschreibung_getrennt(self) -> None:
@@ -79,7 +79,7 @@ class TestTicketZeilen:
     def test_ueberzaehlige_zeilen_werden_zusammengefasst(
         self, anzahl: int, platz: int, sichtbar: int, zusammengefasst: int
     ) -> None:
-        zeilen = ticket_rows([_entry(f"DMZ-{i}", 1.0 + i) for i in range(anzahl)])
+        zeilen = ticket_rows([_entry(f"ABC-{i}", 1.0 + i) for i in range(anzahl)])
         oben, rest = split_rows(zeilen, platz)
         assert (len(oben), len(rest)) == (sichtbar, zusammengefasst)
         assert oben + rest == zeilen, "Nichts darf verloren gehen"
@@ -188,7 +188,7 @@ class TestHinweis:
             date(2026, 9, 10),
             True,
             2.5,
-            [_entry("DMZ-1", 2.0, "Fehler beheben", customer="Vertrieb"), _entry("", 0.5, "Telefonat", manual=True)],
+            [_entry("ABC-1", 2.0, "Fehler beheben", customer="Vertrieb"), _entry("", 0.5, "Telefonat", manual=True)],
         )
         text = tooltip_html(zelle, 8.0)
         assert "Do, 10.09.2026" in text
@@ -197,7 +197,7 @@ class TestHinweis:
         assert "Telefonat - manuell" in text
 
     def test_beschreibungen_werden_escaped(self) -> None:
-        zelle = DayCell(date(2026, 9, 10), True, 1.0, [_entry("DMZ-1", 1.0, "Tag <b>fett</b> & Co")])
+        zelle = DayCell(date(2026, 9, 10), True, 1.0, [_entry("ABC-1", 1.0, "Tag <b>fett</b> & Co")])
         text = tooltip_html(zelle, 8.0)
         assert "&lt;b&gt;fett&lt;/b&gt; &amp; Co" in text
         assert "<b>fett</b>" not in text
@@ -218,24 +218,24 @@ class TestZeichnen:
         return view
 
     def test_breite_kachel_zeichnet_eine_zeile_je_ticket(self, qapp: QApplication) -> None:
-        view = self._gezeichnet(1600, [_entry("DMZ-1", 3.0), _entry("DMZ-2", 2.0), _entry("DMZ-3", 1.0)])
+        view = self._gezeichnet(1600, [_entry("ABC-1", 3.0), _entry("ABC-2", 2.0), _entry("ABC-3", 1.0)])
         treffer = [rect for rect, _ in view._ticket_hits]
         assert len(treffer) == 3
         assert len({round(r.x()) for r in treffer}) == 1, "Alle Nummern stehen am linken Rand der Kachel"
         assert len({round(r.y()) for r in treffer}) == 3, "Jede Nummer in einer eigenen Zeile"
 
     def test_zeilen_stehen_nach_stunden_sortiert(self, qapp: QApplication) -> None:
-        view = self._gezeichnet(1600, [_entry("DMZ-1", 1.0), _entry("DMZ-2", 3.0)])
+        view = self._gezeichnet(1600, [_entry("ABC-1", 1.0), _entry("ABC-2", 3.0)])
         von_oben = [entry.ticket for _, entry in sorted(view._ticket_hits, key=lambda hit: hit[0].y())]
-        assert von_oben == ["DMZ-2", "DMZ-1"]
+        assert von_oben == ["ABC-2", "ABC-1"]
 
     def test_zu_viele_tickets_passen_nicht_alle_hinein(self, qapp: QApplication) -> None:
-        view = self._gezeichnet(1600, [_entry(f"DMZ-{100 + i}", 0.5) for i in range(30)])
+        view = self._gezeichnet(1600, [_entry(f"ABC-{100 + i}", 0.5) for i in range(30)])
         assert 0 < len(view._ticket_hits) < 30
 
     def test_schmale_kachel_faellt_auf_die_nummern_zurueck(self, qapp: QApplication) -> None:
         """Ohne Platz fuer Nummer und Stunden bleiben die Nummern klickbar."""
-        view = self._gezeichnet(560, [_entry("DMZ-17854", 3.0), _entry("DMZ-17855", 2.0)])
+        view = self._gezeichnet(560, [_entry("ABC-12345", 3.0), _entry("ABC-12346", 2.0)])
         assert view._ticket_hits
 
 
