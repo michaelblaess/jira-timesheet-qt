@@ -113,6 +113,27 @@ class TestAbbildung:
         daten = parse_issue(_roh(parent={"key": "ABC-0", "fields": {"summary": "Epic"}}), {}, ABRUF)
         assert daten.parent == "ABC-0 Epic"
 
+    def test_kennungen_der_personen(self) -> None:
+        """Ueber die Kennung fuehrt die Vorschau nach "Mein Team" - der Name trifft nicht sicher."""
+        daten = parse_issue(
+            _roh(
+                assignee={"displayName": "Max Mustermann", "accountId": "5cf79d64eba18b0ea85a7b53"},
+                creator={"displayName": "Erika Musterfrau", "accountId": "712020:e1153ec2"},
+            ),
+            {},
+            ABRUF,
+        )
+        assert (daten.assignee_id, daten.creator_id) == ("5cf79d64eba18b0ea85a7b53", "712020:e1153ec2")
+
+    def test_ohne_person_keine_kennung(self) -> None:
+        daten = parse_issue(_roh(assignee=None, creator={"displayName": "Erika Musterfrau"}), {}, ABRUF)
+        assert (daten.assignee_id, daten.creator_id) == ("", "")
+
+    def test_kennungen_ueberstehen_den_cache(self) -> None:
+        daten = TicketPreviewData(key="ABC-1", assignee_id="a1", creator_id="c2")
+        zurueck = TicketPreviewData.from_dict(json.loads(json.dumps(daten.to_dict())))
+        assert (zurueck.assignee_id, zurueck.creator_id) == ("a1", "c2")
+
     @pytest.mark.parametrize(
         ("wert", "text"),
         [

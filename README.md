@@ -113,10 +113,12 @@ The application follows the light or dark theme and a configurable accent colour
   automatically (no manual ID lookup)
 - **List view** - Tabular with calendar week, weekday, day groups and target/actual hours;
   day totals coloured green above and red below the target
-- **Ticket preview** - Optionally (Settings, page **Appearance**) a splitter next to the list
-  shows the selected ticket read-only: status, logged hours, fix versions, assignee, author,
-  due date, environments and team, followed by the title and the description with images. The
-  data comes from the cache, a button reloads the ticket
+- **Ticket preview** - Optionally (Settings, page **Appearance**) a splitter next to the
+  timesheet and next to **My tickets**, **My activity** and **My team** shows the selected ticket
+  read-only: status, logged hours, fix versions, assignee, author, due date, environments and
+  team, followed by the title and the description with images. The data comes from the cache, a
+  button reloads the ticket. Assignee and author are links: a click shows that person's tickets
+  under **My team**, and people who are not on the watch list appear there temporarily
 - **Live search / filter** - Filter by ticket ID or description as you type (`Ctrl+F`);
   matches are highlighted in the list
 - **Resizable columns** - Drag the divider in the column header, widths are persisted;

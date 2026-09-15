@@ -174,6 +174,8 @@ def to_ticket(
         is_bug=issue_type.strip().casefold() in ("bug", "fehler"),
         reporter=_person(reporter_field, "displayName"),
         assignee=_person(fields.get("assignee"), "displayName"),
+        reporter_id=reporter_id,
+        assignee_id=_person(fields.get("assignee"), "accountId"),
         foreign_reporter=foreign,
         created=parse_ts(str(fields.get("created", ""))),
         updated=updated,

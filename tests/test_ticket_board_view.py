@@ -906,6 +906,76 @@ class TestKontextmenue:
         assert empfangen == ["A-1"]
 
 
+PERSON_A = "5cf79d64eba18b0ea85a7b53"
+PERSON_B = "712020:e1153ec2-3116-4efb-bb7e-f94d2617a14a"
+
+
+class TestPersonenImMenue:
+    """Rechtsklick fuehrt zu den Tickets von Bearbeiter oder Autor in "Mein Team"."""
+
+    def _view(
+        self,
+        *,
+        assignee_id: str = PERSON_A,
+        reporter: str = "Beispiel, Bernd",
+        reporter_id: str = PERSON_B,
+    ) -> TicketBoardView:
+        view = TicketBoardView("Test", with_assignees=True)
+        t = ticket("A-1", assignee="Platzhalter, Paula")
+        t.assignee_id = assignee_id
+        t.reporter = reporter
+        t.reporter_id = reporter_id
+        view.set_board(board(Group(role=Role.ACTIVE, tickets=[t])))
+        return view
+
+    def _personen(self, view: TicketBoardView, t: Ticket | None) -> list[tuple[str, bool]]:
+        menu = view.build_menu(t)
+        return [(a.text(), a.isEnabled()) for a in menu.actions() if a.text().startswith("Tickets ")]
+
+    def test_bearbeiter_und_autor_haben_je_einen_eintrag(self, qapp: QApplication) -> None:
+        view = self._view()
+        assert self._personen(view, tickets_von(view)[0]) == [
+            ("Tickets von Platzhalter, Paula anzeigen", True),
+            ("Tickets von Beispiel, Bernd anzeigen", True),
+        ]
+
+    def test_eintrag_meldet_kennung_und_namen(self, qapp: QApplication) -> None:
+        view = self._view()
+        empfangen: list[tuple[str, str]] = []
+        view.person_requested.connect(lambda kennung, name: empfangen.append((kennung, name)))
+        menu = view.build_menu(tickets_von(view)[0])
+        next(a for a in menu.actions() if a.text() == "Tickets von Beispiel, Bernd anzeigen").trigger()
+        assert empfangen == [(PERSON_B, "Beispiel, Bernd")]
+
+    def test_gleiche_kennung_steht_nur_einmal(self, qapp: QApplication) -> None:
+        view = self._view(reporter="Paula Platzhalter", reporter_id=PERSON_A)
+        assert self._personen(view, tickets_von(view)[0]) == [("Tickets von Platzhalter, Paula anzeigen", True)]
+
+    def test_ohne_kennung_bleibt_ein_ausgegrauter_eintrag(self, qapp: QApplication) -> None:
+        view = self._view(assignee_id="", reporter_id="")
+        assert self._personen(view, tickets_von(view)[0]) == [("Tickets der Person anzeigen", False)]
+
+    def test_unbrauchbare_kennung_wird_uebergangen(self, qapp: QApplication) -> None:
+        view = self._view(assignee_id='x" OR 1=1')
+        assert self._personen(view, tickets_von(view)[0]) == [("Tickets von Beispiel, Bernd anzeigen", True)]
+
+    def test_auf_einer_gruppenzeile_ausgegraut(self, qapp: QApplication) -> None:
+        assert self._personen(self._view(), None) == [("Tickets der Person anzeigen", False)]
+
+    def test_im_screenshot_modus_gesperrt(self, qapp: QApplication) -> None:
+        view = self._view()
+        view.set_anonymized(True)
+        assert self._personen(view, tickets_von(view)[0]) == [("Tickets der Person anzeigen", False)]
+
+    def test_anonymisierte_kopie_traegt_keine_kennungen(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.services.anonymizer import anonymize_board
+
+        view = self._view()
+        assert view.board is not None
+        kopie = anonymize_board(view.board).tickets[0]
+        assert (kopie.assignee_id, kopie.reporter_id) == ("", "")
+
+
 class TestAutomatischesLaden:
     """Wie in der Jahresansicht: beim ersten Besuch laden, danach auf Zuruf."""
 

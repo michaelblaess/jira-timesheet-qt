@@ -67,8 +67,8 @@ from jira_timesheet_qt.services.anonymizer import (
 )
 from jira_timesheet_qt.services.holiday_service import HolidayService
 from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
-from jira_timesheet_qt.services.team import TeamMember, from_storage
-from jira_timesheet_qt.services.ticket_board import Board, Marker, Role
+from jira_timesheet_qt.services.team import TeamMember, from_storage, to_storage
+from jira_timesheet_qt.services.ticket_board import AccountIdError, Board, Marker, Role, check_account_id
 from jira_timesheet_qt.services.ticket_board import Ticket as BoardTicket
 from jira_timesheet_qt.services.ticket_preview import IssuePreviewCache, TicketPreviewData, german_datetime
 from jira_timesheet_qt.ui.about_dialog import AboutDialog
@@ -211,6 +211,9 @@ class MainWindow(QMainWindow):
             MODE_RELEVANT: None,
             MODE_TEAM: None,
         }
+        # Person, die ueber einen Link in "Mein Team" steht, ohne auf der
+        # Merkliste zu sein. Lebt nur bis zum Programmende.
+        self._team_guest: TeamMember | None = None
         # Angezeigter Stundenzettel (bei aktiver Anonymisierung die Dummy-Kopie).
         self._timesheet: Timesheet | None = None
         # Echte Rohdaten - bleiben erhalten, damit die Anonymisierung reversibel
@@ -360,12 +363,19 @@ class MainWindow(QMainWindow):
         self._team_board.detail_requested.connect(self._show_detail)
         self._team_board.report_requested.connect(self.open_ticket_report)
         self._team_board.member_changed.connect(self._on_member_changed)
+        self._team_board.guest_add_requested.connect(self._add_guest_to_roster)
+        for board_view in (self._assigned_board, self._relevant_board, self._team_board):
+            board_view.person_requested.connect(self.show_person_tickets)
+            board_view.ticket_selected.connect(
+                lambda _ticket, view=board_view: self._on_board_ticket_selected(view)
+            )
         self._apply_board_settings()
 
         # Stundenzettel links, Ticket-Vorschau rechts. Die Vorschau steht nur,
         # wenn sie in den Einstellungen eingeschaltet ist.
         self._preview = TicketPreview(self._mode)
         self._preview.refresh_requested.connect(lambda: self._update_preview(force=True))
+        self._preview.person_requested.connect(self.show_person_tickets)
         self._list_splitter = QSplitter(Qt.Orientation.Horizontal)
         self._list_splitter.setObjectName("PreviewSplitter")
         self._list_splitter.setChildrenCollapsible(False)
@@ -373,7 +383,6 @@ class MainWindow(QMainWindow):
         self._list_splitter.addWidget(self._preview)
         self._list_splitter.setStretchFactor(0, 3)
         self._list_splitter.setStretchFactor(1, 2)
-        self._apply_preview_setting()
 
         self._stack = QStackedWidget()
         self._stack.addWidget(self._list_splitter)
@@ -383,6 +392,10 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._relevant_board)
         self._stack.addWidget(self._team_board)
         outer.addWidget(self._stack, 1)
+        # Eine Vorschau fuer alle Listen: sie zieht mit der sichtbaren Seite um.
+        # Am Stapel statt am Reiter, weil manche Wege die Seite direkt setzen.
+        self._stack.currentChanged.connect(self._on_page_changed)
+        self._apply_preview_setting()
 
         self._summary = SummaryBar(self._mode)
 
@@ -1427,10 +1440,72 @@ class MainWindow(QMainWindow):
             den ersten Eintrag: wer nichts gewaehlt hat, soll keine Liste
             unter einem Namen sehen, den er nicht ausgesucht hat.
         """
+        if self._team_board.guest_selected():
+            return self._team_guest
         name = self._team_board.current_member()
         if not name:
             return None
         return from_storage(self._settings.team_members).find(name)
+
+    def show_person_tickets(self, account_id: str, name: str) -> None:
+        """Zeigt die Tickets einer Person im Reiter "Mein Team".
+
+        Steht die Person auf der Merkliste, wird sie dort gewaehlt - erkannt an
+        der Kennung, nicht am Namen: die Merkliste fuehrt Personen bewusst
+        unter eigenem Namen. Sonst erscheint sie voruebergehend als Gast, die
+        Merkliste bleibt unveraendert.
+
+        Args:
+            account_id:
+                accountId der Person, wie Jira sie liefert.
+            name:
+                Anzeigename aus Jira, fuer den Gast.
+        """
+        try:
+            account_id = check_account_id(account_id)
+        except AccountIdError:
+            self._log.write("Personen-Link ohne brauchbare Kennung ignoriert", Level.WARNING)
+            return
+        roster = from_storage(self._settings.team_members)
+        member = next((m for m in roster.members if account_id in m.account_ids), None)
+        if member is not None:
+            self._team_board.select_member(member.display_name)
+        else:
+            self._team_guest = TeamMember(display_name=name.strip() or account_id, account_ids=(account_id,))
+            self._team_board.show_guest(self._team_guest.display_name)
+
+        position = _VIEWS.index("Mein Team")
+        already_there = self._tabs.currentIndex() == position
+        self._board_loaded[MODE_TEAM] = False
+        # Der Wechsel laedt von selbst, aber nur mit Zugang und nur beim
+        # Hinwechseln. In beiden anderen Faellen hier - ohne Zugang meldet
+        # _load_board das in der Statuszeile.
+        self._go_to_view(position)
+        if already_there or not self._settings_complete():
+            self._load_board(MODE_TEAM)
+
+    def _add_guest_to_roster(self) -> None:
+        """Nimmt den Gast dauerhaft in die Merkliste auf."""
+        guest = self._team_guest
+        if guest is None:
+            return
+        roster = from_storage(self._settings.team_members)
+        name = guest.display_name
+        if not any(set(guest.account_ids) & set(m.account_ids) for m in roster.members):
+            # Gleicher Name, andere Kennung: Roster.find sucht ueber den Namen
+            # und traefe sonst die falsche Person.
+            counter = 2
+            while roster.find(name) is not None:
+                name = f"{guest.display_name} ({counter})"
+                counter += 1
+            roster.members.append(guest.with_name(name))
+            self._settings.team_members = to_storage(roster)
+            self._settings.save()
+        self._team_guest = None
+        self._team_board.clear_guest()
+        self._apply_team_roster()
+        self._team_board.select_member(name)
+        self.show_toast(f"{name} steht jetzt auf der Merkliste")
 
     def _on_member_changed(self, _name: str) -> None:
         """Laedt die Ansicht neu, wenn eine andere Person gewaehlt wurde."""
@@ -1446,6 +1521,11 @@ class MainWindow(QMainWindow):
         so ist es in der Textual-Fassung passiert.
         """
         roster = from_storage(self._settings.team_members)
+        guest = self._team_guest
+        if guest is not None and any(set(guest.account_ids) & set(m.account_ids) for m in roster.members):
+            # Inzwischen ueber die Einstellungen aufgenommen - dann ist er kein Gast mehr.
+            self._team_guest = None
+            self._team_board.clear_guest()
         self._team_board.set_members([member.display_name for member in roster.members])
 
     def _invalidate_boards(self) -> None:
@@ -2125,6 +2205,43 @@ class MainWindow(QMainWindow):
         if self._settings.show_ticket_preview:
             self._preview_timer.start()
 
+    def _on_board_ticket_selected(self, view: TicketBoardView) -> None:
+        """Neue Auswahl in einer Ticketliste. Zaehlt nur, wenn diese Liste vorn steht."""
+        if self._settings.show_ticket_preview and self._stack.currentWidget() is view:
+            self._preview_timer.start()
+
+    def _preview_host(self, page: int) -> QSplitter | None:
+        """Der Trenner, der auf einer Seite die Vorschau aufnimmt - None fuer Monat und Jahr."""
+        if self._stack.widget(page) is self._list_splitter:
+            return self._list_splitter
+        mode = _BOARD_MODES.get(page)
+        return self._board_view(mode).preview_host() if mode is not None else None
+
+    def _on_page_changed(self, page: int) -> None:
+        """Nimmt die Vorschau auf die neue Seite mit und zeigt dort deren Auswahl."""
+        host = self._preview_host(page)
+        if host is None:
+            return
+        self._move_preview_to(host)
+        # Eine noch wartende Auswahl der alten Seite ist ueberholt.
+        self._preview_timer.stop()
+        self._update_preview()
+
+    def _move_preview_to(self, host: QSplitter) -> None:
+        """Haengt die Vorschau rechts in einen anderen Trenner und nimmt die Breiten mit."""
+        if host.indexOf(self._preview) >= 0:
+            return
+        old = self._preview.parentWidget()
+        sizes = old.sizes() if isinstance(old, QSplitter) and old.count() == 2 else []
+        host.addWidget(self._preview)
+        host.setStretchFactor(0, 3)
+        host.setStretchFactor(1, 2)
+        if sum(sizes) > 0:
+            host.setSizes(sizes)
+        # Kein setVisible noetig: der Trenner uebernimmt die zuletzt gesetzte
+        # Sichtbarkeit (per Mutationsprobe am 15.09.2026 belegt, beide Faelle
+        # sind getestet).
+
     # --- Ticket-Vorschau ------------------------------------------------
 
     def _preview_cache(self) -> IssuePreviewCache:
@@ -2163,19 +2280,32 @@ class MainWindow(QMainWindow):
             return
         # Jede neue Anfrage entwertet die laufende, auch wenn sie gar nicht abruft.
         self._preview_generation += 1
-        entry = self._current_entry
-        if entry is None:
-            self._preview.show_placeholder("Kein Eintrag gewählt")
+        page = self._stack.currentIndex()
+        if self._preview_host(page) is None:
+            # Monat und Jahr haben keine Vorschau. Beim Zurueckwechseln laeuft
+            # die Aktualisierung ohnehin (_on_page_changed).
+            return
+        mode = _BOARD_MODES.get(page)
+        if mode is not None:
+            ticket = self._board_view(mode).current_ticket()
+            key = ticket.key if ticket is not None else None
+            nothing = "Kein Ticket gewählt"
+        else:
+            entry = self._current_entry
+            key = entry.ticket if entry is not None else None
+            nothing = "Kein Eintrag gewählt"
+        if key is None:
+            self._preview.show_placeholder(nothing)
             return
         if self._anonymize:
             # Eine Beschreibung laesst sich nicht sinnvoll anonymisieren.
             self._preview.show_placeholder("Im Screenshot-Modus zeigt die Vorschau keine Inhalte.")
             return
-        if not entry.ticket:
+        if not key:
             self._preview.show_placeholder("Manuell erfasst - zu diesem Eintrag gibt es kein Jira-Ticket.")
             return
 
-        cached = self._preview_cache().load(entry.ticket)
+        cached = self._preview_cache().load(key)
         if cached is not None:
             self._preview.show_data(cached)
         if not self._settings_complete():
@@ -2185,10 +2315,10 @@ class MainWindow(QMainWindow):
                 self._preview.set_note(f"Stand {german_datetime(cached.fetched_at)} - ohne Zugang nicht aktuell")
             return
         if cached is None:
-            self._preview.show_placeholder(f"{entry.ticket} wird geladen ...")
+            self._preview.show_placeholder(f"{key} wird geladen ...")
         else:
             self._preview.set_note(f"Stand {german_datetime(cached.fetched_at)} - wird geprüft ...")
-        self._start_preview_worker(entry.ticket, None if force else cached)
+        self._start_preview_worker(key, None if force else cached)
 
     def _start_preview_worker(self, key: str, cached: TicketPreviewData | None) -> None:
         """Startet den Abruf fuer die Vorschau unter der aktuellen Abruf-Nummer.
@@ -2386,6 +2516,10 @@ class MainWindow(QMainWindow):
         self._qsettings.setValue("window/geometry", self.saveGeometry())
         self._qsettings.setValue("window/state", self.saveState())
         self._qsettings.setValue("board/splitter", self._assigned_board.splitter_state())
+        # Gemerkt wird der Trenner des Stundenzettels. Steht die Vorschau gerade
+        # in einer Ticketliste, haette er nur eine Seite, und der Zustand passte
+        # beim naechsten Start nicht mehr.
+        self._move_preview_to(self._list_splitter)
         self._qsettings.setValue("list/preview_splitter", self._list_splitter.saveState())
         # Sichtbarkeit des Log-Docks festhalten - auch wenn es ueber sein eigenes
         # X geschlossen wurde (das laeuft nicht ueber toggle_log).

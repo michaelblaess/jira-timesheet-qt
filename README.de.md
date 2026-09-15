@@ -116,9 +116,12 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
 - **Listenansicht** - Tabellarisch mit Kalenderwoche, Wochentag, Tagesgruppen und Soll-/Ist-Stunden;
   die Tagessummen sind über Soll grün und unter Soll rot eingefärbt
 - **Ticket-Vorschau** - Auf Wunsch (Einstellungen, Seite **Darstellung**) zeigt ein Splitter
-  neben der Liste das gewählte Ticket read-only: Status, gebuchte Stunden, Lösungsversionen,
-  zugewiesene Person, Autor, Fälligkeitsdatum, Environments und Team, darunter Titel und
-  Beschreibung mit Bildern. Die Daten kommen aus dem Cache, ein Knopf lädt das Ticket neu
+  neben dem Stundenzettel und neben **Meine Tickets**, **Meine Aktivitäten** und **Mein Team**
+  das gewählte Ticket read-only: Status, gebuchte Stunden, Lösungsversionen, zugewiesene Person,
+  Autor, Fälligkeitsdatum, Environments und Team, darunter Titel und Beschreibung mit Bildern.
+  Die Daten kommen aus dem Cache, ein Knopf lädt das Ticket neu. Zugewiesene Person und Autor
+  sind Links: ein Klick zeigt die Tickets dieser Person unter **Mein Team**, wer nicht auf der
+  Merkliste steht, erscheint dort vorübergehend
 - **Live-Suche / Filter** - Filtert beim Tippen nach Ticket-ID oder Beschreibung (`Strg+F`);
   Treffer werden in der Liste hervorgehoben
 - **Verstellbare Spalten** - Zieh den Trenner im Spaltenkopf, die Breiten bleiben erhalten;

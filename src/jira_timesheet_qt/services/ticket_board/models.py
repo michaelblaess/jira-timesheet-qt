@@ -93,6 +93,13 @@ class Ticket:
     is_bug: bool = False
     reporter: str = ""
     assignee: str = ""
+    reporter_id: str = ""
+    """accountId des Autors, leer wenn unbekannt. Der Name taugt nicht als
+    Schluessel: die Merkliste fuehrt Personen bewusst unter eigenem Namen."""
+
+    assignee_id: str = ""
+    """accountId des Bearbeiters, leer ohne Bearbeiter."""
+
     foreign_reporter: bool = False
     created: dt.datetime | None = None
     updated: dt.datetime | None = None

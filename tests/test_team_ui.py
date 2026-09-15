@@ -36,7 +36,9 @@ def _hit(account_id: str, name: str, offen: int | None = 3) -> AccountCandidate:
 
 
 if TYPE_CHECKING:
+    from jira_timesheet_qt.services.team import TeamMember
     from jira_timesheet_qt.services.ticket_board import Board
+    from jira_timesheet_qt.ui.main_window import MainWindow
 
 
 class TestEinstellungsseite:
@@ -533,3 +535,127 @@ class TestSuchfeldNachUebernahme:
 
         assert dialog.team_query.text() == "beispiel"
         assert dialog._roster.members == []
+
+
+class TestPersonenLink:
+    """Ein Klick auf eine Person fuehrt nach "Mein Team" - aus der Merkliste oder als Gast."""
+
+    def _fenster(self, *mitglieder: tuple[str, str]) -> tuple[MainWindow, list[TeamMember | None]]:
+        """Fenster mit Zugang und Merkliste. Abrufe werden nur mitgeschrieben."""
+        from jira_timesheet_qt.ui.main_window import MainWindow
+        from jira_timesheet_qt.ui.theme import Mode
+        from jira_timesheet_qt.ui.ticket_board_worker import MODE_TEAM
+
+        settings = Settings(
+            jira_host="https://beispiel.invalid",
+            email="ich@example.invalid",
+            jira_token="geheim",
+            team_members=[{"display_name": name, "account_ids": [kennung]} for name, kennung in mitglieder],
+        )
+        window = MainWindow(settings, Mode.DARK)
+        abrufe: list[TeamMember | None] = []
+
+        def _abruf(mode: str) -> None:
+            if mode == MODE_TEAM:
+                abrufe.append(window._current_member())
+
+        window._load_board = _abruf  # type: ignore[method-assign]
+        return window, abrufe
+
+    @staticmethod
+    def _kennungen(abrufe: list[TeamMember | None]) -> list[tuple[str, ...] | None]:
+        return [member.account_ids if member is not None else None for member in abrufe]
+
+    def test_person_der_merkliste_wird_ueber_die_kennung_gewaehlt(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.ui.main_window import _VIEWS
+
+        window, abrufe = self._fenster(("Anna Muster", ID_C), ("Reiner Beispiel", ID_A))
+        # Anderer Name als auf der Merkliste: erkannt wird die Person an der Kennung.
+        window.show_person_tickets(ID_A, "Beispiel, Reiner")
+        assert window._tabs.currentIndex() == _VIEWS.index("Mein Team")
+        assert window._team_board.current_member() == "Reiner Beispiel"
+        assert not window._team_board.guest_selected()
+        assert self._kennungen(abrufe) == [(ID_A,)]
+
+    def test_unbekannte_person_erscheint_als_gast(self, qapp: QApplication) -> None:
+        window, abrufe = self._fenster(("Reiner Beispiel", ID_A))
+        window.show_person_tickets(ID_B, "Musterfrau, Erika")
+        board = window._team_board
+        assert board.guest_selected()
+        assert board._member_box.currentText() == "Musterfrau, Erika (nicht auf der Merkliste)"
+        assert not board._add_guest.isHidden()
+        assert self._kennungen(abrufe) == [(ID_B,)]
+        # Die Merkliste bleibt, wie sie war.
+        assert [e["display_name"] for e in window._settings.team_members] == ["Reiner Beispiel"]
+
+    def test_steht_die_ansicht_schon_vorn_wird_genau_einmal_geladen(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.ui.main_window import _VIEWS
+
+        window, abrufe = self._fenster(("Reiner Beispiel", ID_A))
+        window._go_to_view(_VIEWS.index("Mein Team"))
+        abrufe.clear()
+        window.show_person_tickets(ID_B, "Musterfrau, Erika")
+        assert self._kennungen(abrufe) == [(ID_B,)]
+
+    def test_unbrauchbare_kennung_bewirkt_nichts(self, qapp: QApplication) -> None:
+        window, abrufe = self._fenster(("Reiner Beispiel", ID_A))
+        vorher = window._tabs.currentIndex()
+        window.show_person_tickets('x" OR 1=1', "Niemand")
+        assert window._tabs.currentIndex() == vorher
+        assert abrufe == []
+        assert not window._team_board.guest_selected()
+
+    def test_zurueck_auf_den_gast_laedt_wieder_den_gast(self, qapp: QApplication) -> None:
+        window, abrufe = self._fenster(("Reiner Beispiel", ID_A))
+        window.show_person_tickets(ID_B, "Musterfrau, Erika")
+        box = window._team_board._member_box
+        box.setCurrentIndex(0)
+        assert window._team_board._add_guest.isHidden()
+        box.setCurrentIndex(box.count() - 1)
+        assert not window._team_board._add_guest.isHidden()
+        assert self._kennungen(abrufe) == [(ID_B,), (ID_A,), (ID_B,)]
+
+    def test_gast_ueberlebt_eine_aenderung_der_einstellungen(self, qapp: QApplication) -> None:
+        window, _ = self._fenster(("Reiner Beispiel", ID_A))
+        window.show_person_tickets(ID_B, "Musterfrau, Erika")
+        window._apply_team_roster()
+        assert window._team_board.guest_selected()
+
+    def test_ueber_die_einstellungen_aufgenommen_ist_er_kein_gast_mehr(self, qapp: QApplication) -> None:
+        window, _ = self._fenster(("Reiner Beispiel", ID_A))
+        window.show_person_tickets(ID_B, "Musterfrau, Erika")
+        window._settings.team_members = [
+            *window._settings.team_members,
+            {"display_name": "Erika Musterfrau", "account_ids": [ID_B]},
+        ]
+        window._apply_team_roster()
+        box = window._team_board._member_box
+        assert window._team_board.guest_name() == ""
+        assert [box.itemText(i) for i in range(box.count())] == ["Erika Musterfrau", "Reiner Beispiel"]
+
+    def test_gast_auf_die_merkliste_setzen(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.services.team import from_storage
+
+        window, _ = self._fenster(("Reiner Beispiel", ID_A))
+        window.show_person_tickets(ID_B, "Musterfrau, Erika")
+        window._team_board._add_guest.click()
+        # Gespeichert, nicht nur im Speicher: die Datei liest es zurueck.
+        roster = from_storage(Settings.load().team_members)
+        assert [(m.display_name, m.account_ids) for m in roster.members] == [
+            ("Musterfrau, Erika", (ID_B,)),
+            ("Reiner Beispiel", (ID_A,)),
+        ]
+        board = window._team_board
+        assert board.guest_name() == ""
+        assert board.current_member() == "Musterfrau, Erika"
+        assert board._add_guest.isHidden()
+
+    def test_gleicher_name_mit_anderer_kennung_bekommt_einen_zusatz(self, qapp: QApplication) -> None:
+        window, _ = self._fenster(("Musterfrau, Erika", ID_A))
+        window.show_person_tickets(ID_B, "Musterfrau, Erika")
+        window._add_guest_to_roster()
+        namen = sorted(str(e["display_name"]) for e in window._settings.team_members)
+        assert namen == ["Musterfrau, Erika", "Musterfrau, Erika (2)"]
+        member = window._current_member()
+        assert member is not None
+        assert member.account_ids == (ID_B,)
