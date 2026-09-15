@@ -916,16 +916,15 @@ class MainWindow(QMainWindow):
         return page
 
     def _install_shortcuts(self) -> None:
-        """Standardtasten statt der Einzelbuchstaben aus der TUI."""
+        """Standardtasten statt der Einzelbuchstaben aus der TUI.
+
+        Hier stehen nur Tasten ohne Menueeintrag. F5, Strg+N, Strg+Q, Strg+E,
+        Strg+P, Strg+, und F1 traegt die Menueaktion aus menu.json. Ein
+        zweiter QShortcut auf derselben Taste macht sie mehrdeutig, und Qt
+        loest dann gar nichts aus (bis v0.12.0 so ausgeliefert).
+        """
         QShortcut(QKeySequence.StandardKey.Find, self, self._focus_search)
-        QShortcut(QKeySequence.StandardKey.Refresh, self, self.reload_current)
-        QShortcut(QKeySequence("Ctrl+,"), self, self.open_settings)
-        QShortcut(QKeySequence(QKeySequence.StandardKey.HelpContents), self, self.open_about)
-        QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
         QShortcut(QKeySequence("Ctrl+L"), self, self.toggle_log)
-        QShortcut(QKeySequence("Ctrl+N"), self, self.action_new_manual)
-        QShortcut(QKeySequence.StandardKey.Print, self, self.print_preview)
-        QShortcut(QKeySequence("Ctrl+E"), self, self.export_file)
         # Zoom wie im Browser: Ctrl++ / Ctrl+- / Ctrl+0.
         QShortcut(QKeySequence.StandardKey.ZoomIn, self, lambda: self._zoom(1))
         QShortcut(QKeySequence("Ctrl+="), self, lambda: self._zoom(1))

@@ -42,7 +42,7 @@
             "type": "action",
             "command": "file.quit",
             "title": "cmd.quit",
-            "shortcut": "StandardKey.Quit"
+            "shortcut": "Ctrl+Q"
           }
         ]
       },
