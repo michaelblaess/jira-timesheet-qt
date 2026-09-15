@@ -132,7 +132,7 @@ GLYPHS: dict[str, str] = {
     "moon": "mdi6.weather-night",
     "search": "mdi6.magnify",
     "plus": "mdi6.plus",
-    "log": "mdi6.text-box-outline",
+    "log": "mdi6.console-line",
     "refresh": "mdi6.refresh",
     "group": "mdi6.format-list-group",
 }

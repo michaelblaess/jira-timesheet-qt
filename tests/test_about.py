@@ -58,6 +58,42 @@ class TestIcons:
             for mode in (Mode.DARK, Mode.LIGHT):
                 assert not load_icon(name, mode).isNull(), f"{name} ({mode.value})"
 
+    def test_jedes_menuesymbol_existiert_und_keins_doppelt(self, qapp: QApplication) -> None:
+        """Die Symbole aus menu.json laufen ueber _menu_icon, und das schweigt.
+
+        Ein unbekannter Name gaebe dort wortlos ein leeres Icon. Und zwei
+        Befehle mit demselben Glyph waeren in der Leiste nicht zu unterscheiden -
+        bis 09/2026 sahen sich Ticket-Details und Log schon bei zwei aehnlichen
+        Glyphen (card-text-outline, text-box-outline) zum Verwechseln aehnlich.
+        """
+        import json
+        from pathlib import Path
+        from typing import Any
+
+        import qtawesome as qta
+
+        import jira_timesheet_qt
+
+        pfad = Path(jira_timesheet_qt.__file__).parent / "resources" / "menu.json"
+        symbole: list[str] = []
+
+        def sammeln(knoten: Any) -> None:
+            if isinstance(knoten, dict):
+                if isinstance(knoten.get("icon"), str):
+                    symbole.append(knoten["icon"])
+                for wert in knoten.values():
+                    sammeln(wert)
+            elif isinstance(knoten, list):
+                for eintrag in knoten:
+                    sammeln(eintrag)
+
+        sammeln(json.loads(pfad.read_text(encoding="utf-8")))
+        assert len(symbole) >= 8, symbole
+        for name in symbole:
+            assert not qta.icon(name, color="#000000").isNull(), name
+        doppelt = sorted({name for name in symbole if symbole.count(name) > 1})
+        assert not doppelt, doppelt
+
     def test_toolbar_month_buttons_carry_icons(self, qapp: QApplication) -> None:
         """Die Monatspfeile in der Toolbar tragen Symbole, keine Text-Glyphen."""
         from jira_timesheet_qt.models.settings import Settings

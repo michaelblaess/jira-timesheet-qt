@@ -91,7 +91,7 @@
             "type": "action",
             "command": "view.detail",
             "title": "cmd.view.detail",
-            "icon": "mdi6.card-text-outline",
+            "icon": "mdi6.eye-outline",
             "shortcut": "Ctrl+D",
             "surfaces": [
               "menu",
@@ -115,7 +115,7 @@
             "type": "action",
             "command": "view.log",
             "title": "cmd.view.log",
-            "icon": "mdi6.text-box-outline",
+            "icon": "mdi6.console-line",
             "checkable": true,
             "surfaces": [
               "menu",

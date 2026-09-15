@@ -126,13 +126,40 @@ class TestTree:
     def _group_index(self, model: TimesheetTreeModel, column: int) -> QModelIndex:
         return model.index(0, column, QModelIndex())
 
-    def test_group_row_hours_are_coloured(self, qapp: QApplication) -> None:
-        """Die Gruppenzeile faerbt Stunden- UND Tagessummen-Spalte nach Soll."""
+    def test_group_row_total_is_coloured(self, qapp: QApplication) -> None:
+        """Die Gruppenzeile faerbt die Tagessumme nach Soll - dort, wo sie steht."""
         model = TimesheetTreeModel()
         model.set_timesheet(_timesheet([3.0, 3.0]))  # Tagessumme 6 < 8 -> rot
         model.set_day_total_colors(OVER, UNDER, target=8.0)
-        assert self._group_index(model, _HOURS).data(FR).name() == UNDER.name()
         assert self._group_index(model, _DAY_HOURS).data(FR).name() == UNDER.name()
+        # Die Stunden-Spalte der Gruppe ist leer und traegt deshalb keine Farbe.
+        assert self._group_index(model, _HOURS).data(FR) is None
+
+    def test_day_total_appears_only_once(self, qapp: QApplication) -> None:
+        """Bis 09/2026 stand die Tagessumme in der Gruppenzeile doppelt und in jeder Kindzeile."""
+        model = TimesheetTreeModel()
+        model.set_timesheet(_timesheet([5.0, 4.0]))
+        group = model.index(0, 0, QModelIndex())
+        assert self._group_index(model, _DAY_HOURS).data() == "9,00"
+        assert self._group_index(model, _HOURS).data() == ""
+        for row in range(model.rowCount(group)):
+            assert model.index(row, _DAY_HOURS, group).data() == "", f"Kindzeile {row}"
+        # Die Einzelstunden der Kinder bleiben natuerlich stehen.
+        assert [model.index(row, _HOURS, group).data() for row in range(2)] == ["5,00", "4,00"]
+
+    def test_without_day_column_the_group_uses_the_hours_column(self, qapp: QApplication) -> None:
+        """Ist die Tagessummen-Spalte ausgeblendet, darf die Summe nicht ganz verschwinden."""
+        from dataclasses import replace
+
+        spalten = [replace(c, visible=False) if c.key == "day_hours" else c for c in default_columns()]
+        model = TimesheetTreeModel()
+        model.set_columns(spalten, "")
+        model.set_timesheet(_timesheet([3.0, 3.0]))
+        model.set_day_total_colors(OVER, UNDER, target=8.0)
+        stunden = model.column_keys().index("hours")
+        assert "day_hours" not in model.column_keys()
+        assert self._group_index(model, stunden).data() == "6,00"
+        assert self._group_index(model, stunden).data(FR).name() == UNDER.name()
 
     def test_group_row_green_over_target(self, qapp: QApplication) -> None:
         model = TimesheetTreeModel()
