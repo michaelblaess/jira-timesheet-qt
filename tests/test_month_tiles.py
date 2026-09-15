@@ -235,7 +235,7 @@ class TestZeichnen:
 
     def test_schmale_kachel_faellt_auf_die_nummern_zurueck(self, qapp: QApplication) -> None:
         """Ohne Platz fuer Nummer und Stunden bleiben die Nummern klickbar."""
-        view = self._gezeichnet(560, [_entry("ABC-17854", 3.0), _entry("ABC-17855", 2.0)])
+        view = self._gezeichnet(560, [_entry("ABC-12345", 3.0), _entry("ABC-12346", 2.0)])
         assert view._ticket_hits
 
 
