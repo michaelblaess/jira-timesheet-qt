@@ -63,7 +63,7 @@ class TestWidget:
         assert paare["Fälligkeitsdatum"] == "30.09.2026"
         assert paare["Lösungsversionen"] == "2026.10"
         assert paare["Environments"] == "prod, test"
-        assert paare["Übergeordnet"] == "-", "Ein leeres Feld steht sichtbar leer da"
+        assert "Übergeordnet" not in paare, "Leere Felder bleiben weg"
         assert vorschau._title.text() == "Beispielticket"
         assert f"{HOST}/browse/ABC-1" in vorschau._key.text()
         assert vorschau._stand.text() == "Stand 14.09.2026 15:03"
@@ -71,9 +71,9 @@ class TestWidget:
     @pytest.mark.parametrize(
         ("gebucht", "geschaetzt", "erwartet"),
         [
-            (9000, 0, ("2,50 h", "gebucht")),
-            (9000, 14400, ("2,50 h", "gebucht, geschätzt 4,00 h")),
-            (0, 0, ("0,00 h", "noch nichts gebucht")),
+            (9000, 0, ("2,50 h", "")),
+            (9000, 14400, ("2,50 h", "von 4,00 h")),
+            (0, 0, ("0,00 h", "")),
         ],
     )
     def test_gebuchte_stunden(self, qapp: QApplication, gebucht: int, geschaetzt: int, erwartet: tuple[str, str]) -> None:
@@ -94,10 +94,10 @@ class TestWidget:
         assert '#PreviewStatus[category="indeterminate"]' in qss
         assert '#PreviewStatus[category="done"]' in qss
 
-    def test_leere_loesungsversion(self, qapp: QApplication) -> None:
+    def test_leere_loesungsversion_bleibt_weg(self, qapp: QApplication) -> None:
         vorschau = TicketPreview(Mode.DARK)
         vorschau.show_data(_daten())
-        assert dict(vorschau.field_pairs())["Lösungsversionen"] == "-"
+        assert "Lösungsversionen" not in dict(vorschau.field_pairs())
 
     @pytest.mark.parametrize("modus", [Mode.DARK, Mode.LIGHT])
     def test_links_bleiben_auf_weiss_lesbar(self, qapp: QApplication, modus: Mode) -> None:
@@ -159,6 +159,142 @@ class TestWidget:
         vorschau.show_placeholder("Kein Eintrag gewählt")
         assert vorschau.current_data is None
         assert vorschau._stack.currentIndex() == 0
+
+
+class TestKopf:
+    """Der Kopf als Ticketkarte: gruppiert, ohne Leeres, mit Hervorhebungen."""
+
+    def test_gleiche_person_steht_nur_einmal(self, qapp: QApplication) -> None:
+        vorschau = TicketPreview(Mode.DARK)
+        vorschau.show_data(_daten(assignee="Max Mustermann", creator="Max Mustermann"))
+        paare = vorschau.field_pairs()
+        assert ("Zugewiesen und Autor", "Max Mustermann") in paare
+        assert all(label not in ("Zugewiesene Person", "Autor") for label, _ in paare)
+
+    def test_ohne_zuweisung_und_faelligkeit_bleibt_die_auskunft(self, qapp: QApplication) -> None:
+        vorschau = TicketPreview(Mode.DARK)
+        vorschau.show_data(_daten(assignee="", due_date=""))
+        paare = dict(vorschau.field_pairs())
+        assert paare["Zugewiesene Person"] == "nicht zugewiesen"
+        assert paare["Fälligkeitsdatum"] == "keine"
+
+    def test_prioritaet_none_steht_nicht_da(self, qapp: QApplication) -> None:
+        vorschau = TicketPreview(Mode.DARK)
+        vorschau.show_data(_daten(issue_type="Aufgabe", priority="None"))
+        assert vorschau.meta_text() == "Aufgabe"
+        vorschau.show_data(_daten(issue_type="Aufgabe", priority="Hoch"))
+        assert vorschau.meta_text() == "Aufgabe · Priorität Hoch"
+
+    @pytest.mark.parametrize(
+        ("faellig", "erwartet"),
+        [("2026-09-10", "overdue"), ("2026-09-16", "soon"), ("2026-09-17", "")],
+    )
+    def test_faelligkeit_wird_gefaerbt(self, qapp: QApplication, faellig: str, erwartet: str) -> None:
+        vorschau = TicketPreview(Mode.DARK)
+        # Freitag: bis Mittwoch sind es drei Werktage, das Wochenende zaehlt nicht.
+        vorschau.today = lambda: date(2026, 9, 11)
+        vorschau.show_data(_daten(due_date=faellig))
+        assert vorschau.field_due_state() == erwartet
+
+    def test_faerberegeln_im_stylesheet(self) -> None:
+        qss = build_qss(Mode.DARK, "", "")
+        assert '#PreviewValue[due="overdue"]' in qss
+        assert '#PreviewValue[due="soon"]' in qss
+        assert '#PreviewEstimate[over="true"]::chunk' in qss
+
+    def test_schaetzungsbalken(self, qapp: QApplication) -> None:
+        vorschau = TicketPreview(Mode.DARK)
+        vorschau.show_data(_daten(time_spent_seconds=9000, original_estimate_seconds=0))
+        assert vorschau.estimate_state()[0] is False, "Ohne Schaetzung kein Balken"
+        vorschau.show_data(_daten(time_spent_seconds=9000, original_estimate_seconds=18000))
+        assert vorschau.estimate_state() == (True, 50, False)
+        vorschau.show_data(_daten(time_spent_seconds=27000, original_estimate_seconds=18000))
+        assert vorschau.estimate_state() == (True, 100, True)
+
+    def test_uebergeordnet_ist_ein_link(self, qapp: QApplication, blockierte_browser_aufrufe: list[str]) -> None:
+        from PySide6.QtWidgets import QLabel
+
+        vorschau = TicketPreview(Mode.DARK)
+        vorschau.set_host(HOST)
+        vorschau.show_data(_daten(parent="ABC-0 Ein <b>Epos</b>"))
+        treffer = [label for label in vorschau.findChildren(QLabel) if "ABC-0" in label.text()]
+        assert len(treffer) == 1
+        assert f'href="{HOST}/browse/ABC-0"' in treffer[0].text()
+        assert "<b>" not in treffer[0].text(), "Der Titel aus Jira wird maskiert"
+        treffer[0].linkActivated.emit(f"{HOST}/browse/ABC-0")
+        assert blockierte_browser_aufrufe
+
+    def test_fusszeile_trennt_jira_und_abruf(self, qapp: QApplication) -> None:
+        from datetime import datetime, timedelta, timezone
+
+        vorschau = TicketPreview(Mode.DARK)
+        vorschau.now = lambda: datetime(2026, 9, 14, 20, 0, tzinfo=timezone(timedelta(hours=2)))
+        vorschau.show_data(_daten())
+        assert vorschau.updated_text() == "In Jira geändert vor 6 Std."
+        assert vorschau._stand.text() == "Stand 14.09.2026 15:03"
+
+    def test_nur_die_feldbloecke_haben_eine_hoechstbreite(self, qapp: QApplication) -> None:
+        from jira_timesheet_qt.ui.ticket_preview import HEADER_MAX_WIDTH
+
+        vorschau = TicketPreview(Mode.DARK)
+        vorschau.resize(1100, 600)
+        vorschau.show_data(_daten(summary="Ein Titel " * 20))
+        vorschau.show()
+        QApplication.processEvents()
+        assert vorschau._fields_area.maximumWidth() == HEADER_MAX_WIDTH
+        # Der Titel darf breiter werden als die Felder - sonst bricht er unnoetig um.
+        assert vorschau._title.width() > HEADER_MAX_WIDTH - 200
+        vorschau.hide()
+
+
+class TestZeitUndFaelligkeit:
+    """Die reinen Hilfsfunktionen hinter dem Kopf."""
+
+    @pytest.mark.parametrize(
+        ("heute", "faellig", "erwartet"),
+        [
+            (date(2026, 9, 11), "", ""),
+            (date(2026, 9, 11), "kaputt", ""),
+            (date(2026, 9, 11), "2026-09-10", "overdue"),
+            (date(2026, 9, 11), "2026-09-11", "soon"),
+            (date(2026, 9, 11), "2026-09-13", "soon"),
+            (date(2026, 9, 11), "2026-09-16", "soon"),
+            (date(2026, 9, 11), "2026-09-17", ""),
+            (date(2026, 9, 14), "2026-12-24", ""),
+        ],
+    )
+    def test_due_state(self, heute: date, faellig: str, erwartet: str) -> None:
+        from jira_timesheet_qt.services.ticket_preview import due_state
+
+        assert due_state(faellig, heute) == erwartet
+
+    @pytest.mark.parametrize(
+        ("zeitpunkt", "erwartet"),
+        [
+            ("2026-09-14T19:59:40.000+0200", "gerade eben"),
+            ("2026-09-14T19:15:00.000+0200", "vor 45 Min."),
+            ("2026-09-14T14:00:00.000+0200", "vor 6 Std."),
+            ("2026-09-13T12:00:00.000+0200", "vor 1 Tag"),
+            ("2026-09-04T12:00:00.000+0200", "vor 10 Tagen"),
+            ("2026-07-01T12:00:00.000+0200", "01.07.2026"),
+            ("2026-09-15T08:00:00.000+0200", "15.09.2026 08:00"),
+            ("unlesbar", "unlesbar"),
+        ],
+    )
+    def test_relative_time(self, zeitpunkt: str, erwartet: str) -> None:
+        from datetime import datetime, timedelta, timezone
+
+        from jira_timesheet_qt.services.ticket_preview import relative_time
+
+        jetzt = datetime(2026, 9, 14, 20, 0, tzinfo=timezone(timedelta(hours=2)))
+        assert relative_time(zeitpunkt, jetzt) == erwartet
+
+    def test_split_parent_und_prioritaet(self) -> None:
+        from jira_timesheet_qt.services.ticket_preview import is_empty_priority, split_parent
+
+        assert split_parent("ABC-12 Agiles Projekt") == ("ABC-12", "Agiles Projekt")
+        assert split_parent("ohne Schluessel") == ("", "ohne Schluessel")
+        assert is_empty_priority("None") and is_empty_priority(" ") and not is_empty_priority("Hoch")
 
 
 class _Client:

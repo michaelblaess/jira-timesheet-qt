@@ -1,7 +1,9 @@
 """Baum-Modell fuer die nach Tag gruppierte Ansicht des Stundenzettels.
 
-Zwei Ebenen: Tages-Gruppen als Elternzeilen (mit Tagessumme in der
-Stunden-Spalte), die einzelnen Eintraege als Kinder. Ein QTreeView klappt die
+Zwei Ebenen: Tages-Gruppen als Elternzeilen, die einzelnen Eintraege als
+Kinder. Die Tagessumme steht genau einmal: in der Gruppenzeile, in der
+Tagessummen-Spalte - ist die ausgeblendet, in der Stunden-Spalte. Die
+Kindzeilen lassen sie leer, sonst stuende dieselbe Zahl in jeder Zeile. Ein QTreeView klappt die
 Gruppen auf und zu. Sortieren/Filtern uebernimmt ein vorgeschaltetes
 QSortFilterProxyModel (rekursiv, damit eine Gruppe erhalten bleibt, sobald ein
 Kind den Suchbegriff enthaelt).
@@ -100,6 +102,10 @@ class TimesheetTreeModel(QAbstractItemModel):
         self._columns = build_columns(columns)
         self._default_customer = default_customer
         self.endResetModel()
+
+    def _group_total_key(self) -> str:
+        """In welcher Spalte die Gruppenzeile die Tagessumme zeigt."""
+        return "day_hours" if any(column.key == "day_hours" for column in self._columns) else "hours"
 
     def column_keys(self) -> list[str]:
         """Schluessel der aktuell angezeigten Spalten, in Reihenfolge."""
@@ -257,7 +263,11 @@ class TimesheetTreeModel(QAbstractItemModel):
     # --- Zellinhalte ----------------------------------------------------
 
     def _group_data(self, group: _Group, column: GridColumn, role: int) -> Any:
+        # Die Summe nur in einer der beiden Stunden-Spalten, nicht in beiden.
+        total_elsewhere = column.key in HOUR_KEYS and column.key != self._group_total_key()
         if role == Qt.ItemDataRole.DisplayRole:
+            if total_elsewhere:
+                return ""
             return group_display(column.key, group.day, len(group.entries), group.total)
         if role == SORT_ROLE:
             return group_sort(column.key, group.day, group.total)
@@ -267,16 +277,19 @@ class TimesheetTreeModel(QAbstractItemModel):
             return font
         if role == Qt.ItemDataRole.TextAlignmentRole:
             return _alignment(column)
-        if role == Qt.ItemDataRole.ForegroundRole and self._day_over is not None and is_day_total_cell(
-            column.key, True
+        if (
+            role == Qt.ItemDataRole.ForegroundRole
+            and self._day_over is not None
+            and not total_elsewhere
+            and is_day_total_cell(column.key, True)
         ):
             return self._day_over if group.total >= self._day_target else self._day_under
         return None
 
     def _entry_data(self, entry: WorklogEntry, column: GridColumn, day_total: float, role: int) -> Any:
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
-            # Datum, Tag und KW stehen schon in der Gruppenzeile darueber.
-            if column.key in ("date", "weekday", "week"):
+            # Datum, Tag, KW und die Tagessumme stehen schon in der Gruppenzeile darueber.
+            if column.key in ("date", "weekday", "week", "day_hours"):
                 return ""
             return display_value(entry, column.key, day_total, self._default_customer)
         if role == ENTRY_ROLE:

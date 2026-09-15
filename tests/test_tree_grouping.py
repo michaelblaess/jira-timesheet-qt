@@ -18,6 +18,7 @@ from jira_timesheet_qt.ui.timesheet_tree_model import TimesheetTreeModel
 
 _KEYS = [c.key for c in build_columns(default_columns())]
 _HOURS_COL = _KEYS.index("hours")
+_DAY_HOURS_COL = _KEYS.index("day_hours")
 _SUMMARY_COL = _KEYS.index("description")
 _TICKET_COL = _KEYS.index("ticket")
 
@@ -39,9 +40,11 @@ class TestTreeModel:
 
     def test_group_row_shows_daily_sum_and_count(self, qapp: QApplication) -> None:
         model = _model()
-        # 20.07.: 2,5 + 1,5 + 4,0 = 8,00 h
-        sum_cell = model.index(0, _HOURS_COL)
+        # 20.07.: 2,5 + 1,5 + 4,0 = 8,00 h - einmal, in der Tagessummen-Spalte.
+        # Die Stunden-Spalte der Gruppe bleibt leer, sonst stuende die Summe doppelt.
+        sum_cell = model.index(0, _DAY_HOURS_COL)
         assert model.data(sum_cell, Qt.ItemDataRole.DisplayRole) == "8,00"
+        assert model.data(model.index(0, _HOURS_COL), Qt.ItemDataRole.DisplayRole) == ""
         count_cell = model.index(0, _SUMMARY_COL)
         assert model.data(count_cell, Qt.ItemDataRole.DisplayRole) == "3 Einträge"
 

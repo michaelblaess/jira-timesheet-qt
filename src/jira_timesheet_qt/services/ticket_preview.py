@@ -19,7 +19,7 @@ import re
 import shutil
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -276,6 +276,99 @@ def german_datetime(iso: str) -> str:
     datum = german_date(iso)
     uhrzeit = iso[11:16] if len(iso) >= 16 and iso[10] in "T " else ""
     return f"{datum} {uhrzeit}".strip()
+
+
+# Ab wie vielen Werktagen vor der Faelligkeit die Vorschau warnt. Gezaehlt
+# werden Montag bis Freitag, Feiertage nicht - dafuer braeuchte die Vorschau
+# das Bundesland aus den Einstellungen.
+DUE_SOON_WORKDAYS = 3
+
+# Jira fuehrt "None" als eigene Prioritaet fuer "keine gesetzt".
+_EMPTY_PRIORITIES = frozenset({"", "none"})
+
+_TIMESTAMP_FORMATS = ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S")
+
+
+def is_empty_priority(priority: str) -> bool:
+    """True, wenn die Prioritaet nichts aussagt: leer oder Jiras "None"."""
+    return priority.strip().casefold() in _EMPTY_PRIORITIES
+
+
+def due_state(due_iso: str, today: date) -> str:
+    """Wie dringend eine Faelligkeit ist.
+
+    Args:
+        due_iso:
+            Faelligkeitsdatum aus Jira ('2026-09-30'), leer ohne Faelligkeit.
+        today:
+            Bezugstag.
+
+    Returns:
+        'overdue' vor dem Bezugstag, 'soon' bis DUE_SOON_WORKDAYS Werktage
+        danach, sonst ''.
+    """
+    if not due_iso:
+        return ""
+    try:
+        due = datetime.strptime(due_iso[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return ""
+    if due < today:
+        return "overdue"
+    workdays = 0
+    day = today
+    while day < due:
+        day += timedelta(days=1)
+        if day.weekday() < 5:
+            workdays += 1
+            if workdays > DUE_SOON_WORKDAYS:
+                return ""
+    return "soon"
+
+
+def relative_time(iso: str, now: datetime) -> str:
+    """Abstand eines Zeitstempels zu jetzt in Worten: 'vor 6 Std.', 'vor 3 Tagen'.
+
+    Unlesbares, Zukuenftiges und alles ab 30 Tagen steht als Datum da.
+    """
+    moment: datetime | None = None
+    for fmt in _TIMESTAMP_FORMATS:
+        try:
+            moment = datetime.strptime(iso, fmt)
+            break
+        except ValueError:
+            continue
+    if moment is None:
+        return german_datetime(iso)
+    if moment.tzinfo is not None and now.tzinfo is None:
+        now = now.astimezone()
+    elif moment.tzinfo is None and now.tzinfo is not None:
+        now = now.replace(tzinfo=None)
+    minutes = int((now - moment).total_seconds() // 60)
+    if minutes < 0:
+        # Geht die Uhr des Rechners nach, lieber das Datum als "vor -3 Min.".
+        return german_datetime(iso)
+    if minutes < 1:
+        return "gerade eben"
+    if minutes < 60:
+        return f"vor {minutes} Min."
+    hours = minutes // 60
+    if hours < 24:
+        return f"vor {hours} Std."
+    days = hours // 24
+    if days == 1:
+        return "vor 1 Tag"
+    if days < 30:
+        return f"vor {days} Tagen"
+    return german_date(iso)
+
+
+def split_parent(parent: str) -> tuple[str, str]:
+    """'ABC-1 Titel' -> ('ABC-1', 'Titel'). Ohne Schluessel vorn: ('', parent)."""
+    match = _KEY_PATTERN.match(parent)
+    if match is None:
+        return "", parent
+    return match.group(0), parent[match.end() :].strip()
 
 
 def seconds_value(value: Any) -> int:
