@@ -68,6 +68,11 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   <img src="docs/screenshots/preview-light.png" width="49%" alt="Ticket-Vorschau (hell)">
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/board-preview-dark.png" width="49%" alt="Ticket-Vorschau in Meine Aktivitäten (dunkel)">
+  <img src="docs/screenshots/board-preview-light.png" width="49%" alt="Ticket-Vorschau in Meine Aktivitäten (hell)">
+</p>
+
 ### Monats- und Jahresansicht
 
 <p align="center">
