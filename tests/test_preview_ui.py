@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 from PySide6.QtCore import QModelIndex, QObject, QUrl, Signal
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 from QAppFramework.color import contrast_ratio
 
 from jira_timesheet_qt.models.settings import Settings
@@ -245,6 +245,72 @@ class TestKopf:
         # Der Titel darf breiter werden als die Felder - sonst bricht er unnoetig um.
         assert vorschau._title.width() > HEADER_MAX_WIDTH - 200
         vorschau.hide()
+
+
+ID_MAX = "5cf79d64eba18b0ea85a7b53"
+ID_ERIKA = "712020:e1153ec2-3116-4efb-bb7e-f94d2617a14a"
+
+
+class TestPersonenLinks:
+    """Personen im Kopf fuehren nach "Mein Team" - ueber die Kennung, nicht ueber den Namen."""
+
+    def _vorschau(self, **werte: Any) -> TicketPreview:
+        vorschau = TicketPreview(Mode.DARK)
+        vorschau.show_data(_daten(assignee_id=ID_MAX, creator_id=ID_ERIKA, **werte))
+        return vorschau
+
+    def test_personen_mit_kennung_sind_links(self, qapp: QApplication) -> None:
+        assert self._vorschau().person_links() == [("Zugewiesene Person", ID_MAX), ("Autor", ID_ERIKA)]
+
+    def test_klick_auf_das_label_meldet_kennung_und_namen(self, qapp: QApplication) -> None:
+        vorschau = self._vorschau()
+        empfangen: list[tuple[str, str]] = []
+        vorschau.person_requested.connect(lambda kennung, name: empfangen.append((kennung, name)))
+        labels = [label for label in vorschau.findChildren(QLabel, "PreviewValue") if "person:" in label.text()]
+        assert len(labels) == 2, "Beide Personen tragen einen Link"
+        labels[1].linkActivated.emit(f"person:{ID_ERIKA}")
+        assert empfangen == [(ID_ERIKA, "Erika Musterfrau")]
+
+    def test_fremde_kennung_im_link_loest_nichts_aus(self, qapp: QApplication) -> None:
+        vorschau = self._vorschau()
+        empfangen: list[str] = []
+        vorschau.person_requested.connect(lambda kennung, _name: empfangen.append(kennung))
+        vorschau._on_value_link("person:unbekannt-123")
+        assert empfangen == []
+
+    def test_ohne_kennung_bleibt_der_name_text(self, qapp: QApplication) -> None:
+        """Aeltere Cache-Eintraege tragen keine Kennung - dann kein Link, der ins Leere fuehrt."""
+        vorschau = TicketPreview(Mode.DARK)
+        vorschau.show_data(_daten())
+        assert vorschau.person_links() == []
+        assert dict(vorschau.field_pairs())["Autor"] == "Erika Musterfrau"
+
+    def test_unbrauchbare_kennung_wird_kein_link(self, qapp: QApplication) -> None:
+        vorschau = TicketPreview(Mode.DARK)
+        vorschau.show_data(_daten(assignee_id='x" onclick="y', creator_id=ID_ERIKA))
+        assert vorschau.person_links() == [("Autor", ID_ERIKA)]
+
+    def test_gleiche_kennung_ist_eine_person_auch_unter_anderem_namen(self, qapp: QApplication) -> None:
+        vorschau = TicketPreview(Mode.DARK)
+        vorschau.show_data(
+            _daten(assignee="Max Mustermann", creator="Mustermann, Max", assignee_id=ID_MAX, creator_id=ID_MAX)
+        )
+        assert vorschau.person_links() == [("Zugewiesen und Autor", ID_MAX)]
+
+    def test_gleicher_name_mit_verschiedener_kennung_sind_zwei_personen(self, qapp: QApplication) -> None:
+        vorschau = TicketPreview(Mode.DARK)
+        vorschau.show_data(
+            _daten(assignee="Max Mustermann", creator="Max Mustermann", assignee_id=ID_MAX, creator_id=ID_ERIKA)
+        )
+        assert [label for label, _ in vorschau.person_links()] == ["Zugewiesene Person", "Autor"]
+
+    def test_andere_links_gehen_weiter_in_den_browser(
+        self, qapp: QApplication, blockierte_browser_aufrufe: list[str]
+    ) -> None:
+        vorschau = self._vorschau()
+        vorschau.set_host(HOST)
+        vorschau._on_value_link(f"{HOST}/browse/ABC-0")
+        assert any("/browse/ABC-0" in ziel for ziel in blockierte_browser_aufrufe)
 
 
 class TestZeitUndFaelligkeit:
@@ -570,3 +636,131 @@ class TestHauptfenster:
         assert fenster._preview.hours_texts()[0] == "2,50 h"
         attrappe[-1].finished_ok.emit(replace(gemerkt, time_spent_seconds=10800))
         assert fenster._preview.hours_texts()[0] == "3,00 h"
+
+
+class TestVorschauInTicketlisten:
+    """Die Vorschau zieht mit nach "Meine Tickets", "Meine Aktivitäten" und "Mein Team"."""
+
+    NAMEN = ("Meine Tickets", "Meine Aktivitäten", "Mein Team")
+
+    @staticmethod
+    def _seite(name: str) -> int:
+        from jira_timesheet_qt.ui.main_window import _VIEWS
+
+        return _VIEWS.index(name)
+
+    def _liste_mit(self, fenster: Any, name: str, *keys: str) -> Any:
+        from jira_timesheet_qt.services.ticket_board import Board, Group, Role, Ticket
+        from jira_timesheet_qt.ui.main_window import _BOARD_MODES
+
+        view = fenster._board_view(_BOARD_MODES[self._seite(name)])
+        tickets = [Ticket(key=key, summary="Irgendwas", status="In Arbeit", role=Role.ACTIVE) for key in keys]
+        view.set_board(Board(groups=[Group(role=Role.ACTIVE, tickets=tickets)], tickets=tickets))
+        return view
+
+    @pytest.mark.parametrize("name", NAMEN)
+    def test_vorschau_zieht_in_die_ticketliste_und_zurueck(
+        self, qapp: QApplication, attrappe: list[Any], name: str
+    ) -> None:
+        fenster = _fenster()
+        view = self._liste_mit(fenster, name, "ABC-7")
+        fenster._stack.setCurrentIndex(self._seite(name))
+        assert view.isAncestorOf(fenster._preview)
+        assert not fenster._preview.isHidden()
+        # Rechts NEBEN der Liste, nicht darueber: in "Meine Tickets" stand sie
+        # zuerst ueber Liste und Auswertung, weil der Trenner dort leer blieb.
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QSplitter
+
+        host = fenster._preview.parentWidget()
+        assert isinstance(host, QSplitter)
+        assert host.orientation() == Qt.Orientation.Horizontal
+        assert host.indexOf(fenster._preview) == 1
+        links = host.widget(0)
+        assert links is not None
+        assert links is view._pages or links.isAncestorOf(view._pages)
+        fenster._stack.setCurrentIndex(self._seite("Stundenzettel"))
+        assert fenster._preview.parentWidget() is fenster._list_splitter
+
+    def test_ausgeschaltet_bleibt_sie_auch_dort_verborgen(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        fenster = _fenster(vorschau=False)
+        fenster._stack.setCurrentIndex(self._seite("Meine Tickets"))
+        assert fenster._preview.isHidden()
+
+    def test_gewaehltes_ticket_wird_entprellt_abgerufen(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        fenster = _fenster()
+        view = self._liste_mit(fenster, "Mein Team", "ABC-7", "ABC-8")
+        fenster._stack.setCurrentIndex(self._seite("Mein Team"))
+        attrappe.clear()
+        assert view.select_ticket("ABC-8")
+        assert fenster._preview_timer.isActive(), "Auch in der Ticketliste erst nach der Wartezeit"
+        fenster._update_preview()
+        assert [w.key for w in attrappe] == ["ABC-8"]
+
+    def test_ohne_auswahl_steht_ein_hinweis(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        fenster = _fenster()
+        self._liste_mit(fenster, "Meine Tickets", "ABC-7")
+        fenster._stack.setCurrentIndex(self._seite("Meine Tickets"))
+        assert attrappe == []
+        assert fenster._preview._placeholder.text() == "Kein Ticket gewählt"
+
+    def test_gruppenzeile_ist_kein_ticket(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        fenster = _fenster()
+        view = self._liste_mit(fenster, "Meine Aktivitäten", "ABC-7")
+        fenster._stack.setCurrentIndex(self._seite("Meine Aktivitäten"))
+        view._tree.setCurrentIndex(view._proxy.index(0, 0))
+        fenster._update_preview()
+        assert attrappe == []
+        assert fenster._preview._placeholder.text() == "Kein Ticket gewählt"
+
+    def test_jede_seite_zeigt_ihre_eigene_auswahl(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        fenster = _fenster()
+        view = self._liste_mit(fenster, "Meine Aktivitäten", "ABC-7")
+        # Die Liste steht noch nicht vorn - ihre Auswahl darf die Vorschau nicht umstellen.
+        view.select_ticket("ABC-7")
+        assert not fenster._preview_timer.isActive()
+        fenster._current_entry = _entry("ABC-1")
+        fenster._update_preview()
+        fenster._stack.setCurrentIndex(self._seite("Meine Aktivitäten"))
+        fenster._stack.setCurrentIndex(self._seite("Stundenzettel"))
+        assert [w.key for w in attrappe] == ["ABC-1", "ABC-7", "ABC-1"]
+
+    def test_monat_und_jahr_rufen_nichts_ab(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        fenster = _fenster()
+        fenster._current_entry = _entry("ABC-1")
+        for name in ("Monat", "Jahr"):
+            fenster._stack.setCurrentIndex(self._seite(name))
+            fenster._update_preview()
+        assert attrappe == []
+
+    def test_neu_geladene_liste_behaelt_die_auswahl(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        fenster = _fenster()
+        view = self._liste_mit(fenster, "Mein Team", "ABC-7", "ABC-8")
+        view.select_ticket("ABC-8")
+        self._liste_mit(fenster, "Mein Team", "ABC-9", "ABC-8")
+        ticket = view.current_ticket()
+        assert ticket is not None and ticket.key == "ABC-8"
+
+    def test_verschwundenes_ticket_leert_die_auswahl(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        fenster = _fenster()
+        view = self._liste_mit(fenster, "Mein Team", "ABC-7", "ABC-8")
+        view.select_ticket("ABC-8")
+        gemeldet: list[Any] = []
+        view.ticket_selected.connect(gemeldet.append)
+        self._liste_mit(fenster, "Mein Team", "ABC-9")
+        assert view.current_ticket() is None
+        assert gemeldet == [None], "Sonst stuende das alte Ticket weiter in der Vorschau"
+
+    def test_schliessen_legt_die_vorschau_zurueck_in_den_stundenzettel(
+        self, qapp: QApplication, attrappe: list[Any]
+    ) -> None:
+        # Gespeichert wird der Trenner des Stundenzettels. Stuende die Vorschau
+        # beim Schliessen woanders, haette er nur noch eine Seite und der
+        # gemerkte Zustand passte beim naechsten Start nicht mehr.
+        from PySide6.QtGui import QCloseEvent
+
+        fenster = _fenster()
+        fenster._stack.setCurrentIndex(self._seite("Mein Team"))
+        fenster.closeEvent(QCloseEvent())
+        assert fenster._list_splitter.count() == 2
+        assert fenster._preview.parentWidget() is fenster._list_splitter

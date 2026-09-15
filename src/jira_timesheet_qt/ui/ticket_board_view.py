@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QMenu,
+    QPushButton,
     QSplitter,
     QStackedWidget,
     QTreeView,
@@ -33,7 +34,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from jira_timesheet_qt.services.ticket_board import Board, Marker, Role, Ticket
+from jira_timesheet_qt.services.ticket_board import AccountIdError, Board, Marker, Role, Ticket, check_account_id
 from jira_timesheet_qt.ui.cell_delegate import CellDelegate
 
 from .theme import Mode
@@ -41,6 +42,10 @@ from .ticket_board_model import SORT_ROLE, TICKET_ROLE, TicketBoardModel
 from .ticket_charts import CHART_HEIGHT, ChartPanel
 
 AnyIndex = QModelIndex | QPersistentModelIndex
+
+# Daten des Gast-Eintrags im Auswahlfeld "Team-Mitglied". Kein Name: ein Gast
+# kann heissen wie jemand auf der Merkliste.
+GUEST_DATA = "\x00gast"
 
 # Marker, die Handlungsbedarf bedeuten. Der Filter "nur mit Handlungsbedarf"
 # blendet alles andere aus.
@@ -152,6 +157,17 @@ class TicketBoardView(QWidget):
     # in die Ansicht - sie sagt nur, WEN sie sehen will.
     member_changed = Signal(str)
 
+    # Bittet das Fenster, die Tickets einer Person in "Mein Team" zu zeigen:
+    # accountId und Anzeigename.
+    person_requested = Signal(str, str)
+
+    # Die voruebergehend gezeigte Person soll auf die Merkliste.
+    guest_add_requested = Signal()
+
+    # Die Auswahl hat gewechselt: das Ticket der Zeile, oder None auf einer
+    # Gruppenzeile und ohne Auswahl. Fuer die Ticket-Vorschau.
+    ticket_selected = Signal(object)
+
     def __init__(
         self,
         title: str,
@@ -191,6 +207,8 @@ class TicketBoardView(QWidget):
         self._with_members = with_members
         self._with_assignees = with_assignees
         self._members: list[str] = []
+        # Name der voruebergehend gezeigten Person, leer ohne Gast.
+        self._guest = ""
         # Die Auswertung zeigt den eigenen Durchsatz. Bei fremden Tickets
         # waere sie eine Zahl ueber jemand anderen - deshalb nur dort, wo
         # es die eigenen sind.
@@ -227,6 +245,13 @@ class TicketBoardView(QWidget):
             self._member_box.setMinimumContentsLength(18)
             self._member_box.currentIndexChanged.connect(self._on_member_changed)
             head.addWidget(self._member_box)
+            # Nur sichtbar, solange ein Gast gewaehlt ist.
+            self._add_guest = QPushButton("Zur Merkliste hinzufügen")
+            self._add_guest.setObjectName("BoardAddGuest")
+            self._add_guest.setToolTip("Die Person dauerhaft in die Merkliste von \"Mein Team\" aufnehmen")
+            self._add_guest.clicked.connect(lambda _checked=False: self.guest_add_requested.emit())
+            self._add_guest.setVisible(False)
+            head.addWidget(self._add_guest)
 
         head.addWidget(QLabel("Status:"))
         self._status_box = QComboBox()
@@ -283,6 +308,9 @@ class TicketBoardView(QWidget):
         self._tree.customContextMenuRequested.connect(self._on_context_menu)
         self._tree.doubleClicked.connect(self._on_double_click)
         self._tree.clicked.connect(self._on_click)
+        selection = self._tree.selectionModel()
+        if selection is not None:
+            selection.currentRowChanged.connect(self._on_current_changed)
 
         # Waehrend des Abrufs steht hier ein Hinweis statt einer leeren
         # Tabelle. Ein Abruf kann eine Minute dauern, und eine weisse Flaeche
@@ -296,9 +324,17 @@ class TicketBoardView(QWidget):
         self._pages.addWidget(self._placeholder)
         self._pages.addWidget(self._tree)
 
+        # Rechts daneben haengt das Fenster die Ticket-Vorschau ein. Es gibt
+        # nur eine Vorschau, sie zieht mit dem Reiter um - der Platz dafuer
+        # entsteht aber hier, damit die Ansicht selbst das Stapel-Element bleibt.
+        self._side = QSplitter(Qt.Orientation.Horizontal)
+        self._side.setObjectName("BoardPreviewSplitter")
+        self._side.setChildrenCollapsible(False)
+        outer.addWidget(self._side, 1)
+
         self._charts: ChartPanel | None = None
         if not self._with_charts:
-            outer.addWidget(self._pages, 1)
+            self._side.addWidget(self._pages)
             return
 
         # Liste oben, Auswertung unten, dazwischen ein greifbarer Trenner.
@@ -316,7 +352,8 @@ class TicketBoardView(QWidget):
         self._splitter.setStretchFactor(0, 1)
         self._splitter.setStretchFactor(1, 0)
         self._splitter.setSizes([600, CHART_HEIGHT])
-        outer.addWidget(self._splitter, 1)
+        # Liste und Auswertung zusammen links, die Vorschau daneben ueber die volle Hoehe.
+        self._side.addWidget(self._splitter)
 
     # --- Fuellen ---------------------------------------------------------
 
@@ -326,7 +363,14 @@ class TicketBoardView(QWidget):
         return self._board
 
     def set_board(self, board: Board | None) -> None:
-        """Uebernimmt ein Ergebnis und baut die Anzeige neu auf."""
+        """Uebernimmt ein Ergebnis und baut die Anzeige neu auf.
+
+        Das gewaehlte Ticket bleibt gewaehlt, solange es im neuen Ergebnis
+        steht. Ist es verschwunden, meldet die Ansicht "keine Auswahl" - der
+        Modell-Neuaufbau selbst sendet dafuer kein Signal, und die Vorschau
+        zeigte sonst weiter das alte Ticket.
+        """
+        previous = self.current_ticket()
         self._board = board
         self._model.set_board(board)
         self._fill_status_filter(board)
@@ -338,6 +382,36 @@ class TicketBoardView(QWidget):
             self._show_placeholder("Keine Tickets gefunden.")
         else:
             self._pages.setCurrentWidget(self._tree)
+        if previous is not None and not self.select_ticket(previous.key):
+            self.ticket_selected.emit(None)
+
+    def preview_host(self) -> QSplitter:
+        """Der waagerechte Trenner, in den das Fenster die Ticket-Vorschau haengt."""
+        return self._side
+
+    def current_ticket(self) -> Ticket | None:
+        """Das gewaehlte Ticket, oder None auf einer Gruppenzeile und ohne Auswahl."""
+        return self._ticket_at(self._tree.currentIndex())
+
+    def select_ticket(self, key: str) -> bool:
+        """Waehlt ein Ticket der angezeigten Liste ueber seine Nummer.
+
+        Returns:
+            False, wenn es nicht angezeigt wird - auch wenn ein Filter es ausblendet.
+        """
+        for group_row in range(self._proxy.rowCount()):
+            group = self._proxy.index(group_row, 0)
+            for row in range(self._proxy.rowCount(group)):
+                index = self._proxy.index(row, 0, group)
+                ticket = self._ticket_at(index)
+                if ticket is not None and ticket.key == key:
+                    self._tree.setCurrentIndex(index)
+                    return True
+        return False
+
+    def _on_current_changed(self, current: QModelIndex, _previous: QModelIndex) -> None:
+        """Meldet das Ticket der neuen Zeile."""
+        self.ticket_selected.emit(self._ticket_at(current))
 
     def _collapse_done(self) -> None:
         """Klappt die Gruppe "Abgeschlossen" zu.
@@ -439,29 +513,86 @@ class TicketBoardView(QWidget):
         """
         if not self._with_members:
             return
+        guest_was_selected = self.guest_selected()
         previous = self.current_member()
         self._members = list(names)
         self._member_box.blockSignals(True)
         self._member_box.clear()
         for name in self._members:
             self._member_box.addItem(name, name)
-        if previous in self._members:
+        if self._guest:
+            # Hinten und kursiv, mit Zusatz: der Gast soll nicht wie ein
+            # Eintrag der Merkliste aussehen.
+            self._member_box.addItem(f"{self._guest} (nicht auf der Merkliste)", GUEST_DATA)
+            font = self._member_box.font()
+            font.setItalic(True)
+            self._member_box.setItemData(self._member_box.count() - 1, font, Qt.ItemDataRole.FontRole)
+        if guest_was_selected and self._guest:
+            self._member_box.setCurrentIndex(self._member_box.count() - 1)
+        elif previous in self._members:
             self._member_box.setCurrentIndex(self._members.index(previous))
         self._member_box.blockSignals(False)
-        self._member_box.setEnabled(bool(self._members))
+        self._member_box.setEnabled(self._member_box.count() > 0)
+        self._add_guest.setVisible(self.guest_selected())
 
     def current_member(self) -> str:
-        """Der Name der gewaehlten Person, leer bei leerer Merkliste."""
+        """Der Name der gewaehlten Person aus der Merkliste, leer ohne Auswahl oder bei einem Gast."""
         if not self._with_members:
             return ""
         data = self._member_box.currentData()
-        return str(data) if data else ""
+        return str(data) if data and data != GUEST_DATA else ""
+
+    def guest_selected(self) -> bool:
+        """Ob gerade die voruebergehend gezeigte Person gewaehlt ist."""
+        return self._with_members and bool(self._guest) and self._member_box.currentData() == GUEST_DATA
+
+    def guest_name(self) -> str:
+        """Name des Gasts, leer ohne Gast."""
+        return self._guest
+
+    def show_guest(self, name: str) -> None:
+        """Nimmt eine Person voruebergehend in die Auswahl auf und waehlt sie, ohne Signal.
+
+        Ohne Signal, weil das Fenster den Abruf selbst anstoesst - sonst liefe er doppelt.
+        """
+        if not self._with_members:
+            return
+        self._guest = name
+        self.set_members(self._members)
+        self._member_box.blockSignals(True)
+        self._member_box.setCurrentIndex(self._member_box.findData(GUEST_DATA))
+        self._member_box.blockSignals(False)
+        self._add_guest.setVisible(True)
+
+    def clear_guest(self) -> None:
+        """Entfernt den Gast aus der Auswahl."""
+        if not self._with_members or not self._guest:
+            return
+        self._guest = ""
+        self.set_members(self._members)
+
+    def select_member(self, name: str) -> bool:
+        """Waehlt eine Person der Merkliste, ohne Signal.
+
+        Returns:
+            False, wenn der Name nicht in der Auswahl steht.
+        """
+        if not self._with_members or name not in self._members:
+            return False
+        self._member_box.blockSignals(True)
+        self._member_box.setCurrentIndex(self._members.index(name))
+        self._member_box.blockSignals(False)
+        self._add_guest.setVisible(False)
+        return True
 
     def _on_member_changed(self, _index: int) -> None:
         """Meldet die neue Person nach oben."""
+        self._add_guest.setVisible(self.guest_selected())
         name = self.current_member()
         if name:
             self.member_changed.emit(name)
+        elif self.guest_selected():
+            self.member_changed.emit(self._guest)
 
     def set_report_available(self, available: bool) -> None:
         """Schaltet den Menuepunkt fuer die Ticket-Analyse frei."""
@@ -599,6 +730,11 @@ class TicketBoardView(QWidget):
 
         menu.addSeparator()
 
+        for action in self._person_actions(menu, ticket):
+            menu.addAction(action)
+
+        menu.addSeparator()
+
         copy_action = QAction("Ticketnummer kopieren", menu)
         copy_action.setEnabled(ticket is not None)
         copy_action.triggered.connect(lambda _=False, t=ticket: self._copy_key(t))
@@ -613,6 +749,45 @@ class TicketBoardView(QWidget):
         collapse.triggered.connect(self._tree.collapseAll)
         menu.addAction(collapse)
         return menu
+
+    def _person_actions(self, menu: QMenu, ticket: Ticket | None) -> list[QAction]:
+        """Eintraege "Tickets von ... anzeigen" fuer Bearbeiter und Autor.
+
+        Je Person ein Eintrag, dieselbe Person nur einmal. Ohne Person mit
+        brauchbarer Kennung bleibt ein ausgegrauter Eintrag stehen - so ist das
+        Menue an jeder Zeile gleich aufgebaut. Im Screenshot-Modus gesperrt:
+        die Namen sind dort erfunden.
+
+        Args:
+            menu:
+                Das Menue, dem die Eintraege gehoeren.
+            ticket:
+                Das Ticket der Zeile, oder None auf einer Gruppenzeile.
+
+        Returns:
+            Die Eintraege in der Reihenfolge Bearbeiter, Autor.
+        """
+        people: list[tuple[str, str]] = []
+        if ticket is not None and not self._anonymized:
+            for name, account_id in ((ticket.assignee, ticket.assignee_id), (ticket.reporter, ticket.reporter_id)):
+                try:
+                    checked = check_account_id(account_id)
+                except AccountIdError:
+                    continue
+                if name and all(checked != known for _, known in people):
+                    people.append((name, checked))
+        if not people:
+            placeholder = QAction("Tickets der Person anzeigen", menu)
+            placeholder.setEnabled(False)
+            return [placeholder]
+        actions: list[QAction] = []
+        for name, account_id in people:
+            action = QAction(f"Tickets von {name} anzeigen", menu)
+            action.triggered.connect(
+                lambda _=False, a=account_id, n=name: self.person_requested.emit(a, n)
+            )
+            actions.append(action)
+        return actions
 
     def _on_context_menu(self, position: QPoint) -> None:
         """Zeigt das Menue an der Mausposition.

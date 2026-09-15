@@ -1,4 +1,4 @@
-"""Ticket-Vorschau rechts neben dem Stundenzettel.
+"""Ticket-Vorschau rechts neben dem Stundenzettel und den Ticketlisten.
 
 Nur lesend. Oben ein Kopf wie eine Ticketkarte: Schluessel und Titel, darunter
 Status, Typ und die gebuchte Zeit, dann drei Feldbloecke (Personen, Termine,
@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 from QAppFramework.color import ensure_contrast
 
+from jira_timesheet_qt.services.ticket_board import AccountIdError, check_account_id
 from jira_timesheet_qt.services.ticket_preview import (
     TicketPreviewData,
     due_state,
@@ -66,6 +67,10 @@ HEADER_MAX_WIDTH = 760
 _BLOCK_MIN_WIDTH = 120
 _BLOCK_MAX_WIDTH = 240
 
+# Linkziel fuer Personen im Kopf: "person:<accountId>". Kein http - der Klick
+# bleibt in der Anwendung und fuehrt nach "Mein Team".
+PERSON_SCHEME = "person"
+
 
 def link_color(mode: Mode) -> str:
     """Linkfarbe fuer die Beschreibung: der Akzent des Themes, auf Weiss lesbar gemacht."""
@@ -84,6 +89,8 @@ class _Field(NamedTuple):
     # Ersatztext fuer einen fehlenden Wert, der trotzdem wichtig ist.
     missing: bool = False
     tooltip: str = ""
+    # accountId, wenn der Wert eine Person ist, die sich in "Mein Team" zeigen laesst.
+    person_id: str = ""
 
 
 class PreviewBrowser(QTextBrowser):
@@ -120,6 +127,8 @@ class TicketPreview(QWidget):
     """Zeigt ein Ticket nur lesend: Kopf als Ticketkarte, Beschreibung, Fusszeile."""
 
     refresh_requested = Signal()
+    # Klick auf eine Person: accountId und Anzeigename.
+    person_requested = Signal(str, str)
 
     def __init__(self, mode: Mode = Mode.DARK, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -411,14 +420,15 @@ class TicketPreview(QWidget):
     def _groups(self, data: TicketPreviewData) -> list[list[_Field]]:
         """Die drei Bloecke: Personen, Termine und Version, Einordnung."""
         persons: list[_Field] = []
-        if data.assignee and data.assignee == data.creator:
-            persons.append(_Field("Zugewiesen und Autor", data.assignee))
+        if self._same_person(data):
+            persons.append(self._person_field("Zugewiesen und Autor", data.assignee, data.assignee_id))
         else:
-            persons.append(
-                _Field("Zugewiesene Person", data.assignee or "nicht zugewiesen", missing=not data.assignee)
-            )
+            if data.assignee:
+                persons.append(self._person_field("Zugewiesene Person", data.assignee, data.assignee_id))
+            else:
+                persons.append(_Field("Zugewiesene Person", "nicht zugewiesen", missing=True))
             if data.creator:
-                persons.append(_Field("Autor", data.creator))
+                persons.append(self._person_field("Autor", data.creator, data.creator_id))
 
         dates: list[_Field] = []
         if data.due_date:
@@ -441,6 +451,49 @@ class TicketPreview(QWidget):
             context.append(_Field("Übergeordnet", data.parent, rich=rich, tooltip=data.parent))
         context.extend(_Field(name, value) for name, value in data.extra if value)
         return [persons, dates, context]
+
+    @staticmethod
+    def _same_person(data: TicketPreviewData) -> bool:
+        """Ob Bearbeiter und Autor dieselbe Person sind."""
+        if not data.assignee:
+            return False
+        # Mit Kennungen entscheiden die - zwei Personen koennen gleich heissen.
+        if data.assignee_id and data.creator_id:
+            return data.assignee_id == data.creator_id
+        return data.assignee == data.creator
+
+    @staticmethod
+    def _person_field(label: str, name: str, account_id: str) -> _Field:
+        """Ein Personenfeld. Mit brauchbarer Kennung wird der Name zum Link nach "Mein Team"."""
+        try:
+            checked = check_account_id(account_id)
+        except AccountIdError:
+            # Aeltere Cache-Eintraege und anonyme Konten haben keine Kennung.
+            return _Field(label, name)
+        href = html.escape(f"{PERSON_SCHEME}:{checked}")
+        return _Field(
+            label,
+            name,
+            rich=f'<a href="{href}">{html.escape(name)}</a>',
+            tooltip=f'Tickets von {name} in "Mein Team" anzeigen',
+            person_id=checked,
+        )
+
+    def person_links(self) -> list[tuple[str, str]]:
+        """Die Personenfelder mit Link: (Beschriftung, accountId)."""
+        return [(field.label, field.person_id) for field in self._fields if field.person_id]
+
+    def _on_value_link(self, href: str) -> None:
+        """Link in einem Kopffeld: eine Person fuehrt nach "Mein Team", alles andere in den Browser."""
+        prefix = f"{PERSON_SCHEME}:"
+        if not href.startswith(prefix):
+            self._open_link(QUrl(href))
+            return
+        account_id = href[len(prefix) :]
+        # Nur Kennungen, die die Vorschau selbst verlinkt hat.
+        name = next((field.value for field in self._fields if field.person_id == account_id), "")
+        if name:
+            self.person_requested.emit(account_id, name)
 
     def _fill_blocks(self, data: TicketPreviewData) -> None:
         groups = self._groups(data)
@@ -466,7 +519,7 @@ class TicketPreview(QWidget):
             value.setTextFormat(Qt.TextFormat.RichText)
             value.setOpenExternalLinks(False)
             value.setText(field.rich)
-            value.linkActivated.connect(lambda href: self._open_link(QUrl(href)))
+            value.linkActivated.connect(self._on_value_link)
         else:
             value.setTextFormat(Qt.TextFormat.PlainText)
             value.setText(field.value)

@@ -55,7 +55,7 @@ _FIELD_IDS_FILE = "_fields.json"
 # Fassung der Cache-Dateien. Hochzaehlen, sobald neue Felder dazukommen: die
 # Pruefung auf Aenderungen vergleicht nur updated und die gebuchte Zeit, ein
 # alter Eintrag ohne das neue Feld bliebe sonst dauerhaft ohne es.
-CACHE_SCHEMA = 4
+CACHE_SCHEMA = 5
 
 # Statuskategorien, die Jira an jedem Status mitliefert (statusCategory.key).
 STATUS_CATEGORIES = frozenset({"new", "indeterminate", "done"})
@@ -87,6 +87,10 @@ class TicketPreviewData:
     priority: str = ""
     assignee: str = ""
     creator: str = ""
+    # accountId zu Bearbeiter und Autor, leer wenn unbekannt. Darueber fuehrt
+    # die Vorschau zu "Mein Team" - der Name allein trifft nicht sicher.
+    assignee_id: str = ""
+    creator_id: str = ""
     # Roh aus Jira (ISO), die Oberflaeche formatiert.
     due_date: str = ""
     updated: str = ""
@@ -129,6 +133,8 @@ class TicketPreviewData:
             priority=str(data.get("priority", "")),
             assignee=str(data.get("assignee", "")),
             creator=str(data.get("creator", "")),
+            assignee_id=str(data.get("assignee_id", "")),
+            creator_id=str(data.get("creator_id", "")),
             due_date=str(data.get("due_date", "")),
             updated=str(data.get("updated", "")),
             parent=str(data.get("parent", "")),
@@ -192,6 +198,17 @@ def field_value_text(value: Any) -> str:
     return ""
 
 
+def person_id(value: Any) -> str:
+    """Die accountId aus einem Personenfeld, leer ohne Person oder Kennung.
+
+    Ungeprueft: wer die Kennung in eine Abfrage gibt, prueft sie dort.
+    """
+    if not isinstance(value, dict):
+        return ""
+    account_id = value.get("accountId")
+    return account_id if isinstance(account_id, str) else ""
+
+
 def _description_html(fields: dict[str, Any], rendered: dict[str, Any]) -> str:
     """Die Beschreibung als HTML.
 
@@ -251,6 +268,8 @@ def parse_issue(raw: dict[str, Any], field_ids: dict[str, str], fetched_at: date
         priority=field_value_text(fields.get("priority")),
         assignee=field_value_text(fields.get("assignee")),
         creator=field_value_text(fields.get("creator")),
+        assignee_id=person_id(fields.get("assignee")),
+        creator_id=person_id(fields.get("creator")),
         due_date=field_value_text(fields.get("duedate")),
         updated=field_value_text(fields.get("updated")),
         parent=parent,

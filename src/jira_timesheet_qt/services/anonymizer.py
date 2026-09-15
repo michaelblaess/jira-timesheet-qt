@@ -234,6 +234,10 @@ def anonymize_board(board: Board) -> Board:
             status=fake_status(ticket.status, ticket.role),
             reporter=fake_person(ticket.reporter),
             assignee=fake_person(ticket.assignee),
+            # Die Kennungen fuehren zur echten Person - im Screenshot-Modus
+            # darf kein Menuepunkt ihre Tickets abrufen.
+            reporter_id="",
+            assignee_id="",
             url=f"{FAKE_HOST}/browse/{key}" if ticket.url else "",
         )
 

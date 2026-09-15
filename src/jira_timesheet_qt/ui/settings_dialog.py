@@ -1030,8 +1030,8 @@ class SettingsDialog(SettingsDialogBase):
         self.day_under_color = self.farbknopf(self._settings.day_under_color, "Farbe unter Soll")
         form.addRow(self.beschriftung("Farbe unter Soll"), self.day_under_color)
 
-        # Vorschau des gewaehlten Tickets rechts neben dem Stundenzettel.
-        self.show_preview = QCheckBox("Ticket-Vorschau im Stundenzettel anzeigen")
+        # Vorschau des gewaehlten Tickets rechts neben Stundenzettel und Ticketlisten.
+        self.show_preview = QCheckBox("Ticket-Vorschau neben den Listen anzeigen")
         self.show_preview.setChecked(self._settings.show_ticket_preview)
         form.addRow(self.beschriftung(""), self.show_preview)
 

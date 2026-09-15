@@ -167,6 +167,23 @@ class TestRollen:
         assert board.unknown_status == ["Voellig Neu"]
 
 
+class TestPersonen:
+    """Kennungen der Personen - daran haengt der Weg nach "Mein Team"."""
+
+    def test_bearbeiter_und_autor_tragen_ihre_kennung(self) -> None:
+        ticket = build_board([issue("A-1", "In Arbeit", reporter=OTHER)], CONFIG, NOW).tickets[0]
+        assert (ticket.assignee, ticket.assignee_id) == ("Ich Selbst", ACCOUNT)
+        assert (ticket.reporter, ticket.reporter_id) == ("Wer Auch Immer", OTHER)
+
+    def test_ohne_bearbeiter_keine_kennung(self) -> None:
+        roh = issue("A-1", "In Arbeit")
+        felder = roh["fields"]
+        assert isinstance(felder, dict)
+        felder["assignee"] = None
+        ticket = build_board([roh], CONFIG, NOW).tickets[0]
+        assert (ticket.assignee, ticket.assignee_id) == ("", "")
+
+
 class TestPrioritaet:
     """Rangfolge und obere Gruppe."""
 
