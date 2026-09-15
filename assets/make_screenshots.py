@@ -175,6 +175,9 @@ def _preview_window(mode: Mode) -> MainWindow:
             priority="Hoch",
             assignee="Mustermann, Max",
             creator="Beispiel, Bernd",
+            # Erfundene Kennungen - mit ihnen erscheinen die Personen als Links.
+            assignee_id="000000:00000000-0000-0000-0000-000000000001",
+            creator_id="000000:00000000-0000-0000-0000-000000000002",
             due_date="2026-09-30",
             updated="2026-09-14T10:42:00",
             time_spent_seconds=4 * 3600 + 30 * 60,
@@ -225,6 +228,54 @@ def _board_window(mode: Mode, *, relevant: bool = False) -> MainWindow:
     win._stack.setCurrentIndex(4 if relevant else 3)
     win._tabs.setCurrentIndex(4 if relevant else 3)
     win._summary_board(view, board_mode)
+    return win
+
+
+def _board_preview_window(mode: Mode) -> MainWindow:
+    """Wie _board_window fuer "Meine Aktivitaeten", dazu die Ticket-Vorschau rechts.
+
+    Die Vorschau zeigt das erste Ticket der Liste und wird von Hand gesetzt wie
+    in _preview_window. Ohne Token startet kein Abruf.
+
+    Args:
+        mode:
+            Helles oder dunkles Erscheinungsbild.
+
+    Returns:
+        Das vorbereitete Fenster, noch nicht angezeigt.
+    """
+    win = MainWindow(Settings(show_ticket_preview=True, jira_host="https://beispiel.atlassian.net"), mode)
+    _show_month_of(win, _data())
+    board = anonymize_board(demo_board(relevant=True))
+    view = win._board_view(MODE_RELEVANT)
+    win._real_boards[MODE_RELEVANT] = board
+    win._board_loaded[MODE_RELEVANT] = True
+    view.set_board(board)
+    win._tabs.setCurrentIndex(4)
+    win._summary_board(view, MODE_RELEVANT)
+    ticket = board.tickets[0]
+    view.select_ticket(ticket.key)
+    win._preview_timer.stop()
+    win._preview.show_data(
+        TicketPreviewData(
+            key=ticket.key,
+            summary=ticket.summary,
+            status=ticket.status,
+            status_category=ticket.category or "indeterminate",
+            issue_type=ticket.issue_type,
+            priority=ticket.priority,
+            assignee=ticket.assignee or "Mustermann, Max",
+            creator=ticket.reporter or "Beispiel, Bernd",
+            assignee_id="000000:00000000-0000-0000-0000-000000000001",
+            creator_id="000000:00000000-0000-0000-0000-000000000002",
+            due_date="2026-09-30",
+            updated="2026-09-14T10:42:00",
+            time_spent_seconds=2 * 3600,
+            description_html="<p>Ein Klick auf eine Person zeigt ihre Tickets unter Mein Team.</p>",
+            fetched_at="2026-09-14T11:05:00",
+        )
+    )
+    view.preview_host().setSizes([880, 600])
     return win
 
 
@@ -286,6 +337,9 @@ def main() -> int:
 
         # Relevante Tickets - dieselbe Ansicht, fremde Zuweisung
         _grab(_board_window(mode, relevant=True), OUT / f"board-relevant-{tag}.png", W, H)
+
+        # Ticket-Vorschau in einer Ticketliste, Personen als Links
+        _grab(_board_preview_window(mode), OUT / f"board-preview-{tag}.png", W, H)
 
         # Einstellungen - Arbeitszeit
         dlg = SettingsDialog(Settings())

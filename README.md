@@ -66,6 +66,11 @@ The application follows the light or dark theme and a configurable accent colour
   <img src="docs/screenshots/preview-light.png" width="49%" alt="Ticket preview (light)">
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/board-preview-dark.png" width="49%" alt="Ticket preview in My activity (dark)">
+  <img src="docs/screenshots/board-preview-light.png" width="49%" alt="Ticket preview in My activity (light)">
+</p>
+
 ### Month and year view
 
 <p align="center">
