@@ -1075,8 +1075,8 @@ wheels = [
 
 [[package]]
 name = "textual-themes"
-version = "0.14.0"
-source = { git = "https://github.com/michaelblaess/textual-themes.git#a86ff9cbd1596a109c20c82af2f00174f29b6299" }
+version = "0.15.0"
+source = { git = "https://github.com/michaelblaess/textual-themes.git#3f5e5bc29d0cc3f49496269be6d5207aba2eeff5" }
 
 [[package]]
 name = "types-openpyxl"
