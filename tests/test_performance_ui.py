@@ -182,10 +182,10 @@ def _fenster(team: list[TeamMember] | None = None) -> Any:
 
 
 class TestHauptfenster:
-    def test_reiter_steht_hinter_mein_team(self, qapp: QApplication) -> None:
+    def test_reiter_steht_ganz_rechts(self, qapp: QApplication) -> None:
         fenster = _fenster()
         views = main_window._VIEWS
-        assert views.index("Performance-Booster") == views.index("Mein Team") + 1
+        assert views[-1] == "Performance-Booster"
         assert fenster._stack.widget(main_window._PERF_VIEW) is fenster._performance
         assert fenster._tabs.tabText(main_window._PERF_VIEW) == "Performance-Booster"
 

@@ -69,9 +69,10 @@ from jira_timesheet_qt.services.anonymizer import (
 )
 from jira_timesheet_qt.services.holiday_service import HolidayService
 from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
+from jira_timesheet_qt.services.new_tickets import WINDOWS
 from jira_timesheet_qt.services.performance import PERIODS, PerformanceReport
 from jira_timesheet_qt.services.team import TeamMember, from_storage, to_storage
-from jira_timesheet_qt.services.ticket_board import AccountIdError, Board, Marker, Role, check_account_id
+from jira_timesheet_qt.services.ticket_board import AccountIdError, Board, Group, Marker, Role, check_account_id
 from jira_timesheet_qt.services.ticket_board import Ticket as BoardTicket
 from jira_timesheet_qt.services.ticket_preview import IssuePreviewCache, TicketPreviewData, german_datetime
 from jira_timesheet_qt.ui.about_dialog import AboutDialog
@@ -85,6 +86,8 @@ from jira_timesheet_qt.ui.jira_worker import TicketPreviewWorker, WorklogWorker
 from jira_timesheet_qt.ui.log_dock import Level, LogDock
 from jira_timesheet_qt.ui.manual_entry_dialog import ManualEntryDialog
 from jira_timesheet_qt.ui.menu import Command, CommandRegistry, MenuBuilder, MenuDefinition, missing_commands
+from jira_timesheet_qt.ui.new_tickets_view import NewTicketsView
+from jira_timesheet_qt.ui.new_tickets_worker import NewTicketsWorker
 from jira_timesheet_qt.ui.performance_view import PerformanceView
 from jira_timesheet_qt.ui.performance_worker import PerformanceWorker
 from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
@@ -120,6 +123,7 @@ _VIEWS = (
     "Meine Tickets",
     "Meine Aktivitäten",
     "Mein Team",
+    "Neue Tickets",
     "Performance-Booster",
 )
 
@@ -137,6 +141,8 @@ _YEAR_VIEW: int = _VIEWS.index("Jahr")
 
 # Stapelseite des Performance-Boosters, ebenso abgeleitet.
 _PERF_VIEW: int = _VIEWS.index("Performance-Booster")
+# Stapelseite der neuen Tickets, ebenso abgeleitet.
+_NEW_VIEW: int = _VIEWS.index("Neue Tickets")
 # Stapelseite der Monatsansicht - stand bis 09/2026 als feste 1 im Code.
 _MONTH_VIEW: int = _VIEWS.index("Monat")
 
@@ -235,6 +241,9 @@ class MainWindow(QMainWindow):
         self._perf_generation = 0
         self._perf_loaded = False
         self._real_perf: PerformanceReport | None = None
+        # Neue Tickets: ebenso eigener Zaehler und eigenes Geladen-Flag.
+        self._new_generation = 0
+        self._new_loaded = False
         # Angezeigter Stundenzettel (bei aktiver Anonymisierung die Dummy-Kopie).
         self._timesheet: Timesheet | None = None
         # Echte Rohdaten - bleiben erhalten, damit die Anonymisierung reversibel
@@ -334,6 +343,10 @@ class MainWindow(QMainWindow):
         # Fensters ANBIETEN (nicht still heilen) - deferred, damit der modale
         # Dialog erst nach dem ersten Zeichnen kommt.
         QTimer.singleShot(0, self._maybe_offer_restore)
+        # Fuer den Blick am Morgen: auf Wunsch gleich die neuen Tickets zeigen.
+        # Deferred wie oben, damit der Wechsel erst nach dem ersten Zeichnen laedt.
+        if self._settings.start_with_new_tickets:
+            QTimer.singleShot(0, lambda: self._go_to_view(_NEW_VIEW))
 
     # --- Aufbau ---------------------------------------------------------
 
@@ -399,6 +412,16 @@ class MainWindow(QMainWindow):
         self._performance.refresh_requested.connect(self._load_performance)
         self._performance.ticket_selected.connect(lambda _key: self._on_perf_ticket_selected())
         self._performance.hint_ticket_clicked.connect(self._on_perf_hint_ticket)
+        self._new_tickets = NewTicketsView()
+        stored_window = str(self._qsettings.value("new_tickets/window", "") or "")
+        if stored_window in WINDOWS:
+            self._new_tickets.set_window(stored_window)
+        self._new_tickets.window_changed.connect(lambda kind: self._qsettings.setValue("new_tickets/window", kind))
+        self._new_tickets.refresh_requested.connect(self._load_new_tickets)
+        self._new_tickets.count_changed.connect(self._on_new_count)
+        self._new_tickets.detail_requested.connect(self._show_detail)
+        self._new_tickets.report_requested.connect(self.open_ticket_report)
+        self._new_tickets.ticket_selected.connect(lambda _key: self._on_new_ticket_selected())
         self._apply_board_settings()
 
         # Stundenzettel links, Ticket-Vorschau rechts. Die Vorschau steht nur,
@@ -421,6 +444,7 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._assigned_board)
         self._stack.addWidget(self._relevant_board)
         self._stack.addWidget(self._team_board)
+        self._stack.addWidget(self._new_tickets)
         self._stack.addWidget(self._performance)
         outer.addWidget(self._stack, 1)
         # Eine Vorschau fuer alle Listen: sie zieht mit der sichtbaren Seite um.
@@ -1459,6 +1483,10 @@ class MainWindow(QMainWindow):
         for view in (self._assigned_board, self._relevant_board, self._team_board):
             view.set_report_available(available)
             view.set_anonymized(self._anonymize)
+        self._new_tickets.set_report_available(available)
+        self._new_tickets.set_anonymized(self._anonymize, self._display_new_tickets)
+        # Nach Ostermontag zaehlt 1T ab Gruendonnerstag, nicht ab dem Montag.
+        self._new_tickets.set_workday_check(HolidayService(self._settings.federal_state).is_workday)
         # Die Merkliste gehoert mit hierher: sie kann sich mit jeder
         # Einstellungsaenderung geaendert haben, und ein Auswahlfeld, das
         # nicht nachzieht, laesst eine gepflegte Liste leer aussehen.
@@ -1560,6 +1588,72 @@ class MainWindow(QMainWindow):
             self._team_board.clear_guest()
         self._team_board.set_members([member.display_name for member in roster.members])
         self._performance.set_members([member.display_name for member in roster.members])
+        self._new_tickets.set_members([member.display_name for member in roster.members])
+
+    # --- Neue Tickets ---------------------------------------------------
+
+    @staticmethod
+    def _display_new_tickets(tickets: list[BoardTicket]) -> list[BoardTicket]:
+        """Die Screenshot-Kopie einer Liste - ueber dieselbe Umformung wie die Ticketlisten."""
+        return anonymize_board(Board(groups=[Group(role=Role.UNKNOWN, tickets=tickets)], tickets=tickets)).tickets
+
+    def _on_new_ticket_selected(self) -> None:
+        """Neue Auswahl in der Liste. Zaehlt nur, wenn der Reiter vorn steht."""
+        if self._settings.show_ticket_preview and self._stack.currentWidget() is self._new_tickets:
+            self._preview_timer.start()
+
+    def _on_new_count(self, count: int) -> None:
+        """Traegt die Anzahl in den Reitertitel - dann sieht man sie schon beim Start."""
+        self._tabs.setTabText(_NEW_VIEW, "Neue Tickets" if count < 0 else f"Neue Tickets ({count})")
+
+    def _load_new_tickets(self) -> None:
+        """Holt die neuen Tickets aller Mitglieder ueber den laengsten Zeitraum.
+
+        Person und Zeitraum filtern danach lokal - ein Wechsel fragt Jira nicht erneut.
+        """
+        if not self._settings_complete():
+            self._new_tickets.show_message("Zugangsdaten fehlen - bitte zuerst die Einstellungen ausfüllen.")
+            return
+        members = [m for m in from_storage(self._settings.team_members).members if m.account_ids]
+        if not members:
+            self._new_tickets.show_message(
+                "Die Merkliste ist leer. Trage unter Einstellungen > Mein Team ein, "
+                "wessen neue Tickets du sehen willst."
+            )
+            return
+
+        self._new_generation += 1
+        generation = self._new_generation
+        self._new_loaded = True
+        self._new_tickets.show_message("Neue Tickets werden geladen ...")
+        self._set_status("Neue Tickets werden geladen ...", "busy")
+        worker = NewTicketsWorker(
+            self._settings, config_from(self._settings), members, self._new_tickets.since_longest(), self
+        )
+        worker.log.connect(self._log.write)
+        worker.finished_ok.connect(lambda tickets, g=generation: self._on_new_loaded(tickets, g))
+        worker.failed.connect(lambda message, g=generation: self._on_new_failed(message, g))
+        worker.finished.connect(worker.deleteLater)
+        self._running_workers.append(worker)
+        worker.start()
+
+    def _on_new_loaded(self, tickets: object, generation: int) -> None:
+        """Uebernimmt eine fertige Liste - nur vom juengsten Abruf."""
+        self._running_workers = [w for w in self._running_workers if w.isRunning()]
+        if generation != self._new_generation or not isinstance(tickets, list):
+            return
+        self._new_tickets.set_tickets(tickets)
+        self._set_status(f"Neue Tickets: {len(tickets)} seit {self._new_tickets.since_longest():%d.%m.%Y}")
+
+    def _on_new_failed(self, message: str, generation: int) -> None:
+        """Meldet einen gescheiterten Abruf."""
+        self._running_workers = [w for w in self._running_workers if w.isRunning()]
+        if generation != self._new_generation:
+            return
+        # Beim naechsten Besuch erneut versuchen statt auf dem Fehler stehen zu bleiben.
+        self._new_loaded = False
+        self._new_tickets.show_message(message)
+        self._set_status(message, "error")
 
     # --- Performance-Booster --------------------------------------------
 
@@ -1661,11 +1755,15 @@ class MainWindow(QMainWindow):
         self._board_loaded = {MODE_ASSIGNED: False, MODE_RELEVANT: False, MODE_TEAM: False}
         # Schwellen und Statuszuordnung gelten auch fuer den Booster.
         self._perf_loaded = False
+        # Die Merkliste kann sich geaendert haben.
+        self._new_loaded = False
         mode = _BOARD_MODES.get(self._stack.currentIndex())
         if mode is not None and self._settings_complete():
             self._load_board(mode)
         elif self._stack.currentIndex() == _PERF_VIEW and self._settings_complete():
             self._load_performance()
+        elif self._stack.currentIndex() == _NEW_VIEW and self._settings_complete():
+            self._load_new_tickets()
 
     def _board_view(self, mode: str) -> TicketBoardView:
         """Liefert die Ansicht zu einem Abrufmodus.
@@ -1962,6 +2060,7 @@ class MainWindow(QMainWindow):
                 view.set_board(self._display_board(real))
         if self._real_perf is not None:
             self._performance.set_report(self._display_performance(self._real_perf))
+        self._new_tickets.set_anonymized(self._anonymize, self._display_new_tickets)
         self._refresh_summary_bar()
         self._update_preview()
         # Verbindungszustand mit dem nun ggf. verschleierten Host neu schreiben.
@@ -2085,6 +2184,8 @@ class MainWindow(QMainWindow):
                 self._load_board(mode)
             elif position == _PERF_VIEW:
                 self._load_performance()
+            elif position == _NEW_VIEW:
+                self._load_new_tickets()
             elif position == _YEAR_VIEW:
                 self.load_year()
             else:
@@ -2099,11 +2200,15 @@ class MainWindow(QMainWindow):
             self._year_loaded_for = None
         if position != _PERF_VIEW:
             self._perf_loaded = False
+        if position != _NEW_VIEW:
+            self._new_loaded = False
 
         if mode is not None:
             self._load_board(mode)
         elif position == _PERF_VIEW:
             self._load_performance()
+        elif position == _NEW_VIEW:
+            self._load_new_tickets()
         elif position == _YEAR_VIEW:
             self._year_loaded_for = None
             self.load_year()
@@ -2287,6 +2392,8 @@ class MainWindow(QMainWindow):
             self._load_board(mode)
         if position == _PERF_VIEW and not self._perf_loaded and self._settings_complete():
             self._load_performance()
+        if position == _NEW_VIEW and not self._new_loaded and self._settings_complete():
+            self._load_new_tickets()
 
     def _update_year_view(self, timesheet: Timesheet | None) -> None:
         """Traegt die Summen des geladenen Zeitraums in die Jahresansicht.
@@ -2352,6 +2459,8 @@ class MainWindow(QMainWindow):
             return self._list_splitter
         if page == _PERF_VIEW:
             return self._performance.preview_host()
+        if page == _NEW_VIEW:
+            return self._new_tickets.preview_host()
         mode = _BOARD_MODES.get(page)
         return self._board_view(mode).preview_host() if mode is not None else None
 
@@ -2439,6 +2548,9 @@ class MainWindow(QMainWindow):
         mode = _BOARD_MODES.get(page)
         if page == _PERF_VIEW:
             key = self._performance.current_key()
+            nothing = "Kein Ticket gewählt"
+        elif page == _NEW_VIEW:
+            key = self._new_tickets.current_key()
             nothing = "Kein Ticket gewählt"
         elif mode is not None:
             ticket = self._board_view(mode).current_ticket()
