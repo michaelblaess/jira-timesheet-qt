@@ -34,8 +34,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from jira_timesheet_qt.services.ticket_board import AccountIdError, Board, Marker, Role, Ticket, check_account_id
+from jira_timesheet_qt.services.ticket_board import Board, Marker, Role, Ticket
 from jira_timesheet_qt.ui.cell_delegate import CellDelegate
+from jira_timesheet_qt.ui.person_menu import person_actions
 
 from .theme import Mode
 from .ticket_board_model import SORT_ROLE, TICKET_ROLE, TicketBoardModel
@@ -178,6 +179,9 @@ class TicketBoardView(QWidget):
     # Die voruebergehend gezeigte Person soll auf die Merkliste.
     guest_add_requested = Signal()
 
+    # Eine Person aus dem Kontextmenue soll auf die Merkliste: accountId und Name.
+    team_add_requested = Signal(str, str)
+
     # Die Auswahl hat gewechselt: das Ticket der Zeile, oder None auf einer
     # Gruppenzeile und ohne Auswahl. Fuer die Ticket-Vorschau.
     ticket_selected = Signal(object)
@@ -237,6 +241,8 @@ class TicketBoardView(QWidget):
         # Im Screenshot-Modus sind die Ticketnummern erfunden. Ein Sprung
         # in den Browser oder eine Analyse liefe damit ins Leere.
         self._anonymized = False
+        # Kennungen der Merkliste - wer darin steht, bekommt kein "hinzufuegen".
+        self._team_ids: frozenset[str] = frozenset()
         self._model = TicketBoardModel(self)
         self._proxy = TicketFilterProxy(self)
         self._proxy.setSourceModel(self._model)
@@ -617,6 +623,10 @@ class TicketBoardView(QWidget):
         """Merkt den Screenshot-Modus fuer die Menuepunkte."""
         self._anonymized = anonymized
 
+    def set_team_ids(self, ids: frozenset[str]) -> None:
+        """Merkt die Kennungen der Merkliste fuer die Menuepunkte."""
+        self._team_ids = ids
+
     def _fill_status_filter(self, board: Board | None) -> None:
         """Fuellt die Statusauswahl aus den tatsaechlich vorkommenden Werten.
 
@@ -775,25 +785,14 @@ class TicketBoardView(QWidget):
         Returns:
             Die Eintraege in der Reihenfolge Bearbeiter, Autor.
         """
-        people: list[tuple[str, str]] = []
-        if ticket is not None and not self._anonymized:
-            for name, account_id in ((ticket.assignee, ticket.assignee_id), (ticket.reporter, ticket.reporter_id)):
-                try:
-                    checked = check_account_id(account_id)
-                except AccountIdError:
-                    continue
-                if name and all(checked != known for _, known in people):
-                    people.append((name, checked))
-        if not people:
-            placeholder = QAction("Tickets der Person anzeigen", menu)
-            placeholder.setEnabled(False)
-            return [placeholder]
-        actions: list[QAction] = []
-        for name, account_id in people:
-            action = QAction(f"Tickets von {name} anzeigen", menu)
-            action.triggered.connect(lambda _=False, a=account_id, n=name: self.person_requested.emit(a, n))
-            actions.append(action)
-        return actions
+        return person_actions(
+            menu,
+            ticket,
+            self._anonymized,
+            self._team_ids,
+            self.person_requested.emit,
+            self.team_add_requested.emit,
+        )
 
     def _on_context_menu(self, position: QPoint) -> None:
         """Zeigt das Menue an der Mausposition.

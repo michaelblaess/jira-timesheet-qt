@@ -41,6 +41,7 @@ from jira_timesheet_qt.services.new_tickets import (
 from jira_timesheet_qt.services.ticket_board import Ticket, key_sort_value
 
 from .cell_delegate import CellDelegate
+from .person_menu import person_actions
 
 # Beschriftung des Eintrags "alle Mitglieder" - steht immer zuerst.
 ALL_LABEL = "Alle"
@@ -96,6 +97,9 @@ class NewTicketsView(QWidget):
     count_changed = Signal(int)
     detail_requested = Signal(object)
     report_requested = Signal(str)
+    # Personen aus dem Kontextmenue: accountId und Name.
+    person_requested = Signal(str, str)
+    team_add_requested = Signal(str, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -105,6 +109,7 @@ class NewTicketsView(QWidget):
         self._today: Callable[[], dt.date] = dt.date.today
         self._anonymized = False
         self._report_available = True
+        self._team_ids: frozenset[str] = frozenset()
         # Anzeige-Umformung (Screenshot-Modus). Gefiltert wird immer auf den
         # echten Daten, sonst passt kein erfundener Name zur Personenauswahl.
         self._display: Callable[[list[Ticket]], list[Ticket]] | None = None
@@ -224,6 +229,10 @@ class NewTicketsView(QWidget):
         self._anonymized = anonymized
         self._display = display if anonymized else None
         self._refill()
+
+    def set_team_ids(self, ids: frozenset[str]) -> None:
+        """Merkt die Kennungen der Merkliste fuer die Menuepunkte."""
+        self._team_ids = ids
 
     def set_report_available(self, available: bool) -> None:
         """Ob die Ticket-Analyse im Kontextmenue angeboten wird."""
@@ -420,6 +429,12 @@ class NewTicketsView(QWidget):
         report.setEnabled(ticket is not None and bool(ticket.key) and self._report_available and not self._anonymized)
         report.triggered.connect(lambda _=False, t=ticket: self._emit_report(t))
         menu.addAction(report)
+
+        menu.addSeparator()
+        for action in person_actions(
+            menu, ticket, self._anonymized, self._team_ids, self.person_requested.emit, self.team_add_requested.emit
+        ):
+            menu.addAction(action)
 
         menu.addSeparator()
         copy_action = QAction("Ticketnummer kopieren", menu)
