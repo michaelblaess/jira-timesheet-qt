@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import TYPE_CHECKING
 
+import pytest
 from PySide6.QtWidgets import QApplication, QWidget
 
 from jira_timesheet_qt.models.settings import Settings
@@ -659,3 +660,64 @@ class TestPersonenLink:
         member = window._current_member()
         assert member is not None
         assert member.account_ids == (ID_B,)
+
+
+class _FakeSearch:
+    """Ersetzt den Suchfaden - laeuft nie wirklich los."""
+
+    def __init__(self, *_args: object) -> None:
+        from PySide6.QtCore import QObject, Signal
+
+        class _Signals(QObject):
+            finished_ok = Signal(object)
+            failed = Signal(str)
+
+        self._signals = _Signals()
+        self.finished_ok = self._signals.finished_ok
+        self.failed = self._signals.failed
+
+    def start(self) -> None:
+        pass
+
+    def isRunning(self) -> bool:  # noqa: N802 - Qt-Schreibweise
+        return True
+
+
+class TestSucheBedienung:
+    def test_return_im_suchfeld_schliesst_den_dialog_nicht(self, qapp: QApplication) -> None:
+        # 24.09.2026: Return startete die Suche UND loeste "Speichern" aus - die
+        # Maske ging zu, statt Treffer zu zeigen.
+        from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
+
+        from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(Settings())
+        dialog.show()
+        dialog.team_query.setText("Beispiel")
+        dialog.team_query.setFocus()
+        QTest.keyClick(dialog.team_query, Qt.Key.Key_Return)
+        assert dialog.isVisible() and dialog.result() == 0
+        # Die Suche lief trotzdem an - ohne Zugang meldet sie genau das.
+        assert "Zugang" in dialog.team_status.text()
+        QTest.keyClick(dialog.team_name, Qt.Key.Key_Enter)
+        assert dialog.isVisible()
+        dialog.close()
+
+    def test_kreisel_dreht_nur_waehrend_der_suche(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        from jira_timesheet_qt.ui import settings_dialog
+
+        monkeypatch.setattr(settings_dialog, "TeamSearchWorker", _FakeSearch)
+        dialog = settings_dialog.SettingsDialog(Settings())
+        dialog.host.setText("https://jira.example.com")
+        dialog.email.setText("max@example.com")
+        dialog.token.setText("geheim")
+        assert not dialog.team_spinner.is_spinning()
+        dialog.team_query.setText("Beispiel")
+        dialog._team_search()
+        assert dialog.team_spinner.is_spinning()
+        dialog._team_search_failed("HTTP 500")
+        assert not dialog.team_spinner.is_spinning()
+        dialog._team_search()
+        dialog._team_hits_ready([_hit(ID_A, "Reiner Beispiel")])
+        assert not dialog.team_spinner.is_spinning()

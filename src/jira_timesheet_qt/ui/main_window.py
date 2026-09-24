@@ -76,6 +76,7 @@ from jira_timesheet_qt.services.ticket_board import AccountIdError, Board, Group
 from jira_timesheet_qt.services.ticket_board import Ticket as BoardTicket
 from jira_timesheet_qt.services.ticket_preview import IssuePreviewCache, TicketPreviewData, german_datetime
 from jira_timesheet_qt.ui.about_dialog import AboutDialog
+from jira_timesheet_qt.ui.arrow_cursor import use_arrow_cursor
 from jira_timesheet_qt.ui.calendar_view import CalendarView, DayCell
 from jira_timesheet_qt.ui.cell_delegate import CellDelegate
 from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
@@ -328,6 +329,7 @@ class MainWindow(QMainWindow):
         self._apply_day_total_colors()
 
         self._build_ui()
+        use_arrow_cursor(self)
         # Erneut, jetzt existiert die Summenleiste - damit auch ihr Ist-Wert die
         # Soll-Ist-Ampel bekommt (der Aufruf vor dem Bau konnte sie nicht setzen).
         self._apply_day_total_colors()

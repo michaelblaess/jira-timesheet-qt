@@ -7,10 +7,11 @@ Seiten in einem QStackedWidget - dasselbe Muster wie im Hauptfenster.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
@@ -48,6 +49,8 @@ from jira_timesheet_qt.services.team import (
     to_storage,
 )
 from jira_timesheet_qt.ui import registration
+from jira_timesheet_qt.ui.arrow_cursor import use_arrow_cursor
+from jira_timesheet_qt.ui.busy_spinner import BusySpinner
 from jira_timesheet_qt.ui.jira_worker import BudgetFieldWorker
 from jira_timesheet_qt.ui.team_worker import TeamSearchWorker
 
@@ -89,6 +92,29 @@ def _split(raw: str) -> list[str]:
     return [part.strip() for part in raw.split(",") if part.strip()]
 
 
+class _EnterRunsAction(QObject):
+    """Faengt Return in einem Eingabefeld ab und fuehrt stattdessen eine Aktion aus.
+
+    returnPressed allein reicht nicht: das Feld reicht den Tastendruck danach an
+    den Dialog weiter, und der loest seinen Standardknopf "Speichern" aus. Wer
+    in "Suchen" Return drueckt, sah die Maske zugehen statt der Treffer.
+    """
+
+    def __init__(self, action: Callable[[], None], parent: QObject) -> None:
+        super().__init__(parent)
+        self._action = action
+
+    def eventFilter(self, _watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt-Schreibweise
+        if (
+            event.type() == QEvent.Type.KeyPress
+            and isinstance(event, QKeyEvent)
+            and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+        ):
+            self._action()
+            return True
+        return False
+
+
 class SettingsDialog(SettingsDialogBase):
     """Dialog zum Bearbeiten der Einstellungen.
 
@@ -116,6 +142,7 @@ class SettingsDialog(SettingsDialogBase):
         # Statusfelder auf der Ticket-Seite sind doppelt so breit - gemessen
         # ragte das breiteste 17 Bildpunkte heraus.
         self.setMinimumWidth(WIDE_FIELD_WIDTH + 400)
+        use_arrow_cursor(self)
         # Wird der Dialog geschlossen, waehrend die Autoerkennung laeuft, erst
         # auf den Faden warten - sonst zerstoert Qt ihn im Lauf.
         self.finished.connect(self._await_detect_worker)
@@ -710,8 +737,9 @@ class SettingsDialog(SettingsDialogBase):
         self.team_query = QLineEdit()
         self.team_query.setPlaceholderText("Nachname")
         self.team_query.setFixedWidth(FIELD_WIDTH)
-        # Enter sucht - sonst muss man für jede Suche zur Maus greifen.
-        self.team_query.returnPressed.connect(self._team_search)
+        # Return sucht - und nur das. Der Filter haelt den Tastendruck vom
+        # Standardknopf "Speichern" fern.
+        self.team_query.installEventFilter(_EnterRunsAction(self._team_search, self.team_query))
 
         search_row = QWidget()
         search_layout = QHBoxLayout(search_row)
@@ -723,6 +751,8 @@ class SettingsDialog(SettingsDialogBase):
         self.team_search_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.team_search_button.clicked.connect(self._team_search)
         search_layout.addWidget(self.team_search_button)
+        self.team_spinner = BusySpinner(parent=search_row)
+        search_layout.addWidget(self.team_spinner)
         search_layout.addStretch(1)
         form.addRow(self.beschriftung("Suchen"), search_row)
 
@@ -750,6 +780,8 @@ class SettingsDialog(SettingsDialogBase):
         self.team_name = QLineEdit()
         self.team_name.setPlaceholderText("Wie im Reiter angezeigt")
         self.team_name.setFixedWidth(FIELD_WIDTH)
+        # Return uebernimmt die gewaehlten Treffer, statt den Dialog zu schliessen.
+        self.team_name.installEventFilter(_EnterRunsAction(self._team_add, self.team_name))
 
         add_row = QWidget()
         add_layout = QHBoxLayout(add_row)
@@ -811,6 +843,7 @@ class SettingsDialog(SettingsDialogBase):
             return
 
         self.team_search_button.setEnabled(False)
+        self.team_spinner.start()
         self.team_status.setText("Suche läuft ...")
 
         # Die Suche nimmt den Zugang aus den FELDERN, nicht aus den
@@ -840,6 +873,7 @@ class SettingsDialog(SettingsDialogBase):
                 Die Kandidaten aus dem Faden, bereits sortiert.
         """
         self.team_search_button.setEnabled(True)
+        self.team_spinner.stop()
         self._hits = list(hits) if isinstance(hits, list) else []
         self.team_hits.setRowCount(len(self._hits))
         for row, candidate in enumerate(self._hits):
@@ -865,6 +899,7 @@ class SettingsDialog(SettingsDialogBase):
     def _team_search_failed(self, message: str) -> None:
         """Meldet eine gescheiterte Suche, ohne den Dialog anzuhalten."""
         self.team_search_button.setEnabled(True)
+        self.team_spinner.stop()
         self.team_status.setText(f"Suche gescheitert: {message}")
 
     def _team_add(self) -> None:
