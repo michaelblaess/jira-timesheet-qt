@@ -413,6 +413,9 @@ class TicketPreview(QWidget):
     @staticmethod
     def _meta_text(data: TicketPreviewData) -> str:
         parts = [data.issue_type]
+        if data.story_points:
+            points = data.story_points
+            parts.append(f"{points:g} SP".replace(".", ","))
         if not is_empty_priority(data.priority):
             parts.append(f"Priorität {data.priority}")
         return " · ".join(part for part in parts if part)

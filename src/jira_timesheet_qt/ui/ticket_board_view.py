@@ -80,6 +80,20 @@ class TicketFilterProxy(QSortFilterProxyModel):
         self.setSortRole(SORT_ROLE)
         self.setRecursiveFilteringEnabled(True)
 
+    def lessThan(self, left: QModelIndex | QPersistentModelIndex, right: QModelIndex | QPersistentModelIndex) -> bool:  # noqa: N802 - Qt-Schreibweise
+        """Vergleicht die Sortierwerte in Python.
+
+        Das Modell liefert fuer Nummer, Typ und Bearbeiter Tupel. Qts eigener
+        Vergleich kennt fuer ein Python-Tupel keine Ordnung und liess die
+        Zeilen deshalb stehen, wo sie waren - aufgefallen an ABC-5979 hinter
+        ABC-17741 (23.09.2026).
+        """
+        mine, theirs = left.data(SORT_ROLE), right.data(SORT_ROLE)
+        try:
+            return bool(mine < theirs)
+        except TypeError:
+            return super().lessThan(left, right)
+
     def set_needle(self, text: str) -> None:
         """Setzt den Suchtext fuer Ticketnummer und Titel."""
         self._needle = text.strip().casefold()
@@ -184,8 +198,9 @@ class TicketBoardView(QWidget):
             title:
                 Ueberschrift der Ansicht.
             with_charts:
-                Ob die Auswertung angezeigt wird. Bei fremden Tickets waere
-                sie eine Leistungskennzahl ueber jemand anderen.
+                Ob die Auswertung angezeigt wird. Sie rechnet ueber die
+                eigenen Tickets (history_jql). Kennzahlen je Team-Mitglied
+                liefert der Reiter Performance-Booster.
             mode:
                 Helles oder dunkles Erscheinungsbild.
             with_members:
@@ -248,7 +263,7 @@ class TicketBoardView(QWidget):
             # Nur sichtbar, solange ein Gast gewaehlt ist.
             self._add_guest = QPushButton("Zur Merkliste hinzufügen")
             self._add_guest.setObjectName("BoardAddGuest")
-            self._add_guest.setToolTip("Die Person dauerhaft in die Merkliste von \"Mein Team\" aufnehmen")
+            self._add_guest.setToolTip('Die Person dauerhaft in die Merkliste von "Mein Team" aufnehmen')
             self._add_guest.clicked.connect(lambda _checked=False: self.guest_add_requested.emit())
             self._add_guest.setVisible(False)
             head.addWidget(self._add_guest)
@@ -712,19 +727,12 @@ class TicketBoardView(QWidget):
         menu.addAction(detail)
 
         open_action = QAction("Ticket im Browser öffnen", menu)
-        open_action.setEnabled(
-            ticket is not None and bool(ticket.url) and not self._anonymized
-        )
+        open_action.setEnabled(ticket is not None and bool(ticket.url) and not self._anonymized)
         open_action.triggered.connect(lambda _=False, t=ticket: self._open(t))
         menu.addAction(open_action)
 
         report = QAction("Ticket-Analyse erstellen", menu)
-        report.setEnabled(
-            ticket is not None
-            and bool(ticket.key)
-            and self._report_available
-            and not self._anonymized
-        )
+        report.setEnabled(ticket is not None and bool(ticket.key) and self._report_available and not self._anonymized)
         report.triggered.connect(lambda _=False, t=ticket: self._emit_report(t))
         menu.addAction(report)
 
@@ -783,9 +791,7 @@ class TicketBoardView(QWidget):
         actions: list[QAction] = []
         for name, account_id in people:
             action = QAction(f"Tickets von {name} anzeigen", menu)
-            action.triggered.connect(
-                lambda _=False, a=account_id, n=name: self.person_requested.emit(a, n)
-            )
+            action.triggered.connect(lambda _=False, a=account_id, n=name: self.person_requested.emit(a, n))
             actions.append(action)
         return actions
 

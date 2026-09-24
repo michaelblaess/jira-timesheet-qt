@@ -13,7 +13,7 @@ from datetime import date
 import pytest
 from PySide6.QtCore import QModelIndex, Qt
 from PySide6.QtGui import QPalette
-from PySide6.QtWidgets import QApplication, QTableView
+from PySide6.QtWidgets import QApplication
 
 from jira_timesheet_qt.models.export_column import default_columns
 from jira_timesheet_qt.models.settings import Settings
@@ -150,12 +150,14 @@ class TestModel:
 
 class TestWindow:
     def test_table_shows_all_rows(self, window: MainWindow) -> None:
-        table = window.findChild(QTableView)
+        # Die Stundenliste selbst: seit dem Performance-Booster gibt es mehr als eine Tabelle.
+        table = window._table
         assert table is not None
         assert table.model().rowCount() == 15
 
     def test_search_filters_rows(self, window: MainWindow) -> None:
-        table = window.findChild(QTableView)
+        # Die Stundenliste selbst: seit dem Performance-Booster gibt es mehr als eine Tabelle.
+        table = window._table
         assert table is not None
         window._proxy.setFilterFixedString("Consent")
         assert table.model().rowCount() == 1
@@ -172,7 +174,8 @@ class TestWindow:
         assert proxy.index(0, _HOURS_COL).data(Qt.ItemDataRole.DisplayRole) == "0,50"
 
     def test_selection_tracks_the_current_entry(self, window: MainWindow) -> None:
-        table = window.findChild(QTableView)
+        # Die Stundenliste selbst: seit dem Performance-Booster gibt es mehr als eine Tabelle.
+        table = window._table
         assert table is not None
         table.selectRow(0)
         entry = window._proxy.index(0, 0).data(ENTRY_ROLE)

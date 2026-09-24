@@ -25,7 +25,8 @@ from jira_timesheet_qt.ui.jira_worker import BudgetFieldWorker
 from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
 
 # Reihenfolge und Beschriftung der Reiter, abgeglichen mit der Textual-Fassung.
-# Die letzten beiden liefert QAppFramework.
+# Die letzten beiden liefert QAppFramework. "Performance-Booster" gibt es nur
+# in der Qt-Fassung - die Textual-Fassung hat den Reiter nicht.
 ERWARTETE_SEITEN = [
     "Jira",
     "Netzwerk",
@@ -34,6 +35,7 @@ ERWARTETE_SEITEN = [
     "Arbeitszeit",
     "Tickets",
     "Mein Team",
+    "Performance-Booster",
     "Darstellung",
     "Speicherort",
 ]

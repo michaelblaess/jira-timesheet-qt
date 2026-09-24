@@ -303,7 +303,11 @@ class TicketPreviewWorker(QThread):
             ):
                 return None
 
-        names = list(settings.preview_extra_fields)
+        extras = list(settings.preview_extra_fields)
+        # Das Story-Points-Feld des Performance-Boosters wird mit aufgeloest und
+        # steht in der Kopfzeile neben dem Typ, nicht bei den Zusatzfeldern.
+        points_name = settings.perf_points_field.strip()
+        names = [*extras, *([points_name] if points_name and points_name not in extras else [])]
         ids = self._cache.load_field_ids(names) if names else {}
         if ids is None:
             ids = resolve_field_ids(await client.get_fields(), names)
@@ -312,8 +316,9 @@ class TicketPreviewWorker(QThread):
             if fehlend:
                 self.log.emit(f"Vorschau: diese Felder kennt Jira nicht: {', '.join(fehlend)}")
 
+        extra_ids = {name: ids[name] for name in extras if name in ids}
         raw = await client.get_issue(self._key, [*BASE_FIELDS, *ids.values()], rendered=True)
-        data = parse_issue(raw, ids, datetime.now())
+        data = parse_issue(raw, extra_ids, datetime.now(), ids.get(points_name, ""))
         data = await self._load_images(client, data)
         self._cache.save(data)
         return data

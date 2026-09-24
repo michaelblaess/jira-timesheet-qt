@@ -76,7 +76,9 @@ class TestWidget:
             (0, 0, ("0,00 h", "")),
         ],
     )
-    def test_gebuchte_stunden(self, qapp: QApplication, gebucht: int, geschaetzt: int, erwartet: tuple[str, str]) -> None:
+    def test_gebuchte_stunden(
+        self, qapp: QApplication, gebucht: int, geschaetzt: int, erwartet: tuple[str, str]
+    ) -> None:
         vorschau = TicketPreview(Mode.DARK)
         vorschau.show_data(_daten(time_spent_seconds=gebucht, original_estimate_seconds=geschaetzt))
         assert vorschau.hours_texts() == erwartet
@@ -117,9 +119,7 @@ class TestWidget:
         assert vorschau._body.openExternalLinks() is False
         assert vorschau._key.openExternalLinks() is False
 
-    def test_relative_links_gehen_an_den_host(
-        self, qapp: QApplication, blockierte_browser_aufrufe: list[str]
-    ) -> None:
+    def test_relative_links_gehen_an_den_host(self, qapp: QApplication, blockierte_browser_aufrufe: list[str]) -> None:
         vorschau = TicketPreview(Mode.DARK)
         vorschau.set_host(HOST)
         vorschau._open_link(QUrl("/jira/people/123"))
@@ -553,9 +553,7 @@ def attrappe(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
 def _fenster(vorschau: bool = True) -> Any:
     from jira_timesheet_qt.ui.main_window import MainWindow
 
-    einstellungen = Settings(
-        show_ticket_preview=vorschau, jira_host=HOST, email="max@example.com", jira_token="geheim"
-    )
+    einstellungen = Settings(show_ticket_preview=vorschau, jira_host=HOST, email="max@example.com", jira_token="geheim")
     return MainWindow(einstellungen, Mode.DARK)
 
 
@@ -764,3 +762,26 @@ class TestVorschauInTicketlisten:
         fenster.closeEvent(QCloseEvent())
         assert fenster._list_splitter.count() == 2
         assert fenster._preview.parentWidget() is fenster._list_splitter
+
+
+class TestLeerzustandOhneVorschau:
+    """Neben dem leeren Stundenzettel steht keine graue Vorschau-Flaeche."""
+
+    def test_leerer_stundenzettel_blendet_die_vorschau_aus(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        fenster = _fenster()
+        assert fenster._list_stack.currentIndex() == 0
+        assert fenster._preview.isHidden()
+
+    def test_in_der_ticketliste_ist_sie_wieder_da(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        from jira_timesheet_qt.ui.main_window import _VIEWS
+
+        fenster = _fenster()
+        fenster._stack.setCurrentIndex(_VIEWS.index("Meine Tickets"))
+        assert not fenster._preview.isHidden()
+        fenster._stack.setCurrentIndex(0)
+        assert fenster._preview.isHidden()
+
+    def test_mit_eintraegen_steht_sie_neben_der_liste(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        fenster = _fenster()
+        fenster._list_stack.setCurrentIndex(1)
+        assert not fenster._preview.isHidden()

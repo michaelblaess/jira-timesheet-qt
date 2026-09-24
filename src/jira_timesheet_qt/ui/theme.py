@@ -210,6 +210,16 @@ def build_qss(mode: Mode, font_sans: str, font_mono: str) -> str:
     #PreviewMeta {{ color: {p.text_secondary}; font-size: 13px; padding-top: 3px; background: transparent; }}
     #PreviewHours {{ color: {p.accent}; font-size: 18px; font-weight: 800; background: transparent; }}
     #PreviewHoursHint {{ color: {p.text_secondary}; font-size: 12px; background: transparent; }}
+    #PerfRange {{ font-size: 18px; font-weight: 700; background: transparent; }}
+    #PerfPriorRange {{ color: {p.text_secondary}; font-size: 12px; background: transparent; }}
+    #PerfTile {{ border: 1px solid {p.border}; border-radius: 4px; }}
+    #PerfTile[clickable="true"]:hover {{ border: 1px solid {p.accent}; }}
+    #PerfTile[active="true"] {{ border: 1px solid {p.accent}; background-color: {p.accent_subtle}; }}
+    #PerfCard {{ border: 1px solid {p.border}; border-radius: 4px; }}
+    #PerfCardTitle {{ color: {p.text_secondary}; font-size: 12px; font-weight: 600; background: transparent; }}
+    #PerfTileTitle {{ color: {p.text_secondary}; font-size: 12px; background: transparent; }}
+    #PerfTileValue {{ font-size: 22px; font-weight: 700; background: transparent; }}
+    #PerfTileDelta {{ font-size: 12px; background: transparent; }}
     #PreviewEstimate {{ background-color: {p.bg_elevated}; border: none; border-radius: 2px; }}
     #PreviewEstimate::chunk {{ background-color: {p.accent}; border-radius: 2px; }}
     #PreviewEstimate[over="true"]::chunk {{ background-color: {p.red}; }}

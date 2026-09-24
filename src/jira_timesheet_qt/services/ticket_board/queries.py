@@ -177,10 +177,11 @@ def relevant_jql(account_id: str, window_days: int = 0) -> str:
 def history_jql() -> str:
     """Alle Tickets des Benutzers fuer die Auswertung, offen wie erledigt.
 
-    Bewusst OHNE Parameter fuer fremde Kennungen. Die Auswertung zeigt
-    Durchsatz je Monat, und das ist ueber eine andere Person eine
-    Leistungskennzahl. Die Ansicht "Mein Team" zeigt deshalb keine Diagramme.
-    Siehe auch ``last_touch_jql`` fuer den erlaubten Blick auf Fremde.
+    Bewusst OHNE Parameter fuer fremde Kennungen: diese Abfrage speist die
+    Auswertung unter "Meine Tickets", und die bleibt die eigene. Kennzahlen je
+    Team-Mitglied zeigt seit dem 23.09.2026 der Reiter Performance-Booster mit
+    eigenen, ausdruecklich benannten Abfragen (services.performance.queries).
+    Siehe auch ``last_touch_jql`` fuer den Blick auf Fremde in "Mein Team".
 
     Returns:
         Der JQL-Ausdruck.
