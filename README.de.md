@@ -169,8 +169,10 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
 - **Mein Team** - Derselbe Blick auf den Ticketstand von Kolleginnen und Kollegen, ohne dass
   die etwas installieren müssen. Gepflegt wird eine Merkliste in den Einstellungen, die Suche
   läuft über den **Namen** - eine Person kann mehrere Jira-Konten führen, und viele Konten
-  geben ihre Mailadresse gar nicht heraus. Bewusst **ohne Diagramme**: Durchsatz je Monat wäre
-  über eine andere Person eine Leistungskennzahl, und darum geht es hier nicht
+  geben ihre Mailadresse gar nicht heraus. Bewusst **ohne Diagramme**: Kennzahlen je Person
+  stehen getrennt im Performance-Booster. Im Kontextmenü jeder Ticketliste nimmt "X zu meinem Team hinzufügen" eine Person direkt auf.
+- **Neue Tickets** - Der Blick am Morgen: welche Tickets die Kolleginnen und Kollegen aus "Mein Team" zuletzt angelegt haben. Die Person wählst Du im Auswahlfeld, "Alle" steht vorn, den Zeitraum über 1T, 2T, 3T oder 7T. Gezählt wird in Arbeitstagen: 1T heißt seit Beginn des letzten Arbeitstags, am Montag also ab Freitag, und Feiertage zählen nicht mit. Die Anzahl steht im Reitertitel, und auf Wunsch öffnet der Reiter gleich beim Start. Rechts steht die Ticket-Vorschau
+- **Performance-Booster** - Kennzahlen je Person wie bei einer Aktie, für 1M, 3M, 6M oder seit Jahresbeginn und im Vergleich zur Vorperiode: erledigte und erstellte Tickets, Durchlaufzeit in aktiven Arbeitstagen, Arbeitstage je Story Point, Anteil kleiner Tickets und gebuchte Stunden. Dazu Diagramme und Hinweise mit verlinkten Tickets, etwa zu langen Tickets oder vielen kleinen. Gedacht zuerst für den Blick auf die eigene Arbeit, die Schwellen stehen in den Einstellungen
 - **Pile of Shame** - Markiert Tickets, deren Status Aktivität behauptet, obwohl es seit der
   Schwelle weder eine Änderung noch eine gebuchte Stunde gab. Die zweite Hälfte ist der
   Trick: ein bewusst offengehaltenes Dauerticket mit regelmäßigen Buchungen bleibt draußen,
