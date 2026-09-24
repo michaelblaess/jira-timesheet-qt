@@ -782,6 +782,13 @@ class SettingsDialog(SettingsDialogBase):
         self.team_remove_button.clicked.connect(self._team_remove)
         form.addRow(self.team_remove_button)
 
+        self.start_with_new_tickets = QCheckBox("Beim Start den Reiter \"Neue Tickets\" öffnen")
+        self.start_with_new_tickets.setToolTip(
+            "Zeigt nach dem Start, was die Merkliste seit dem letzten Arbeitstag angelegt hat."
+        )
+        self.start_with_new_tickets.setChecked(self._settings.start_with_new_tickets)
+        form.addRow(self.beschriftung(""), self.start_with_new_tickets)
+
         self._roster: Roster = from_storage(self._settings.team_members)
         self._hits: list[AccountCandidate] = []
         self._team_worker: TeamSearchWorker | None = None
@@ -1147,6 +1154,7 @@ class SettingsDialog(SettingsDialogBase):
         s.board_closing_status = _split(self.board_closing.text())
         s.board_done_status = _split(self.board_done.text())
         s.team_members = to_storage(self._roster)
+        s.start_with_new_tickets = self.start_with_new_tickets.isChecked()
         s.board_priorities = _split(self.board_priorities.text())
         s.board_window_days = self.board_window.value()
         s.board_stale_days = self.board_stale.value()

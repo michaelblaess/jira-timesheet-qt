@@ -225,6 +225,8 @@ class Settings:
     # Einstellungen. Je Eintrag stehen darin display_name und account_ids,
     # letzteres als LISTE - eine Person kann mehrere Konten fuehren.
     team_members: list[dict[str, object]] = field(default_factory=list)
+    # Beim Start gleich den Reiter "Neue Tickets" zeigen - der Blick am Morgen.
+    start_with_new_tickets: bool = False
 
     SETTINGS_DIR: Path = Path.home() / ".jira-timesheet-qt"
     SETTINGS_FILE: Path = SETTINGS_DIR / "settings.json"
@@ -293,6 +295,7 @@ class Settings:
         "perf_points_field",
         "perf_days_per_point",
         "team_members",
+        "start_with_new_tickets",
     )
 
     def to_dict(self) -> dict[str, object]:
@@ -428,6 +431,7 @@ class Settings:
                 perf_points_field=str(data.get("perf_points_field", "Story Points")).strip(),
                 perf_days_per_point=float(data.get("perf_days_per_point", 3.0) or 0.0),
                 team_members=Settings._parse_team(data.get("team_members")),
+                start_with_new_tickets=bool(data.get("start_with_new_tickets", False)),
             )
         except Exception as exc:
             logger.warning("Settings konnten nicht aufgebaut werden: %s", exc)
