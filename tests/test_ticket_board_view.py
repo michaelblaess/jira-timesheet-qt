@@ -10,7 +10,7 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
-from PySide6.QtCore import QModelIndex
+from PySide6.QtCore import QModelIndex, Qt
 from PySide6.QtWidgets import QApplication, QComboBox
 
 from jira_timesheet_qt.models.settings import Settings
@@ -45,7 +45,6 @@ def tickets_von(view: TicketBoardView) -> list[Ticket]:
     """
     assert view.board is not None, "Die Ansicht hat kein Board - Testaufbau pruefen"
     return view.board.tickets
-
 
 
 def ticket(
@@ -112,9 +111,7 @@ class TestModell:
         # "10 At" vor "9 At" waere die Reihenfolge einer Zeichenkette und
         # damit falsch.
         model = TicketBoardModel()
-        model.set_board(
-            board(Group(role=Role.ACTIVE, tickets=[ticket("A-1", idle=9), ticket("A-2", idle=10)]))
-        )
+        model.set_board(board(Group(role=Role.ACTIVE, tickets=[ticket("A-1", idle=9), ticket("A-2", idle=10)])))
         parent = model.index(0, 0)
         from jira_timesheet_qt.ui.ticket_board_model import SORT_ROLE
 
@@ -158,9 +155,7 @@ class TestAnsicht:
         assert view.board is None
         assert view._proxy.rowCount() == 0
 
-    def test_kein_eigener_ladeknopf_und_kein_eigenes_suchfeld(
-        self, qapp: QApplication
-    ) -> None:
+    def test_kein_eigener_ladeknopf_und_kein_eigenes_suchfeld(self, qapp: QApplication) -> None:
         # Beides gibt es in der Werkzeugleiste. Zwei Bedienelemente, die
         # dasselbe tun, sind eine Fehlerquelle und kein Komfort.
         from PySide6.QtWidgets import QLineEdit, QPushButton
@@ -210,10 +205,7 @@ class TestAnsicht:
         # Aufbau. Ohne AdjustToContents bleibt das Feld auf der Breite stehen,
         # die es beim ersten Anzeigen hatte.
         view = TicketBoardView("Lang")
-        assert (
-            view._status_box.sizeAdjustPolicy()
-            is QComboBox.SizeAdjustPolicy.AdjustToContents
-        )
+        assert view._status_box.sizeAdjustPolicy() is QComboBox.SizeAdjustPolicy.AdjustToContents
 
     def test_statusfilter_wirkt(self, qapp: QApplication) -> None:
         view = self._view()
@@ -304,20 +296,14 @@ class TestBearbeiterfilter:
 
     def test_namen_kommen_aus_den_vorkommenden_werten(self, qapp: QApplication) -> None:
         view = self._view()
-        eintraege = [
-            view._assignee_box.itemText(i) for i in range(view._assignee_box.count())
-        ]
+        eintraege = [view._assignee_box.itemText(i) for i in range(view._assignee_box.count())]
         assert eintraege == ["alle", "Beispiel, Bruno", "Platzhalter, Paula", "ohne Bearbeiter"]
 
     def test_ohne_unzugewiesene_fehlt_der_eintrag(self, qapp: QApplication) -> None:
         # Ein Filtereintrag, der garantiert nichts findet, hilft niemandem.
         view = TicketBoardView("Aktivitaeten", with_assignees=True)
-        view.set_board(
-            board(Group(role=Role.ACTIVE, tickets=[ticket("A-1", assignee="Platzhalter, Paula")]))
-        )
-        eintraege = [
-            view._assignee_box.itemData(i) for i in range(view._assignee_box.count())
-        ]
+        view.set_board(board(Group(role=Role.ACTIVE, tickets=[ticket("A-1", assignee="Platzhalter, Paula")])))
+        eintraege = [view._assignee_box.itemData(i) for i in range(view._assignee_box.count())]
         assert NO_ASSIGNEE not in eintraege
 
     def test_eine_person_blendet_die_anderen_aus(self, qapp: QApplication) -> None:
@@ -344,9 +330,7 @@ class TestBearbeiterfilter:
         view = self._view()
         view._assignee_box.setCurrentIndex(view._assignee_box.findData("Beispiel, Bruno"))
         assert self._sichtbare_schluessel(view) == ["A-3"]
-        view.set_board(
-            board(Group(role=Role.ACTIVE, tickets=[ticket("A-1", assignee="Platzhalter, Paula")]))
-        )
+        view.set_board(board(Group(role=Role.ACTIVE, tickets=[ticket("A-1", assignee="Platzhalter, Paula")])))
         assert self._sichtbare_schluessel(view) == ["A-1"]
 
     def test_er_greift_zusammen_mit_dem_status(self, qapp: QApplication) -> None:
@@ -373,10 +357,7 @@ class TestBearbeiterfilter:
         view = self._view()
         breite_von_18_zeichen = view._assignee_box.fontMetrics().horizontalAdvance("x" * 18)
         assert view._assignee_box.sizeHint().width() >= breite_von_18_zeichen
-        assert (
-            view._assignee_box.sizeAdjustPolicy()
-            is QComboBox.SizeAdjustPolicy.AdjustToContents
-        )
+        assert view._assignee_box.sizeAdjustPolicy() is QComboBox.SizeAdjustPolicy.AdjustToContents
 
 
 class TestEinstellungsbruecke:
@@ -506,9 +487,7 @@ class TestEinstellungsseite:
         ):
             assert feld.minimumWidth() > FIELD_WIDTH
 
-    def test_das_breiteste_feld_passt_in_den_kleinsten_dialog(
-        self, qapp: QApplication
-    ) -> None:
+    def test_das_breiteste_feld_passt_in_den_kleinsten_dialog(self, qapp: QApplication) -> None:
         # Ein breiteres Feld nuetzt nichts, wenn es rechts aus dem Dialog
         # laeuft. Gemessen wurde genau das: Feldkante 748 bei 720 Pixeln
         # Dialogbreite.
@@ -691,12 +670,8 @@ class TestSpalteBearbeiter:
         from jira_timesheet_qt.ui.ticket_board_model import COL_ASSIGNEE
 
         model = TicketBoardModel()
-        kopf = model.headerData(
-            COL_ASSIGNEE, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole
-        )
-        model.set_board(
-            board(Group(role=Role.ACTIVE, tickets=[ticket("A-1", assignee="Mustermann, Max")]))
-        )
+        kopf = model.headerData(COL_ASSIGNEE, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole)
+        model.set_board(board(Group(role=Role.ACTIVE, tickets=[ticket("A-1", assignee="Mustermann, Max")])))
         zelle = model.index(0, COL_ASSIGNEE, model.index(0, 0)).data()
         assert kopf == "Bearbeiter"
         assert zelle == "Mustermann, Max"
@@ -732,9 +707,7 @@ class TestSpalteBearbeiter:
         from PySide6.QtCore import Qt
 
         model = TicketBoardModel()
-        model.set_board(
-            board(Group(role=Role.ACTIVE, tickets=[ticket("A-1", assignee="Mustermann, Max")]))
-        )
+        model.set_board(board(Group(role=Role.ACTIVE, tickets=[ticket("A-1", assignee="Mustermann, Max")])))
         hinweis = model.index(0, 0, model.index(0, 0)).data(Qt.ItemDataRole.ToolTipRole)
         assert "Bearbeiter: Mustermann, Max" in hinweis
 
@@ -745,18 +718,14 @@ class TestDetailfenster:
     def test_dialog_nimmt_ein_ticket_an(self, qapp: QApplication) -> None:
         from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
 
-        dialog = TicketDetailDialog(
-            ticket("A-1", status="In Arbeit", summary="Ein Titel"), "", None
-        )
+        dialog = TicketDetailDialog(ticket("A-1", status="In Arbeit", summary="Ein Titel"), "", None)
         assert dialog.windowTitle() == "A-1"
 
     def test_ticketfelder_statt_zeitfelder(self, qapp: QApplication) -> None:
         from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
 
         zeilen = dict(
-            TicketDetailDialog._rows(
-                ticket("A-1", status="In Arbeit", markers=(Marker.PILE_OF_SHAME,), idle=42)
-            )
+            TicketDetailDialog._rows(ticket("A-1", status="In Arbeit", markers=(Marker.PILE_OF_SHAME,), idle=42))
         )
         assert zeilen["Status"] == "In Arbeit"
         assert "42 Arbeitstage" in zeilen["Liegezeit"]
@@ -779,8 +748,7 @@ class TestDetailfenster:
         from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
 
         entry = WorklogEntry(
-            date=dt2.date(2026, 8, 4), ticket="A-9", summary="Titel", hours=4.0,
-            author="Wer", budget=""
+            date=dt2.date(2026, 8, 4), ticket="A-9", summary="Titel", hours=4.0, author="Wer", budget=""
         )
         zeilen = dict(TicketDetailDialog._rows(entry))
         assert zeilen["Stunden"] == "4,00 h"
@@ -839,14 +807,11 @@ class TestSucheImFenster:
 
     def test_werkzeugleiste_filtert_die_ticket_ansicht(self, qapp: QApplication) -> None:
         window = MainWindow(Settings(), Mode.DARK)
-        window._assigned_board.set_board(
-            board(Group(role=Role.ACTIVE, tickets=[ticket("A-1"), ticket("B-2")]))
-        )
+        window._assigned_board.set_board(board(Group(role=Role.ACTIVE, tickets=[ticket("A-1"), ticket("B-2")])))
         window._search.setText("A-1")
         proxy = window._assigned_board._proxy
         sichtbar = [
-            proxy.index(r, 0, proxy.index(0, 0)).data(TICKET_ROLE).key
-            for r in range(proxy.rowCount(proxy.index(0, 0)))
+            proxy.index(r, 0, proxy.index(0, 0)).data(TICKET_ROLE).key for r in range(proxy.rowCount(proxy.index(0, 0)))
         ]
         assert sichtbar == ["A-1"]
 
@@ -1053,9 +1018,7 @@ class TestAktualisieren:
         window.reload_current()
         assert gerufen == ["jahr", "monat"]
 
-    def test_auf_meinen_tickets_laedt_die_tickets_und_den_monat(
-        self, qapp: QApplication
-    ) -> None:
+    def test_auf_meinen_tickets_laedt_die_tickets_und_den_monat(self, qapp: QApplication) -> None:
         # Der gemeldete Fall: ohne den Monat stuende auf dem Stundenzettel
         # danach der alte Stand.
         window, gerufen = self._fenster()
@@ -1063,17 +1026,13 @@ class TestAktualisieren:
         window.reload_current()
         assert gerufen == [f"board:{MODE_ASSIGNED}", "monat"]
 
-    def test_auf_relevanten_tickets_laedt_diese_und_den_monat(
-        self, qapp: QApplication
-    ) -> None:
+    def test_auf_relevanten_tickets_laedt_diese_und_den_monat(self, qapp: QApplication) -> None:
         window, gerufen = self._fenster()
         window._stack.setCurrentIndex(_VIEWS.index("Meine Aktivitäten"))
         window.reload_current()
         assert gerufen == [f"board:{MODE_RELEVANT}", "monat"]
 
-    def test_die_uebrigen_ansichten_gelten_danach_als_veraltet(
-        self, qapp: QApplication
-    ) -> None:
+    def test_die_uebrigen_ansichten_gelten_danach_als_veraltet(self, qapp: QApplication) -> None:
         # Sie laden beim naechsten Hinwechseln - sofort mitzuziehen waere
         # teuer und meist umsonst.
         window, _ = self._fenster()
@@ -1087,9 +1046,7 @@ class TestAktualisieren:
         assert window._board_loaded[MODE_RELEVANT] is False
         assert window._year_loaded_for is None
 
-    def test_ohne_zugang_bleibt_es_bei_der_sichtbaren_ansicht(
-        self, qapp: QApplication
-    ) -> None:
+    def test_ohne_zugang_bleibt_es_bei_der_sichtbaren_ansicht(self, qapp: QApplication) -> None:
         # Sonst zeigt ein F5 denselben Hinweis dreimal, und load_month
         # oeffnet dabei den Einstellungsdialog.
         window, gerufen = self._fenster(Settings())
@@ -1097,9 +1054,7 @@ class TestAktualisieren:
         window.reload_current()
         assert gerufen == [f"board:{MODE_ASSIGNED}"]
 
-    def test_ohne_zugang_laedt_das_jahr_weiterhin_das_jahr(
-        self, qapp: QApplication
-    ) -> None:
+    def test_ohne_zugang_laedt_das_jahr_weiterhin_das_jahr(self, qapp: QApplication) -> None:
         window, gerufen = self._fenster(Settings())
         window._stack.setCurrentIndex(_VIEWS.index("Jahr"))
         window.reload_current()
@@ -1126,9 +1081,7 @@ class TestAbrufKanaele:
 
         assert window._is_current(jahr, _CHANNEL_YEAR) is True
 
-    def test_ein_zweiter_jahresabruf_entwertet_den_ersten(
-        self, qapp: QApplication
-    ) -> None:
+    def test_ein_zweiter_jahresabruf_entwertet_den_ersten(self, qapp: QApplication) -> None:
         # Gegenprobe: innerhalb eines Kanals bleibt die Entwertung.
         from jira_timesheet_qt.ui.main_window import _CHANNEL_YEAR
 
@@ -1146,9 +1099,7 @@ class TestAbrufKanaele:
 
         window = MainWindow(Settings(), Mode.DARK)
         geleert: list[object] = []
-        monkeypatch.setattr(
-            MainWindow, "set_timesheet", lambda self, ts: geleert.append(ts)
-        )
+        monkeypatch.setattr(MainWindow, "set_timesheet", lambda self, ts: geleert.append(ts))
 
         window._on_failed("Netzwerkfehler", None, _CHANNEL_YEAR)
 
@@ -1178,9 +1129,7 @@ class TestStatusleiste:
     def _texte(self, window: MainWindow) -> str:
         from PySide6.QtWidgets import QLabel
 
-        return " ".join(
-            label.text() for label in window._summary.findChildren(QLabel)
-        )
+        return " ".join(label.text() for label in window._summary.findChildren(QLabel))
 
     def test_zeigt_ticketzahlen_statt_stunden(self, qapp: QApplication) -> None:
         # Ist, Soll und Umsatz haben mit einer Ticketliste nichts zu tun.
@@ -1305,13 +1254,11 @@ class TestMeldungskanaele:
         worker.progress.connect(kurz.append)
         worker.log.connect(lang.append)
         # Genau so haengt der Client am Faden.
-        worker.log.emit('JQL: assignee = currentUser() AND statusCategory != Done')
+        worker.log.emit("JQL: assignee = currentUser() AND statusCategory != Done")
         assert kurz == []
         assert len(lang) == 1
 
-    def test_fenster_schreibt_den_langen_kanal_ins_meldungsfenster(
-        self, qapp: QApplication
-    ) -> None:
+    def test_fenster_schreibt_den_langen_kanal_ins_meldungsfenster(self, qapp: QApplication) -> None:
         window = MainWindow(Settings(), Mode.DARK)
         vorher = window._log.line_count
         window.log_message("JQL: irgendwas")
@@ -1525,9 +1472,7 @@ class TestAnonymisierung:
         assert t.status != "Zur Übergabe"
         assert t.status
 
-    def test_die_verweis_url_zeigt_nicht_mehr_auf_den_echten_host(
-        self, qapp: QApplication
-    ) -> None:
+    def test_die_verweis_url_zeigt_nicht_mehr_auf_den_echten_host(self, qapp: QApplication) -> None:
         t = self._anonym().tickets[0]
         assert "echt.example.invalid" not in t.url
         assert t.key in t.url
@@ -1548,9 +1493,7 @@ class TestAnonymisierung:
         assert [g.role for g in anonym.groups] == [Role.ACTIVE]
         assert anonym.count == 1
 
-    def test_nicht_zugeordnete_status_werden_ebenfalls_ersetzt(
-        self, qapp: QApplication
-    ) -> None:
+    def test_nicht_zugeordnete_status_werden_ebenfalls_ersetzt(self, qapp: QApplication) -> None:
         # Sie erscheinen im Hinweis der Statusleiste.
         from jira_timesheet_qt.services.anonymizer import anonymize_board
 
@@ -1567,9 +1510,7 @@ class TestAnonymisierung:
         anonymize_board(echt)
         assert echt.tickets[0].key == "GEHEIM-4711"
 
-    def test_umschalten_baut_die_ansicht_aus_den_rohdaten_neu(
-        self, qapp: QApplication
-    ) -> None:
+    def test_umschalten_baut_die_ansicht_aus_den_rohdaten_neu(self, qapp: QApplication) -> None:
         window = MainWindow(Settings(), Mode.DARK)
         echt = self._echtes_board()
         window._real_boards[MODE_ASSIGNED] = echt
@@ -1581,18 +1522,14 @@ class TestAnonymisierung:
         window._toggle_anonymize()
         assert tickets_von(window._assigned_board)[0].key == "GEHEIM-4711"
 
-    def test_absprung_und_analyse_sind_im_screenshot_modus_gesperrt(
-        self, qapp: QApplication
-    ) -> None:
+    def test_absprung_und_analyse_sind_im_screenshot_modus_gesperrt(self, qapp: QApplication) -> None:
         # Die Nummern sind erfunden - beides liefe ins Leere.
         view = TicketBoardView("Test")
         view.set_board(self._anonym())
         view.set_report_available(True)
         view.set_anonymized(True)
         eintraege = {
-            a.text(): a.isEnabled()
-            for a in view.build_menu(tickets_von(view)[0]).actions()
-            if not a.isSeparator()
+            a.text(): a.isEnabled() for a in view.build_menu(tickets_von(view)[0]).actions() if not a.isSeparator()
         }
         assert eintraege["Ticket im Browser öffnen"] is False
         assert eintraege["Ticket-Analyse erstellen"] is False
@@ -1605,6 +1542,29 @@ class TestAnonymisierung:
         # Screenshot steht dann der Name eines Kollegen.
         from jira_timesheet_qt.services.anonymizer import _FAKE_AUTHORS
 
-        assert all(
-            any(teil in name for teil in ("Muster", "Beispiel")) for name in _FAKE_AUTHORS
+        assert all(any(teil in name for teil in ("Muster", "Beispiel")) for name in _FAKE_AUTHORS)
+
+
+class TestSortierungNachNummer:
+    """Die Ticketnummer sortiert numerisch: ABC-5979 vor ABC-17741."""
+
+    def test_nummer_sortiert_als_zahl(self, qapp: QApplication) -> None:
+        view = TicketBoardView("Test")
+        view.set_board(
+            board(Group(role=Role.ACTIVE, tickets=[ticket("ABC-17741"), ticket("ABC-5979"), ticket("ABC-17132")]))
         )
+        view._tree.sortByColumn(0, Qt.SortOrder.AscendingOrder)
+        parent = view._proxy.index(0, 0)
+        keys = [view._proxy.index(r, 0, parent).data(TICKET_ROLE).key for r in range(view._proxy.rowCount(parent))]
+        assert keys == ["ABC-5979", "ABC-17132", "ABC-17741"]
+
+    def test_typ_sortiert_fehler_zuerst(self, qapp: QApplication) -> None:
+        # Die Typ-Spalte liefert ebenfalls ein Tupel - sie sortierte bisher gar nicht.
+        view = TicketBoardView("Test")
+        view.set_board(
+            board(Group(role=Role.ACTIVE, tickets=[ticket("A-1"), ticket("A-2", is_bug=True), ticket("A-3")]))
+        )
+        view._tree.sortByColumn(3, Qt.SortOrder.AscendingOrder)
+        parent = view._proxy.index(0, 0)
+        keys = [view._proxy.index(r, 0, parent).data(TICKET_ROLE).key for r in range(view._proxy.rowCount(parent))]
+        assert keys[0] == "A-2"

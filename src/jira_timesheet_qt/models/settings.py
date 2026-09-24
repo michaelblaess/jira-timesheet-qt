@@ -202,6 +202,22 @@ class Settings:
     board_threshold_acceptance: float = 10.0
     board_threshold_closing: float = 0.0
 
+    # --- Performance-Booster --------------------------------------------
+    # Ab so vielen aktiven Arbeitstagen gilt ein erledigtes Ticket als lang.
+    perf_long_days: float = 15.0
+    # Unter so vielen gebuchten Stunden gilt ein Ticket als klein.
+    perf_small_hours: float = 1.0
+    # Ab diesem Anteil kleiner Tickets (Prozent) gibt es einen Hinweis.
+    perf_small_share: int = 40
+    # Ab so vielen gleichzeitig aktiven Tickets gibt es einen Hinweis.
+    perf_wip_limit: int = 3
+    # Name des Story-Points-Feldes. Die ID ist je Instanz verschieden und wird
+    # ueber den Namen aufgeloest. Leer = ohne Story Points.
+    perf_points_field: str = "Story Points"
+    # Ab so vielen aktiven Arbeitstagen je Story Point gilt ein geschaetztes
+    # Ticket als lang.
+    perf_days_per_point: float = 3.0
+
     # --- Mein Team ----------------------------------------------------
     # Die Merkliste in ihrer Speicherform, so wie services.team sie liest.
     # Bewusst als rohe Abbildungen und nicht als TeamMember: die
@@ -270,6 +286,12 @@ class Settings:
         "board_threshold_active",
         "board_threshold_acceptance",
         "board_threshold_closing",
+        "perf_long_days",
+        "perf_small_hours",
+        "perf_small_share",
+        "perf_wip_limit",
+        "perf_points_field",
+        "perf_days_per_point",
         "team_members",
     )
 
@@ -398,6 +420,13 @@ class Settings:
                     data.get("board_threshold_acceptance", 10.0) or 0.0
                 ),
                 board_threshold_closing=float(data.get("board_threshold_closing", 0.0) or 0.0),
+                perf_long_days=float(data.get("perf_long_days", 15.0) or 0.0),
+                perf_small_hours=float(data.get("perf_small_hours", 1.0) or 0.0),
+                perf_small_share=int(data.get("perf_small_share", 40) or 0),
+                perf_wip_limit=int(data.get("perf_wip_limit", 3) or 0),
+                # Bewusst ohne "or": ein geleertes Feld heisst "ohne Story Points".
+                perf_points_field=str(data.get("perf_points_field", "Story Points")).strip(),
+                perf_days_per_point=float(data.get("perf_days_per_point", 3.0) or 0.0),
                 team_members=Settings._parse_team(data.get("team_members")),
             )
         except Exception as exc:

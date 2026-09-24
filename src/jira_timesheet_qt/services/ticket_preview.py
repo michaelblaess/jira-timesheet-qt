@@ -55,7 +55,7 @@ _FIELD_IDS_FILE = "_fields.json"
 # Fassung der Cache-Dateien. Hochzaehlen, sobald neue Felder dazukommen: die
 # Pruefung auf Aenderungen vergleicht nur updated und die gebuchte Zeit, ein
 # alter Eintrag ohne das neue Feld bliebe sonst dauerhaft ohne es.
-CACHE_SCHEMA = 5
+CACHE_SCHEMA = 6
 
 # Statuskategorien, die Jira an jedem Status mitliefert (statusCategory.key).
 STATUS_CATEGORIES = frozenset({"new", "indeterminate", "done"})
@@ -102,6 +102,8 @@ class TicketPreviewData:
     fix_versions: str = ""
     # Zusatzfelder in der Reihenfolge der Einstellungen: (Feldname, Wert).
     extra: list[tuple[str, str]] = field(default_factory=list)
+    # Schaetzung aus dem Story-Points-Feld der Einstellungen, None = keine.
+    story_points: float | None = None
     description_html: str = ""
     # Bildadresse aus dem Jira-HTML -> Dateiname im Bildordner des Tickets.
     images: dict[str, str] = field(default_factory=dict)
@@ -142,6 +144,7 @@ class TicketPreviewData:
             original_estimate_seconds=seconds_value(data.get("original_estimate_seconds")),
             fix_versions=str(data.get("fix_versions", "")),
             extra=extra,
+            story_points=points_value(data.get("story_points")),
             description_html=str(data.get("description_html", "")),
             images=images,
             fetched_at=str(data.get("fetched_at", "")),
@@ -239,7 +242,18 @@ def status_category(value: Any) -> str:
     return key if isinstance(key, str) and key in STATUS_CATEGORIES else ""
 
 
-def parse_issue(raw: dict[str, Any], field_ids: dict[str, str], fetched_at: datetime) -> TicketPreviewData:
+def points_value(value: Any) -> float | None:
+    """Liest eine Schaetzung. Null und Unlesbares zaehlen als keine."""
+    try:
+        points = float(value)
+    except (TypeError, ValueError):
+        return None
+    return points if points > 0 else None
+
+
+def parse_issue(
+    raw: dict[str, Any], field_ids: dict[str, str], fetched_at: datetime, points_field: str = ""
+) -> TicketPreviewData:
     """Baut die Vorschau-Daten aus der Jira-Antwort.
 
     Args:
@@ -249,6 +263,8 @@ def parse_issue(raw: dict[str, Any], field_ids: dict[str, str], fetched_at: date
             Zusatzfelder als Name -> ID (siehe resolve_field_ids).
         fetched_at:
             Zeitpunkt des Abrufs.
+        points_field:
+            Feld-ID der Story Points, leer = ohne.
     """
     fields = raw.get("fields") or {}
     rendered = raw.get("renderedFields") or {}
@@ -277,6 +293,7 @@ def parse_issue(raw: dict[str, Any], field_ids: dict[str, str], fetched_at: date
         original_estimate_seconds=seconds_value(fields.get("timeoriginalestimate")),
         fix_versions=field_value_text(fields.get("fixVersions")),
         extra=[(name, field_value_text(fields.get(field_id))) for name, field_id in field_ids.items()],
+        story_points=points_value(fields.get(points_field)) if points_field else None,
         description_html=_description_html(fields, rendered),
         fetched_at=fetched_at.isoformat(timespec="seconds"),
     )

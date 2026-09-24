@@ -51,6 +51,7 @@ from .queries import (
 from .rules import (
     build_board,
     is_blocked,
+    key_sort_value,
     markers_for,
     parse_ts,
     pending_worklog_keys,
@@ -91,6 +92,7 @@ __all__ = [
     "is_blocked",
     "last_touch_jql",
     "markers_for",
+    "key_sort_value",
     "parse_ts",
     "pending_worklog_keys",
     "relevant_jql",

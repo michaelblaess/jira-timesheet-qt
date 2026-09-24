@@ -12,7 +12,7 @@ from typing import Any
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QObject, QPersistentModelIndex, Qt
 from PySide6.QtGui import QColor, QFont
 
-from jira_timesheet_qt.services.ticket_board import Board, Group, Marker, Role, Ticket
+from jira_timesheet_qt.services.ticket_board import Board, Group, Marker, Role, Ticket, key_sort_value
 
 # Qt reicht je nach Aufrufweg den einen oder den anderen Indextyp herein.
 AnyIndex = QModelIndex | QPersistentModelIndex
@@ -308,7 +308,7 @@ class TicketBoardModel(QAbstractItemModel):
             return ticket.summary.casefold()
         if column == COL_STATUS:
             return ticket.status.casefold()
-        return ticket.key
+        return key_sort_value(ticket.key)
 
     @staticmethod
     def _tooltip(ticket: Ticket) -> str:

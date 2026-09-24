@@ -6,6 +6,16 @@ import random
 from dataclasses import replace
 
 from jira_timesheet_qt.models.timesheet import Timesheet, TimesheetDay, WorklogEntry
+from jira_timesheet_qt.services.performance import (
+    INVOLVE_ACTIVE,
+    INVOLVE_CLOSED,
+    SELF_NAME,
+    OpenTicket,
+    PerformanceReport,
+    PeriodTicket,
+    TicketMetric,
+    build_hints,
+)
 from jira_timesheet_qt.services.ticket_board import Board, Group, Role, Ticket
 
 # Zentrale Fake-Werte fuer den Anonymisierungs-Modus (Screenshots). Werden auch
@@ -241,16 +251,74 @@ def anonymize_board(board: Board) -> Board:
             url=f"{FAKE_HOST}/browse/{key}" if ticket.url else "",
         )
 
-    groups = [
-        Group(role=group.role, tickets=[copy_ticket(t) for t in group.tickets])
-        for group in board.groups
-    ]
+    groups = [Group(role=group.role, tickets=[copy_ticket(t) for t in group.tickets]) for group in board.groups]
     return Board(
         groups=groups,
         tickets=[t for g in groups for t in g.tickets],
         # Auch hier stehen echte Statusnamen - sie erscheinen im Hinweis der
         # Statusleiste.
-        unknown_status=[
-            fake_status(name, Role.UNKNOWN) for name in board.unknown_status
-        ],
+        unknown_status=[fake_status(name, Role.UNKNOWN) for name in board.unknown_status],
     )
+
+
+def anonymize_performance(report: PerformanceReport) -> PerformanceReport:
+    """Erzeugt eine anonymisierte Kopie eines Performance-Berichts.
+
+    Ersetzt werden Ticketnummern, Titel und der Name der Person. Erhalten
+    bleiben alle Zahlen - sie sind die Aussage des Bildes. Die Hinweise
+    werden aus der Kopie neu gebaut, damit sie die erfundenen Nummern tragen.
+
+    Args:
+        report:
+            Der echte Bericht.
+
+    Returns:
+        Eine neue Kopie, das Original bleibt unberuehrt.
+    """
+    rng = random.Random(42)
+    ticket_map: dict[str, str] = {}
+    summary_map: dict[str, str] = {}
+
+    def fake_key(real: str) -> str:
+        if real not in ticket_map:
+            ticket_map[real] = f"{rng.choice(_FAKE_PROJECTS)}-{len(ticket_map) + 1001}"
+        return ticket_map[real]
+
+    def fake_summary(real_key: str) -> str:
+        # Je Ticket derselbe Titel - Tabelle und Hinweise zeigen es mehrfach.
+        if real_key not in summary_map:
+            summary_map[real_key] = _FAKE_SUMMARIES[len(summary_map) % len(_FAKE_SUMMARIES)]
+        return summary_map[real_key]
+
+    def copy(tickets: list[TicketMetric]) -> list[TicketMetric]:
+        return [replace(t, key=fake_key(t.key), summary=fake_summary(t.key)) for t in tickets]
+
+    def neutral_status(ticket: PeriodTicket) -> str:
+        # Statusnamen verraten den Workflow des Betreibers.
+        if INVOLVE_ACTIVE in ticket.involvement:
+            return "In Progress"
+        return "Done" if ticket.metric is not None or INVOLVE_CLOSED in ticket.involvement else "To Do"
+
+    all_tickets = [
+        replace(
+            t,
+            key=fake_key(t.key),
+            summary=fake_summary(t.key),
+            status=neutral_status(t),
+            metric=replace(t.metric, key=fake_key(t.key), summary=fake_summary(t.key)) if t.metric else None,
+        )
+        for t in report.all_tickets
+    ]
+
+    result = replace(
+        report,
+        member=report.member if report.member == SELF_NAME else _FAKE_AUTHORS[0],
+        tickets=copy(report.tickets),
+        prior_tickets=copy(report.prior_tickets),
+        active_open=[OpenTicket(key=fake_key(t.key), summary=fake_summary(t.key)) for t in report.active_open],
+        all_tickets=all_tickets,
+        hints=[],
+        browse_base=FAKE_HOST,
+    )
+    result.hints = build_hints(result)
+    return result

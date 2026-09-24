@@ -10,6 +10,7 @@ Der Modus wird ueber das Flag ``legacy`` gewaehlt.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import Callable, Sequence
@@ -533,6 +534,149 @@ class JiraClient:
                 started = sorted(str(w.get("started", "")) for w in logs if w.get("started"))
                 result[key] = (len(logs), started[-1] if started else "")
 
+        return result
+
+    def _session(self) -> httpx.AsyncClient:
+        """Eine Sitzung mit den ueblichen Einstellungen fuer die Booster-Abrufe."""
+        return httpx.AsyncClient(
+            verify=self._verify,
+            timeout=60.0,
+            follow_redirects=True,
+            auth=None if self._legacy else (self._email, self._token),
+            proxy=self._proxy or None,
+        )
+
+    async def fetch_changelogs(
+        self,
+        keys: Sequence[str],
+        concurrency: int = 4,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Holt das Aenderungsprotokoll mehrerer Tickets, begrenzt parallel.
+
+        Ueber den eigenen, blaetterbaren Endpunkt - expand=changelog an der
+        Suche schneidet lange Historien ab.
+
+        Args:
+            keys:
+                Die Ticketschluessel.
+            concurrency:
+                Hoechstens so viele Abrufe gleichzeitig.
+
+        Returns:
+            Je Schluessel die Eintraege. Tickets, deren Abruf scheitert, fehlen -
+            ihre Durchlaufzeit bleibt dann leer statt geraten.
+        """
+        if not keys:
+            return {}
+        version = "2" if self._legacy else "3"
+        gate = asyncio.Semaphore(max(1, concurrency))
+        result: dict[str, list[dict[str, Any]]] = {}
+
+        async def one(client: httpx.AsyncClient, key: str) -> None:
+            url = f"{self._host}/rest/api/{version}/issue/{key}/changelog"
+            entries: list[dict[str, Any]] = []
+            start = 0
+            async with gate:
+                while True:
+                    try:
+                        response = await client.get(
+                            url, params={"startAt": start, "maxResults": 100}, headers=self._headers()
+                        )
+                    except httpx.HTTPError as exc:
+                        logger.warning("Protokoll von %s nicht abrufbar: %s", key, exc)
+                        return
+                    if response.status_code != 200:
+                        logger.warning("Protokoll von %s: HTTP %s", key, response.status_code)
+                        self._log(f"Änderungsprotokoll von {key} nicht abrufbar (HTTP {response.status_code})")
+                        return
+                    page = response.json()
+                    values: list[dict[str, Any]] = page.get("values", [])
+                    entries += values
+                    if page.get("isLast", True) or not values:
+                        break
+                    start += len(values)
+            result[key] = entries
+
+        async with self._session() as client:
+            await asyncio.gather(*(one(client, key) for key in keys))
+        return result
+
+    async def fetch_statuses(self) -> list[tuple[str, str]]:
+        """Alle Status der Instanz mit ihrer Kategorie (new, indeterminate, done).
+
+        Das Aenderungsprotokoll nennt nur Statusnamen. Fuer Status ohne
+        ausdrueckliche Rollenzuordnung entscheidet die Kategorie, und das
+        Rollenprofil braucht die Namen aller Fertig-Status.
+
+        Returns:
+            (Name, Kategorie) in der Schreibweise von Jira, je Name einmal.
+            Leer, wenn der Abruf scheitert.
+        """
+        version = "2" if self._legacy else "3"
+        url = f"{self._host}/rest/api/{version}/status"
+        async with self._session() as client:
+            try:
+                response = await client.get(url, headers=self._headers())
+            except httpx.HTTPError as exc:
+                logger.warning("Statusliste nicht abrufbar: %s", exc)
+                return []
+        if response.status_code != 200:
+            logger.warning("Statusliste: HTTP %s", response.status_code)
+            return []
+        seen: set[str] = set()
+        result: list[tuple[str, str]] = []
+        for status in response.json() or []:
+            name = str(status.get("name") or "").strip()
+            category = str((status.get("statusCategory") or {}).get("key") or "")
+            if name and category and name.casefold() not in seen:
+                seen.add(name.casefold())
+                result.append((name, category))
+        return result
+
+    async def fetch_person_worklogs(
+        self,
+        jql: str,
+        account_ids: Sequence[str],
+        date_from: date,
+        date_to: date,
+    ) -> list[tuple[date, float]]:
+        """Holt die Buchungen einer Person als (Tag, Sekunden).
+
+        Args:
+            jql:
+                Die Suche nach Tickets mit Buchungen der Person.
+            account_ids:
+                Kennungen der Person. Leer = der angemeldete Benutzer.
+            date_from:
+                Erster Tag (inklusive).
+            date_to:
+                Letzter Tag (inklusive).
+
+        Returns:
+            Alle Buchungen der Person im Zeitraum.
+        """
+        result: list[tuple[date, float]] = []
+        async with self._session() as client:
+            ids = set(account_ids)
+            if not ids and not self._legacy:
+                ids = {await self._fetch_account_id(client)}
+            self._log(t("jira.jql", jql=jql))
+            issues = await self._search_issues(client, jql, "worklog")
+            for issue in issues:
+                node = (issue.get("fields") or {}).get("worklog") or {}
+                logs: list[dict[str, Any]] = node.get("worklogs", [])
+                if node.get("maxResults", 0) < node.get("total", 0):
+                    logs = await self._fetch_all_worklogs(client, str(issue.get("key") or ""))
+                for log in logs:
+                    author = log.get("author") or {}
+                    if str(author.get("accountId") or "") not in ids:
+                        continue
+                    try:
+                        day = datetime.strptime(str(log.get("started") or "")[:10], "%Y-%m-%d").date()
+                    except ValueError:
+                        continue
+                    if date_from <= day <= date_to:
+                        result.append((day, float(log.get("timeSpentSeconds") or 0)))
         return result
 
     async def fetch_people(self, query: str) -> list[dict[str, Any]]:

@@ -121,7 +121,7 @@ class SettingsDialog(SettingsDialogBase):
         self.finished.connect(self._await_detect_worker)
 
     def eigene_seiten(self) -> Sequence[tuple[str, QWidget]]:
-        """Die sieben Seiten dieser Anwendung.
+        """Die acht Seiten dieser Anwendung.
 
         Namen und Reihenfolge sind mit der Textual-Fassung abgeglichen - wer
         zwischen beiden wechselt, soll dieselben Reiter in derselben Folge
@@ -140,6 +140,7 @@ class SettingsDialog(SettingsDialogBase):
             ("Arbeitszeit", self._page_worktime()),
             ("Tickets", self._page_tickets()),
             ("Mein Team", self._page_team()),
+            ("Performance-Booster", self._page_performance()),
         ]
 
     def uebernehmen(self) -> None:
@@ -594,6 +595,65 @@ class SettingsDialog(SettingsDialogBase):
                 "Ticket im Pile of Shame. 0 schaltet die Rolle davon frei. Die Zahlen sind "
                 "eine Setzung, keine Messung - zu klein gewählt trifft der Hinweis alles und "
                 "sagt dann nichts mehr."
+            )
+        )
+        return page
+
+    def _page_performance(self) -> QWidget:
+        page, form = self.seite("Performance-Booster")
+        form.addRow(
+            self.hinweis(
+                "Schwellen für die Hinweise im Reiter Performance-Booster. Die Durchlaufzeit "
+                "zählt nur Arbeitstage in einem aktiven Status - Wartezeiten bei Abnahme oder "
+                "Autor fallen heraus. Welche Status aktiv sind, steht auf der Seite Tickets."
+            )
+        )
+        self.perf_long_days = self._threshold(self._settings.perf_long_days)
+        form.addRow(self.beschriftung("Langes Ticket ab"), self.perf_long_days)
+
+        self.perf_small_hours = QDoubleSpinBox()
+        self.perf_small_hours.setRange(0.25, 40.0)
+        self.perf_small_hours.setSingleStep(0.25)
+        self.perf_small_hours.setDecimals(2)
+        self.perf_small_hours.setSuffix(" h")
+        self.perf_small_hours.setValue(self._settings.perf_small_hours)
+        self.perf_small_hours.setFixedWidth(FIELD_WIDTH)
+        form.addRow(self.beschriftung("Kleines Ticket unter"), self.perf_small_hours)
+
+        self.perf_small_share = QSpinBox()
+        self.perf_small_share.setRange(0, 100)
+        self.perf_small_share.setSuffix(" %")
+        self.perf_small_share.setValue(self._settings.perf_small_share)
+        self.perf_small_share.setFixedWidth(FIELD_WIDTH)
+        form.addRow(self.beschriftung("Hinweis ab Anteil klein"), self.perf_small_share)
+
+        self.perf_wip_limit = QSpinBox()
+        self.perf_wip_limit.setRange(0, 50)
+        self.perf_wip_limit.setSuffix(" Tickets")
+        self.perf_wip_limit.setValue(self._settings.perf_wip_limit)
+        self.perf_wip_limit.setFixedWidth(FIELD_WIDTH)
+        form.addRow(self.beschriftung("Hinweis ab parallel aktiv"), self.perf_wip_limit)
+        form.addRow(self.hinweis("0 schaltet den jeweiligen Hinweis ab."))
+
+        self.perf_points_field = QLineEdit(self._settings.perf_points_field)
+        self.perf_points_field.setPlaceholderText("Story Points")
+        self.perf_points_field.setFixedWidth(FIELD_WIDTH)
+        form.addRow(self.beschriftung("Feld Story Points"), self.perf_points_field)
+
+        self.perf_days_per_point = QDoubleSpinBox()
+        self.perf_days_per_point.setRange(0.0, 50.0)
+        self.perf_days_per_point.setSingleStep(0.5)
+        self.perf_days_per_point.setDecimals(1)
+        self.perf_days_per_point.setSuffix(" AT je Punkt")
+        self.perf_days_per_point.setValue(self._settings.perf_days_per_point)
+        self.perf_days_per_point.setFixedWidth(FIELD_WIDTH)
+        form.addRow(self.beschriftung("Lang ab (geschätzt)"), self.perf_days_per_point)
+        form.addRow(
+            self.hinweis(
+                "Der Feldname so, wie er in Jira heißt - in team-verwalteten Projekten oft "
+                "\"Story point estimate\". Leer schaltet die Story Points ab. Ein geschätztes "
+                "Ticket gilt als lang, wenn es mehr aktive Arbeitstage je Story Point brauchte; "
+                "für ungeschätzte bleibt die feste Grenze darüber."
             )
         )
         return page
@@ -1093,6 +1153,12 @@ class SettingsDialog(SettingsDialogBase):
         s.board_threshold_active = self.board_threshold_active.value()
         s.board_threshold_acceptance = self.board_threshold_acceptance.value()
         s.board_threshold_closing = self.board_threshold_closing.value()
+        s.perf_long_days = self.perf_long_days.value()
+        s.perf_small_hours = self.perf_small_hours.value()
+        s.perf_small_share = self.perf_small_share.value()
+        s.perf_wip_limit = self.perf_wip_limit.value()
+        s.perf_points_field = self.perf_points_field.text().strip()
+        s.perf_days_per_point = self.perf_days_per_point.value()
         s.customers = self._customers_from_input()
         s.export_columns = [
             ExportColumn(
