@@ -165,8 +165,10 @@ The application follows the light or dark theme and a configurable accent colour
 - **My team** - The same view onto a colleague's tickets, without them having to install
   anything. You keep a short list of people in the settings; the search goes by **name** - one
   person may run several Jira accounts, and many accounts do not reveal their mail address at
-  all. Deliberately **without charts**: throughput per month would be a performance metric
-  about somebody else, and that is not what this is for
+  all. Deliberately **without charts**: figures per person live separately in the performance
+  booster. "Add X to my team" in the context menu of every ticket list adds a person directly.
+- **New tickets** - The morning view: which tickets the colleagues on your "My team" list created recently. Pick a person in the drop-down, with "All" first, and a period with 1T, 2T, 3T or 7T. The period counts working days: 1T means since the start of the last working day, so on a Monday since Friday, and public holidays do not count. The count shows in the tab title, and the tab can open right on start. The ticket preview sits on the right
+- **Performance booster** - Figures per person, read like a stock chart, for 1M, 3M, 6M or year to date and compared with the previous period: tickets done and created, cycle time in active working days, working days per story point, share of small tickets and logged hours. With charts and hints that link the tickets behind them, for example long tickets or many small ones. Meant first of all as a look at your own work, the thresholds live in the settings
 - **Pile of Shame** - Marks tickets whose status claims activity although there has been
   neither a change nor a logged hour since the threshold. The second half is the trick: a
   long-running ticket deliberately kept open, with regular bookings, stays out - no exception
