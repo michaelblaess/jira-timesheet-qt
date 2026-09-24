@@ -260,3 +260,51 @@ def from_storage(raw: Any) -> Roster:
         )
     members.sort(key=lambda m: m.display_name.casefold())
     return Roster(members=members)
+
+
+def member_of(roster: Roster, account_id: str) -> TeamMember | None:
+    """Das Mitglied, das diese Kennung fuehrt, oder None.
+
+    Ueber die Kennung, nicht ueber den Namen: die Merkliste fuehrt Personen
+    bewusst unter eigenem Namen, und zwei Menschen koennen gleich heissen.
+    """
+    return next((member for member in roster.members if account_id in member.account_ids), None)
+
+
+def add_person(roster: Roster, account_id: str, name: str) -> tuple[Roster, str, bool]:
+    """Nimmt eine Person mit einer Kennung in die Merkliste auf.
+
+    Fuer "Zu meinem Team hinzufuegen" aus den Kontextmenues. Steht die
+    Kennung schon auf der Liste, bleibt alles, wie es ist. Ist nur der Name
+    schon vergeben, bekommt der neue Eintrag eine Nummer - die Auswahl in den
+    Reitern geht ueber den Namen.
+
+    Args:
+        roster:
+            Die bisherige Merkliste. Sie wird nicht veraendert.
+        account_id:
+            Die Kennung aus Jira.
+        name:
+            Der Anzeigename aus Jira.
+
+    Returns:
+        (neue Merkliste, Name des Eintrags, ob neu aufgenommen).
+
+    Raises:
+        AccountIdError:
+            Bei einer unbrauchbaren Kennung.
+    """
+    checked = check_account_id(account_id)
+    known = member_of(roster, checked)
+    if known is not None:
+        return roster, known.display_name, False
+    base = name.strip() or checked
+    taken = {member.display_name.casefold() for member in roster.members}
+    unique = base
+    counter = 2
+    while unique.casefold() in taken:
+        unique = f"{base} ({counter})"
+        counter += 1
+    members = [*roster.members, TeamMember(display_name=unique, account_ids=(checked,))]
+    members.sort(key=lambda m: m.display_name.casefold())
+    return Roster(members=members), unique, True

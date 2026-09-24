@@ -71,7 +71,7 @@ from jira_timesheet_qt.services.holiday_service import HolidayService
 from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
 from jira_timesheet_qt.services.new_tickets import WINDOWS
 from jira_timesheet_qt.services.performance import PERIODS, PerformanceReport
-from jira_timesheet_qt.services.team import TeamMember, from_storage, to_storage
+from jira_timesheet_qt.services.team import TeamMember, add_person, from_storage, to_storage
 from jira_timesheet_qt.services.ticket_board import AccountIdError, Board, Group, Marker, Role, check_account_id
 from jira_timesheet_qt.services.ticket_board import Ticket as BoardTicket
 from jira_timesheet_qt.services.ticket_preview import IssuePreviewCache, TicketPreviewData, german_datetime
@@ -402,6 +402,7 @@ class MainWindow(QMainWindow):
         self._team_board.guest_add_requested.connect(self._add_guest_to_roster)
         for board_view in (self._assigned_board, self._relevant_board, self._team_board):
             board_view.person_requested.connect(self.show_person_tickets)
+            board_view.team_add_requested.connect(self.add_person_to_team)
             board_view.ticket_selected.connect(
                 lambda _ticket, view=board_view: self._on_board_ticket_selected(view)
             )
@@ -424,6 +425,8 @@ class MainWindow(QMainWindow):
         self._new_tickets.detail_requested.connect(self._show_detail)
         self._new_tickets.report_requested.connect(self.open_ticket_report)
         self._new_tickets.ticket_selected.connect(lambda _key: self._on_new_ticket_selected())
+        self._new_tickets.person_requested.connect(self.show_person_tickets)
+        self._new_tickets.team_add_requested.connect(self.add_person_to_team)
         self._apply_board_settings()
 
         # Stundenzettel links, Ticket-Vorschau rechts. Die Vorschau steht nur,
@@ -1546,6 +1549,31 @@ class MainWindow(QMainWindow):
         if already_there or not self._settings_complete():
             self._load_board(MODE_TEAM)
 
+    def add_person_to_team(self, account_id: str, name: str) -> None:
+        """Nimmt eine Person aus einem Kontextmenue in die Merkliste auf.
+
+        Args:
+            account_id:
+                accountId der Person. Eine unbrauchbare Kennung aendert nichts.
+            name:
+                Anzeigename aus Jira.
+        """
+        try:
+            roster, entry, added = add_person(from_storage(self._settings.team_members), account_id, name)
+        except AccountIdError:
+            return
+        if not added:
+            self.show_toast(f"{entry} steht schon auf der Merkliste")
+            return
+        self._settings.team_members = to_storage(roster)
+        self._settings.save()
+        self._apply_team_roster()
+        # Die neuen Tickets fragen die Merkliste ab - beim naechsten Blick neu holen.
+        self._new_loaded = False
+        if self._stack.currentIndex() == _NEW_VIEW and self._settings_complete():
+            self._load_new_tickets()
+        self.show_toast(f"{entry} steht jetzt auf der Merkliste")
+
     def _add_guest_to_roster(self) -> None:
         """Nimmt den Gast dauerhaft in die Merkliste auf."""
         guest = self._team_guest
@@ -1591,6 +1619,11 @@ class MainWindow(QMainWindow):
         self._team_board.set_members([member.display_name for member in roster.members])
         self._performance.set_members([member.display_name for member in roster.members])
         self._new_tickets.set_members([member.display_name for member in roster.members])
+        # Wer auf der Merkliste steht, bekommt im Kontextmenue kein "hinzufuegen".
+        team_ids = frozenset(a for member in roster.members for a in member.account_ids)
+        for view in (self._assigned_board, self._relevant_board, self._team_board):
+            view.set_team_ids(team_ids)
+        self._new_tickets.set_team_ids(team_ids)
 
     # --- Neue Tickets ---------------------------------------------------
 

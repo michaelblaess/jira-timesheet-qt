@@ -24,7 +24,9 @@ from __future__ import annotations
 
 from .models import AccountCandidate, Roster, TeamMember
 from .roster import (
+    add_person,
     from_storage,
+    member_of,
     merge_accounts,
     parse_people,
     parse_search,
@@ -37,7 +39,9 @@ __all__ = [
     "AccountCandidate",
     "Roster",
     "TeamMember",
+    "add_person",
     "from_storage",
+    "member_of",
     "merge_accounts",
     "parse_people",
     "parse_search",
