@@ -120,6 +120,12 @@ class Settings:
     accent: str = "orange"
     # Oberflaechen-Zoom in Prozent (skaliert alle Schriftgroessen).
     ui_scale: int = 100
+    # Effekte, die Rahmen und Inhalt absetzen - siehe QAppFramework.Effects.
+    # Die Vorgaben entsprechen DEFAULT_EFFECTS der Bibliothek.
+    effect_lighter_content: bool = True
+    effect_darker_frame: bool = True
+    effect_gradient: bool = True
+    effect_accent_frame: bool = False
     language: str = "de"
     jira_host: str = ""
     jira_token: str = ""
@@ -237,6 +243,10 @@ class Settings:
         "use_color_scheme",
         "accent",
         "ui_scale",
+        "effect_lighter_content",
+        "effect_darker_frame",
+        "effect_gradient",
+        "effect_accent_frame",
         "language",
         "jira_host",
         "jira_token",
@@ -362,6 +372,10 @@ class Settings:
                 use_color_scheme=bool(data.get("use_color_scheme", bool(gewaehltes_schema))),
                 accent=str(data.get("accent", "orange")),
                 ui_scale=int(data.get("ui_scale", 100)),
+                effect_lighter_content=bool(data.get("effect_lighter_content", True)),
+                effect_darker_frame=bool(data.get("effect_darker_frame", True)),
+                effect_gradient=bool(data.get("effect_gradient", True)),
+                effect_accent_frame=bool(data.get("effect_accent_frame", False)),
                 language=data.get("language", "de"),
                 jira_host=data.get("jira_host", ""),
                 jira_token=data.get("jira_token", ""),

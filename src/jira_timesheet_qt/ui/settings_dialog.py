@@ -53,6 +53,7 @@ from jira_timesheet_qt.ui.arrow_cursor import use_arrow_cursor
 from jira_timesheet_qt.ui.busy_spinner import BusySpinner
 from jira_timesheet_qt.ui.jira_worker import BudgetFieldWorker
 from jira_timesheet_qt.ui.team_worker import TeamSearchWorker
+from jira_timesheet_qt.ui.theme import effects_of
 
 # Einheitliche Breite aller Eingabefelder. Ohne das richtet sich jedes Feld
 # nach seinem Inhalt, und die rechte Kante wirkt zerfranst.
@@ -135,6 +136,7 @@ class SettingsDialog(SettingsDialogBase):
                 zoom=settings.ui_scale,
                 theme=settings.color_scheme,
                 themes_enabled=settings.use_color_scheme,
+                effects=effects_of(settings),
             ),
             parent,
         )
@@ -1216,6 +1218,11 @@ class SettingsDialog(SettingsDialogBase):
         s.theme = self.darstellung.mode.value
         s.accent = self.darstellung.accent
         s.ui_scale = self.darstellung.zoom
+        effekte = self.darstellung.effects
+        s.effect_lighter_content = effekte.lighter_content
+        s.effect_darker_frame = effekte.darker_frame
+        s.effect_gradient = effekte.gradient
+        s.effect_accent_frame = effekte.accent_frame
         s.mark_manual_entries = self.mark_manual.isChecked()
         s.manual_entry_color = self.farbe_von(self.manual_color)
         s.color_day_totals = self.color_day_totals.isChecked()

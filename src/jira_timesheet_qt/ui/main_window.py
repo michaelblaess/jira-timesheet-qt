@@ -97,9 +97,11 @@ from jira_timesheet_qt.ui.theme import (
     SCALES,
     Mode,
     apply_color_scheme_settings,
+    effects_of,
     palette_for,
     set_accent,
     set_color_scheme,
+    set_effects,
     set_scale,
 )
 from jira_timesheet_qt.ui.ticket_board_view import TicketBoardView
@@ -2327,6 +2329,7 @@ class MainWindow(QMainWindow):
         # ueber theme_changed im Einstiegspunkt.
         set_accent(self._settings.accent)
         set_scale(self._settings.ui_scale)
+        set_effects(effects_of(self._settings))
         apply_color_scheme_settings(self._settings.color_scheme, self._settings.use_color_scheme)
         if self._settings.theme in ("dark", "light"):
             self._mode = Mode(self._settings.theme)

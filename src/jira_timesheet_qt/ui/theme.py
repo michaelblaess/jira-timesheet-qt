@@ -19,6 +19,7 @@ das ist der Zweck.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QApplication
@@ -33,6 +34,7 @@ from QAppFramework.theme import (
     ZOOM_LEVELS,
     Accent,
     Colors,
+    Effects,
     accent_names,
 )
 from QAppFramework.theme import accent as current_accent
@@ -41,6 +43,7 @@ from QAppFramework.theme import build_stylesheet as _baue_qss
 from QAppFramework.theme import colors as _farben
 from QAppFramework.theme import scale as _skaliere
 from QAppFramework.theme import set_accent as set_accent
+from QAppFramework.theme import set_effects as set_effects
 
 # Das Retro-Farbschema. Heisst hier bewusst set_color_scheme: `theme`
 # ist in dieser Anwendung seit jeher das Erscheinungsbild.
@@ -50,6 +53,9 @@ from QAppFramework.theme import set_zoom as set_scale
 from QAppFramework.theme import zoom as current_scale
 from QAppFramework.titlebar import style_all_windows as _faerbe_titelleisten
 from QAppFramework.titlebar import watch_new_windows as _beobachte_neue_fenster
+
+if TYPE_CHECKING:
+    from jira_timesheet_qt.models.settings import Settings
 
 
 class Mode(StrEnum):
@@ -87,6 +93,7 @@ __all__ = [
     "PREVIEW_PAPER",
     "SCALES",
     "Accent",
+    "Effects",
     "Mode",
     "Palette",
     "build_palette",
@@ -95,11 +102,30 @@ __all__ = [
     "current_scale",
     "palette_for",
     "set_accent",
+    "set_effects",
+    "effects_of",
     "apply_color_scheme_settings",
     "apply_to_application",
     "set_color_scheme",
     "set_scale",
 ]
+
+
+def effects_of(settings: Settings) -> Effects:
+    """Die Effekte aus den Einstellungen der Anwendung.
+
+    Args:
+        settings: Die Einstellungen.
+
+    Returns:
+        Die Effekte, wie sie die Bibliothek erwartet.
+    """
+    return Effects(
+        lighter_content=settings.effect_lighter_content,
+        darker_frame=settings.effect_darker_frame,
+        gradient=settings.effect_gradient,
+        accent_frame=settings.effect_accent_frame,
+    )
 
 
 def apply_color_scheme_settings(name: str, enabled: bool) -> None:
@@ -190,7 +216,9 @@ def build_qss(mode: Mode, font_sans: str, font_mono: str) -> str:
     #DetailDialogLabel {{ color: {p.text_tertiary}; font-size: 12px; font-weight: 700; }}
     #DetailDialogValue {{ color: {p.text_primary}; font-size: 13px; }}
     #DetailDialogLink {{ color: {p.accent}; font-size: 12px; }}
-    #SummaryBar {{ background-color: {p.bg_secondary}; }}
+    /* Durchsichtig: die Summenleiste steht in der Statusleiste und soll
+       deren Flaeche zeigen - mit dem Verlauf-Effekt sonst ein flacher Kasten. */
+    #SummaryBar {{ background: transparent; }}
     #SummaryPanel {{ background-color: {p.bg_tertiary}; border: 1px solid {p.border}; border-radius: {RADIUS_SM}px; }}
     #SummaryStatLabel {{ color: {p.text_tertiary}; font-size: 14px; background: transparent; border: none; }}
     #SummaryStatValue {{ color: {p.text_primary}; font-size: 14px; font-weight: 700; background: transparent; border: none; }}

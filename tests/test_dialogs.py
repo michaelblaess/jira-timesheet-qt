@@ -120,6 +120,19 @@ class TestSettingsDialog:
         assert dialog.farbe_von(dialog.manual_color) == "00FF00"
         assert dialog.result_settings().manual_entry_color == "00FF00"
 
+    def test_effects_round_trip(self, qapp: QApplication) -> None:
+        from PySide6.QtWidgets import QCheckBox
+
+        dialog = SettingsDialog(Settings(effect_gradient=False))
+        haken = {k.objectName(): k for k in dialog.findChildren(QCheckBox)}
+        assert haken["SettingsEffect_gradient"].isChecked() is False
+        assert haken["SettingsEffect_lighter_content"].isChecked() is True
+        haken["SettingsEffect_accent_frame"].setChecked(True)
+        dialog._speichern()
+        result = dialog.result_settings()
+        assert result.effect_accent_frame is True
+        assert result.effect_gradient is False
+
     def test_color_button_disabled_when_marking_off(self, qapp: QApplication) -> None:
         dialog = SettingsDialog(Settings(mark_manual_entries=False))
         assert dialog.manual_color.isEnabled() is False

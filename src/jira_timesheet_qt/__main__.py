@@ -55,7 +55,9 @@ def main() -> int:
         Mode,
         apply_color_scheme_settings,
         apply_to_application,
+        effects_of,
         set_accent,
+        set_effects,
         set_scale,
     )
 
@@ -95,6 +97,7 @@ def main() -> int:
 
     set_accent(settings.accent)
     set_scale(settings.ui_scale)
+    set_effects(effects_of(settings))
     # Zuletzt: ein gesetztes Farbschema bestimmt die Farben vollstaendig
     # und sticht Erscheinungsbild und Akzent aus.
     apply_color_scheme_settings(settings.color_scheme, settings.use_color_scheme)

@@ -122,3 +122,35 @@ class TestColorScheme:
         geladen = Settings.load()
         assert geladen.use_color_scheme is True
         assert geladen.color_scheme == "warp"
+
+
+class TestEffekte:
+    def test_die_vorgabe_entspricht_der_bibliothek(self) -> None:
+        from QAppFramework import DEFAULT_EFFECTS
+
+        from jira_timesheet_qt.ui.theme import effects_of
+
+        assert effects_of(Settings()) == DEFAULT_EFFECTS
+
+    def test_die_effekte_ueberleben_den_neustart(self, _isolated_settings: Path) -> None:
+        # Alle vier umgedreht - jedes Feld braucht Dataclass, _FIELDS und _from_dict.
+        s = Settings(
+            effect_lighter_content=False,
+            effect_darker_frame=False,
+            effect_gradient=False,
+            effect_accent_frame=True,
+        )
+        s.save()
+        geladen = Settings.load()
+        assert (
+            geladen.effect_lighter_content,
+            geladen.effect_darker_frame,
+            geladen.effect_gradient,
+            geladen.effect_accent_frame,
+        ) == (False, False, False, True)
+
+    def test_eine_datei_ohne_effekte_bekommt_die_vorgabe(self, _isolated_settings: Path) -> None:
+        _write(_isolated_settings, "dark")
+        geladen = Settings.load()
+        assert geladen.effect_gradient is True
+        assert geladen.effect_accent_frame is False

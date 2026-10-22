@@ -21,7 +21,7 @@ from jira_timesheet_qt.ui.demo import demo_timesheet
 from jira_timesheet_qt.ui.fonts import load_fonts
 from jira_timesheet_qt.ui.grid_columns import build_columns
 from jira_timesheet_qt.ui.main_window import MainWindow
-from jira_timesheet_qt.ui.theme import DARK, LIGHT, Mode, build_palette, build_qss
+from jira_timesheet_qt.ui.theme import Mode, build_palette, build_qss
 from jira_timesheet_qt.ui.timesheet_model import ENTRY_ROLE, TimesheetModel
 
 _KEYS = [c.key for c in build_columns(default_columns())]
@@ -39,7 +39,12 @@ def window(qapp: QApplication) -> MainWindow:
 
 class TestTheme:
     def test_qss_is_built_for_both_modes(self) -> None:
-        for mode, palette in ((Mode.DARK, DARK), (Mode.LIGHT, LIGHT)):
+        from jira_timesheet_qt.ui.theme import palette_for
+
+        # Gegen die geltenden Farben, nicht die Rohkonstanten: die Effekte
+        # verschieben Flaechen und heben den Akzent bei Bedarf nach.
+        for mode in (Mode.DARK, Mode.LIGHT):
+            palette = palette_for(mode)
             qss = build_qss(mode, "Segoe UI", "Consolas")
             # Die strukturellen Flaechen werden per QSS gesetzt, die Farben
             # stammen aus der Palette. Die Steuerelemente bleiben nativ (Fusion).
@@ -55,10 +60,14 @@ class TestTheme:
         assert "#ViewTabs" in qapp.styleSheet()
 
     def test_palette_is_built_for_both_modes(self, qapp: QApplication) -> None:
-        for mode, palette in ((Mode.DARK, DARK), (Mode.LIGHT, LIGHT)):
+        from jira_timesheet_qt.ui.theme import palette_for
+
+        for mode in (Mode.DARK, Mode.LIGHT):
+            palette = palette_for(mode)
             qpal = build_palette(mode)
-            assert qpal.color(QPalette.ColorRole.Window).name() == palette.bg_primary
-            assert qpal.color(QPalette.ColorRole.Highlight).name() == palette.accent
+            # QColor.name() schreibt klein, nachgehobene Farben kommen gross.
+            assert qpal.color(QPalette.ColorRole.Window).name() == palette.bg_primary.lower()
+            assert qpal.color(QPalette.ColorRole.Highlight).name() == palette.accent.lower()
 
     def test_accent_overrides_the_palette(self, qapp: QApplication) -> None:
         from jira_timesheet_qt.ui.theme import ACCENTS, DEFAULT_ACCENT, palette_for, set_accent
@@ -550,6 +559,38 @@ class TestThemeBedienung:
         finally:
             set_theme("")
             set_themes_enabled(False)
+
+    def test_nach_dem_speichern_gelten_die_effekte(
+        self, window: MainWindow, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Die Effekte muessen ohne Neustart greifen, wie Akzent und Zoom."""
+        from QAppFramework import DEFAULT_EFFECTS, Effects, effects, set_effects
+
+        from jira_timesheet_qt.ui import main_window as main_window_module
+        from jira_timesheet_qt.ui.settings_dialog import SettingsDialog
+
+        gespeichert = Settings(effect_gradient=False, effect_accent_frame=True)
+
+        class _Dialog:
+            DialogCode = SettingsDialog.DialogCode
+
+            def __init__(self, *_args: object) -> None: ...
+
+            def exec(self) -> int:
+                return int(self.DialogCode.Accepted)
+
+            def result_settings(self) -> Settings:
+                return gespeichert
+
+        monkeypatch.setattr(main_window_module, "SettingsDialog", _Dialog)
+        set_effects(DEFAULT_EFFECTS)
+        try:
+            window.open_settings()
+            assert effects() == Effects(
+                lighter_content=True, darker_frame=True, gradient=False, accent_frame=True
+            )
+        finally:
+            set_effects(DEFAULT_EFFECTS)
 
     def test_das_protokoll_folgt_dem_theme(self, window: MainWindow) -> None:
         """Die Farben standen bis zum 11.09.2026 fest im Quelltext."""
