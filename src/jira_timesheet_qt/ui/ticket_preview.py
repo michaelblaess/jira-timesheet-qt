@@ -348,13 +348,7 @@ class TicketPreview(QWidget):
                 Text rechts unten. Ohne Angabe der Stand des Abrufs.
         """
         self._data = data
-        url = f"{self._host}/browse/{data.key}" if self._host else ""
-        if url:
-            self._key.setText(f'<a href="{html.escape(url)}">{html.escape(data.key)}</a>')
-            self._key.setToolTip("In Jira öffnen")
-        else:
-            self._key.setText(html.escape(data.key))
-            self._key.setToolTip("")
+        self._set_key(data)
         self._title.setText(data.summary or "Ohne Titel")
         self._set_status(data)
         self._meta.setText(self._meta_text(data))
@@ -405,6 +399,10 @@ class TicketPreview(QWidget):
         self._refresh.setIcon(load_icon("refresh", mode))
         self._apply_document_style()
         if self._data is not None:
+            # Links im Kopf tragen ihre Farbe im Text, siehe _link. Ohne Neuaufbau
+            # blieben sie in der Farbe des vorigen Themes stehen.
+            self._set_key(self._data)
+            self._fill_blocks(self._data)
             # Der Dokument-Stil gilt nur fuer neu gesetztes HTML.
             self._set_body(self._data)
 
@@ -450,7 +448,7 @@ class TicketPreview(QWidget):
             rich = ""
             if key and self._host:
                 href = html.escape(f"{self._host}/browse/{key}")
-                rich = f'<a href="{href}">{html.escape(key)}</a> {html.escape(summary)}'.strip()
+                rich = f"{self._link(href, key)} {html.escape(summary)}".strip()
             context.append(_Field("Übergeordnet", data.parent, rich=rich, tooltip=data.parent))
         context.extend(_Field(name, value) for name, value in data.extra if value)
         return [persons, dates, context]
@@ -465,8 +463,7 @@ class TicketPreview(QWidget):
             return data.assignee_id == data.creator_id
         return data.assignee == data.creator
 
-    @staticmethod
-    def _person_field(label: str, name: str, account_id: str) -> _Field:
+    def _person_field(self, label: str, name: str, account_id: str) -> _Field:
         """Ein Personenfeld. Mit brauchbarer Kennung wird der Name zum Link nach "Mein Team"."""
         try:
             checked = check_account_id(account_id)
@@ -477,7 +474,7 @@ class TicketPreview(QWidget):
         return _Field(
             label,
             name,
-            rich=f'<a href="{href}">{html.escape(name)}</a>',
+            rich=self._link(href, name),
             tooltip=f'Tickets von {name} in "Mein Team" anzeigen',
             person_id=checked,
         )
@@ -567,6 +564,32 @@ class TicketPreview(QWidget):
         else:
             self._updated.setText("")
             self._updated.setToolTip("")
+
+    def _link(self, href: str, text: str) -> str:
+        """Ein Link fuer die Kopfzeile, die Farbe fest im Text.
+
+        Ein QLabel uebernimmt eine spaeter gesetzte Palette nicht in schon
+        gerenderte Links, und setText mit gleichem Text tut gar nichts. Mit der
+        Farbe im Text aendert sich der Text bei jedem Themewechsel.
+
+        Args:
+            href: Das Linkziel, bereits maskiert.
+            text: Der sichtbare Text, unmaskiert.
+
+        Returns:
+            Das HTML des Links.
+        """
+        color = palette_for(self._mode).accent
+        return f'<a href="{href}" style="color: {color};">{html.escape(text)}</a>'
+
+    def _set_key(self, data: TicketPreviewData) -> None:
+        url = f"{self._host}/browse/{data.key}" if self._host else ""
+        if url:
+            self._key.setText(self._link(html.escape(url), data.key))
+            self._key.setToolTip("In Jira öffnen")
+        else:
+            self._key.setText(html.escape(data.key))
+            self._key.setToolTip("")
 
     def _set_body(self, data: TicketPreviewData) -> None:
         self._body.image_dir = (

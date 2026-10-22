@@ -367,10 +367,23 @@ class TestAlleTickets:
         view._tile_done.clicked.emit()
         assert view.current_filter() == "Erledigt" and _nummern(view) == ["REAL-1"]
 
+    def test_links_im_hinweis_folgen_dem_themewechsel(self, qapp: QApplication) -> None:
+        # Gleicher Text rendert ein QLabel nicht neu - die Farbe steht deshalb im Text.
+        from jira_timesheet_qt.ui.theme import DEFAULT_ACCENT, Mode, palette_for, set_accent
+
+        view = PerformanceView()
+        view.set_report(_alle_tickets_bericht())
+        set_accent("blau")
+        try:
+            view.apply_mode(Mode.DARK)
+            assert f"color: {palette_for(Mode.DARK).accent};" in view._hints.text()
+        finally:
+            set_accent(DEFAULT_ACCENT)  # sonst faerbt es folgende Tests ein
+
     def test_link_im_hinweis_waehlt_das_ticket_auch_ausserhalb_des_filters(self, qapp: QApplication) -> None:
         view = PerformanceView()
         view.set_report(_alle_tickets_bericht())
-        assert '<a href="ticket:REAL-1">REAL-1</a>' in view._hints.text()
+        assert '<a href="ticket:REAL-1"' in view._hints.text()
         view.set_filter("Erstellt")
         gemeldet: list[str] = []
         view.hint_ticket_clicked.connect(gemeldet.append)

@@ -224,6 +224,34 @@ class TestKopf:
         treffer[0].linkActivated.emit(f"{HOST}/browse/ABC-0")
         assert blockierte_browser_aufrufe
 
+    def test_links_im_kopf_folgen_dem_themewechsel(self, qapp: QApplication) -> None:
+        # Ein QLabel uebernimmt eine neue Palette nicht in schon gerenderte Links.
+        # Die Farbe muss deshalb im Text stehen und beim Wechsel neu gesetzt werden.
+        from jira_timesheet_qt.ui.theme import DEFAULT_ACCENT, palette_for, set_accent
+
+        vorschau = TicketPreview(Mode.LIGHT)
+        vorschau.set_host(HOST)
+        vorschau.show_data(
+            _daten(
+                parent="ABC-0 Epos",
+                assignee_id="000000:00000000-0000-0000-0000-000000000001",
+                creator_id="000000:00000000-0000-0000-0000-000000000002",
+            )
+        )
+        vorher = palette_for(Mode.LIGHT).accent
+        set_accent("blau")
+        try:
+            nachher = palette_for(Mode.LIGHT).accent
+            assert nachher != vorher
+            vorschau.apply_mode(Mode.LIGHT)
+            links = [label.text() for label in vorschau.findChildren(QLabel) if "<a " in label.text()]
+            # Schluessel, Uebergeordnet und zwei Personen
+            assert len(links) == 4
+            for text in links:
+                assert f"color: {nachher};" in text, text
+        finally:
+            set_accent(DEFAULT_ACCENT)  # sonst faerbt es folgende Tests ein
+
     def test_fusszeile_trennt_jira_und_abruf(self, qapp: QApplication) -> None:
         from datetime import datetime, timedelta, timezone
 

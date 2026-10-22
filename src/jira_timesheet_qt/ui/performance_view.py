@@ -592,9 +592,15 @@ class PerformanceView(QWidget):
         if not report.hints:
             self._hints.setText("Keine Auffälligkeiten in diesem Zeitraum.")
             return
+        # Die Farbe steht im Text: ein QLabel uebernimmt eine spaeter gesetzte
+        # Palette nicht in schon gerenderte Links, und gleicher Text rendert nicht neu.
+        color = palette_for(self._mode).accent
         parts: list[str] = []
         for hint in report.hints:
-            links = [f'<a href="{_TICKET_LINK}{html.escape(key)}">{html.escape(key)}</a>' for key in hint.keys[:8]]
+            links = [
+                f'<a href="{_TICKET_LINK}{html.escape(key)}" style="color: {color};">{html.escape(key)}</a>'
+                for key in hint.keys[:8]
+            ]
             keys = ", ".join(links) + (" ..." if len(hint.keys) > 8 else "")
             suffix = f"<br><i>{keys}</i>" if keys else ""
             parts.append(f"<p><b>{html.escape(hint.title)}</b><br>{html.escape(hint.text)}{suffix}</p>")
