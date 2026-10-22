@@ -177,6 +177,10 @@ The application follows the light or dark theme and a configurable accent colour
   with dummy values for safe screenshots; the real data stays untouched
 - **Docked log** - An attachable message panel with the full history (`Ctrl+L`)
 - **Zoom** - Scale the whole interface with `Ctrl` +/- / 0 or `Ctrl` + mouse wheel, like a browser
+- **Effects** - Frame and content set apart, so a dark or coloured theme does not turn into one
+  big surface: lighter content area, darker frame, a gradient with a highlight edge on menu,
+  toolbar, tabs and status bar, and optionally a touch of accent colour. Each one can be switched
+  on the Appearance page, text keeps its contrast target either way
 - **Worklog cache** - Completed months are cached, the year view loads instantly
 - **Bilingual UI** - German / English
 - **Settings backup** - Every save writes a rolling backup and a golden copy; a lost Jira
@@ -455,6 +459,7 @@ Settings are stored in `~/.jira-timesheet-qt/settings.json`:
 | Stale after | Threshold for the *stale* marker | 180 days |
 | Pile of Shame thresholds | Working days per group, 0 disables | 20 / 10 / 0 |
 | Theme / accent / zoom | Appearance | system / orange / 100 % |
+| Effects | Appearance: lighter content, darker frame, gradient, accent in the frame | on / on / on / off |
 | Ticket preview | Splitter with the selected ticket next to the list | false |
 | Preview extra fields | Jira fields by name, e.g. Environments, Team | empty |
 | Language | UI language (de / en) | de |

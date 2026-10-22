@@ -181,6 +181,10 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   durch Dummy-Werte für sichere Screenshots - die echten Daten bleiben unangetastet
 - **Andockbares Log** - Ein anheftbares Meldungsfenster mit dem vollen Verlauf (`Strg+L`)
 - **Zoom** - Skaliert die ganze Oberfläche mit `Strg` +/- / 0 oder `Strg` + Mausrad, wie im Browser
+- **Effekte** - Rahmen und Inhalt setzen sich voneinander ab, damit ein dunkles oder farbiges Theme
+  nicht zu einer einzigen Fläche wird: Datenbereich heller, Rahmen dunkler, ein Verlauf mit
+  Lichtkante an Menü, Werkzeugleiste, Reitern und Statusleiste, wahlweise ein Hauch Akzentfarbe.
+  Jeder ist auf der Seite Darstellung schaltbar, die Schrift hält dabei ihr Kontrastziel
 - **Worklog-Cache** - Abgeschlossene Monate werden gecacht, die Jahresansicht lädt sofort
 - **Zweisprachige Oberfläche** - Deutsch / Englisch
 - **Einstellungs-Backup** - Jedes Speichern legt eine rollierende Sicherung und eine goldene
@@ -469,6 +473,7 @@ Die Einstellungen liegen in `~/.jira-timesheet-qt/settings.json`:
 | Verwaist ab | Schwelle für das Merkmal *verwaist* | 180 Tage |
 | Pile-of-Shame-Schwellen | Arbeitstage je Gruppe, 0 schaltet ab | 20 / 10 / 0 |
 | Theme / Akzent / Zoom | Erscheinungsbild | System / Orange / 100 % |
+| Effekte | Darstellung: Datenbereich heller, Rahmen dunkler, Verlauf, Akzent im Rahmen | an / an / an / aus |
 | Ticket-Vorschau | Splitter mit dem gewählten Ticket neben der Liste | falsch |
 | Zusatzfelder der Vorschau | Jira-Felder nach Namen, z. B. Environments, Team | leer |
 | Sprache | Oberflächensprache (de / en) | de |
