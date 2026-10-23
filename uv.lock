@@ -461,7 +461,7 @@ wheels = [
 
 [[package]]
 name = "jira-timesheet-qt"
-version = "0.17.1"
+version = "0.18.0"
 source = { editable = "." }
 dependencies = [
     { name = "fpdf2" },
