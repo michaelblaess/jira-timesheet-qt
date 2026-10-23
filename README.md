@@ -181,7 +181,11 @@ The application follows the light or dark theme and a configurable accent colour
   big surface: lighter content area, darker frame, a gradient with a highlight edge on menu,
   toolbar, tabs and status bar, and optionally a touch of accent colour. Each one can be switched
   on the Appearance page, text keeps its contrast target either way
-- **Worklog cache** - Completed months are cached, the year view loads instantly
+- **Month cache that survives archiving** - Completed months are kept locally. Jira archives old,
+  closed tickets, and your worklogs on them vanish from every query. A refresh compares the fresh
+  result with the cache and asks Jira about each ticket that is gone: if it is no longer visible,
+  its hours stay. A copy of the previous month file is kept as a backup, and the cache of the
+  Textual version is taken over once on first start
 - **Bilingual UI** - German / English
 - **Settings backup** - Every save writes a rolling backup and a golden copy; a lost Jira
   access can be restored on the next start

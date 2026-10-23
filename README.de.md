@@ -185,7 +185,12 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   nicht zu einer einzigen Fläche wird: Datenbereich heller, Rahmen dunkler, ein Verlauf mit
   Lichtkante an Menü, Werkzeugleiste, Reitern und Statusleiste, wahlweise ein Hauch Akzentfarbe.
   Jeder ist auf der Seite Darstellung schaltbar, die Schrift hält dabei ihr Kontrastziel
-- **Worklog-Cache** - Abgeschlossene Monate werden gecacht, die Jahresansicht lädt sofort
+- **Monats-Cache, der eine Archivierung übersteht** - Abgeschlossene Monate bleiben lokal erhalten.
+  Jira archiviert alte, abgeschlossene Tickets, und Deine Worklogs darauf verschwinden aus jeder
+  Abfrage. Beim Aktualisieren wird das frische Ergebnis mit dem Cache verglichen, und zu jedem
+  fehlenden Ticket wird Jira gefragt: Ist es nicht mehr sichtbar, bleiben seine Stunden. Die
+  vorige Monatsdatei bleibt als Sicherung liegen, der Cache der Textual-Fassung wird beim ersten
+  Start einmal übernommen
 - **Zweisprachige Oberfläche** - Deutsch / Englisch
 - **Einstellungs-Backup** - Jedes Speichern legt eine rollierende Sicherung und eine goldene
   Kopie an; ein verlorener Jira-Zugang lässt sich beim nächsten Start wiederherstellen
