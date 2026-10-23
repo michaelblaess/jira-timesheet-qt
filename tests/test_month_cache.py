@@ -58,6 +58,12 @@ class TestAbgleich:
         assert ergebnis.rescued[0].tickets == ["A-2"]  # type: ignore[attr-defined]
         assert ergebnis.rescued[0].hours == 2  # type: ignore[attr-defined]
 
+    def test_die_rettung_steht_im_app_log(self, caplog: pytest.LogCaptureFixture) -> None:
+        CacheService.save(2025, 2, MAIL, [_eintrag("A-2", date(2025, 2, 4), 2)])
+        with caplog.at_level("INFO", logger="jira_timesheet_qt.services.month_cache"):
+            _abgleich([], {"A-2": False})
+        assert "02/2025: 1 Tickets aus dem Cache behalten (2.00 h), unklar 0: A-2" in caplog.text
+
     def test_sichtbares_ticket_ohne_buchung_gilt_als_entfernt(self) -> None:
         CacheService.save(2025, 2, MAIL, [_eintrag("A-1", date(2025, 2, 3)), _eintrag("A-2", date(2025, 2, 4))])
         eintraege, _gefragt, ergebnis = _abgleich([_eintrag("A-1", date(2025, 2, 3))], {"A-2": True})

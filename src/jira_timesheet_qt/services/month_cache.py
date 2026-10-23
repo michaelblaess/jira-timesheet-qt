@@ -22,6 +22,7 @@ gerettet, hier soll es die Regel tun.
 from __future__ import annotations
 
 import contextlib
+import logging
 import shutil
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -31,6 +32,10 @@ from pathlib import Path
 from jira_timesheet_qt.models.timesheet import WorklogEntry
 from jira_timesheet_qt.services import cache_service
 from jira_timesheet_qt.services.cache_service import CacheService
+
+# Die Rettung muss im app.log stehen, nicht nur im Protokollbereich der
+# Oberflaeche - sonst ist sie nach dem Schliessen nicht mehr nachvollziehbar.
+_log = logging.getLogger(__name__)
 
 # Antwort der Sichtbarkeitspruefung: True sichtbar, False unsichtbar,
 # None nicht klaerbar.
@@ -141,6 +146,15 @@ async def reconcile(
         entries.extend(kept)
         if rescue.tickets:
             rescued.append(rescue)
+            _log.info(
+                "%02d/%d: %d Tickets aus dem Cache behalten (%.2f h), unklar %d: %s",
+                month,
+                year,
+                len(rescue.tickets),
+                rescue.hours,
+                len(rescue.unclear),
+                ", ".join(rescue.tickets),
+            )
         # Ein leerer Abruf ueberschreibt keinen vorhandenen Cache.
         if merged:
             _backup(year, month, email)
