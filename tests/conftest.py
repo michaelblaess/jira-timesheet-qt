@@ -91,4 +91,9 @@ def _isolated_qsettings(
     monkeypatch.setattr(Settings, "SETTINGS_FILE", config_dir / "settings.json")
     # Legacy-TUI-Datei ins Leere zeigen lassen, sonst liest ein Test echte Werte.
     monkeypatch.setattr(settings_module, "LEGACY_SETTINGS_FILE", config_dir / "legacy-absent.json")
+    # Der Monats-Cache haelt Buchungen auf archivierten Tickets - ein Test darf
+    # ihn weder lesen noch ueberschreiben.
+    from jira_timesheet_qt.services import cache_service
+
+    monkeypatch.setattr(cache_service, "CACHE_DIR", directory / "cache")
     return directory

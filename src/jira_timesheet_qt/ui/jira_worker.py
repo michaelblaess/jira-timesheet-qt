@@ -23,6 +23,7 @@ from jira_timesheet_qt.models.ticket_lifecycle import TicketLifecycleData
 from jira_timesheet_qt.models.timesheet import Timesheet
 from jira_timesheet_qt.services.jira_client import JiraClient, JiraClientError
 from jira_timesheet_qt.services.manual_entry_service import ManualEntryService
+from jira_timesheet_qt.services.month_cache import reconcile
 from jira_timesheet_qt.services.ssl_support import TlsSettings, tls_from_settings
 from jira_timesheet_qt.services.ticket_preview import (
     BASE_FIELDS,
@@ -90,6 +91,22 @@ class WorklogWorker(QThread):
         )
         entries = await client.get_worklogs(self._from, self._to)
         self.progress.emit(f"{len(entries)} Einträge aus Jira erhalten")
+
+        # Abgeschlossene Monate gegen den Cache abgleichen, BEVOR die manuellen
+        # Zeiten dazukommen - die duerfen nie in den Jira-Cache geraten.
+        result = await reconcile(entries, self._from, self._to, settings.email, client.is_issue_visible)
+        entries = result.entries
+        for rescue in result.rescued:
+            hours = f"{rescue.hours:.2f}".replace(".", ",")
+            self.log.emit(
+                f"{rescue.month:02d}/{rescue.year}: {len(rescue.tickets)} nicht mehr sichtbare Tickets "
+                f"aus dem Cache ergänzt ({hours} h): {', '.join(rescue.tickets)}"
+            )
+            if rescue.unclear:
+                self.log.emit(f"Sichtbarkeit nicht prüfbar, vorsorglich behalten: {', '.join(rescue.unclear)}")
+        if result.rescued:
+            gerettet = sum(len(r.tickets) for r in result.rescued)
+            self.progress.emit(f"{gerettet} archivierte Tickets aus dem Cache ergänzt")
 
         manual = ManualEntryService().worklogs_between(self._from, self._to, author=settings.email)
         if manual:

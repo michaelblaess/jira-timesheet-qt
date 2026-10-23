@@ -92,6 +92,16 @@ def main() -> int:
     with ManualEntryService() as _manual:
         _manual.import_from_legacy(_Path.home() / ".jira-timesheet" / "manual-entries.db")
 
+    # Ebenso die Monatsdateien der TUI: sie halten Buchungen auf Tickets, die
+    # Jira inzwischen archiviert hat. Nur was hier noch fehlt, nie ueberschreiben.
+    import logging
+
+    from jira_timesheet_qt.services.month_cache import import_legacy_cache
+
+    _imported = import_legacy_cache(_Path.home() / ".jira-timesheet" / "cache")
+    if _imported:
+        logging.getLogger(__name__).info("%d Monatsdateien aus dem Cache der TUI übernommen", _imported)
+
     fonts = load_fonts()
     mode = _resolve_mode(args.theme or settings.theme, app)
 

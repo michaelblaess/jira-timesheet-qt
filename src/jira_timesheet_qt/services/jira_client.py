@@ -536,6 +536,29 @@ class JiraClient:
 
         return result
 
+    async def is_issue_visible(self, key: str) -> bool | None:
+        """Fragt, ob das eigene Konto ein Ticket sehen darf.
+
+        Fuer den Abgleich abgeschlossener Monate: archivierte Tickets liefert
+        Jira mit 404, genau wie geloeschte oder gesperrte.
+
+        Args:
+            key: Ticket-Key, z.B. "ABC-123".
+
+        Returns:
+            True bei 200, False bei 404, None bei jeder anderen Antwort -
+            dann laesst sich die Frage nicht beantworten.
+        """
+        version = "2" if self._legacy else "3"
+        url = f"{self._host}/rest/api/{version}/issue/{key}"
+        async with self._session() as client:
+            response = await client.get(url, params={"fields": "key"}, headers=self._headers())
+        if response.status_code == 200:
+            return True
+        if response.status_code == 404:
+            return False
+        return None
+
     def _session(self) -> httpx.AsyncClient:
         """Eine Sitzung mit den ueblichen Einstellungen fuer die Booster-Abrufe."""
         return httpx.AsyncClient(
