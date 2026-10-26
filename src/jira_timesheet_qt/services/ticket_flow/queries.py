@@ -11,7 +11,7 @@ from collections.abc import Sequence
 
 from jira_timesheet_qt.services.ticket_board import AccountIdError, check_account_id
 
-FLOW_FIELDS = "summary,status,created,updated,reporter,assignee"
+FLOW_FIELDS = "summary,status,created,updated,statuscategorychangedate,reporter,assignee"
 
 
 def flow_jqls(account_ids: Sequence[str], since: dt.date | None) -> list[str]:

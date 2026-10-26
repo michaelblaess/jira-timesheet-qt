@@ -65,9 +65,12 @@ def demo_flow() -> FlowLoad:
 
     Returns:
         Der Abruf, wie ihn der Worker liefern wuerde - rund 140 Tickets ueber
-        ein Jahr, Auftraege und Uebergaben in beide Richtungen.
+        ein Jahr, Auftraege, Uebergaben und Abnahmen in beide Richtungen.
     """
     rng = random.Random(26)
+    # Eigener Wuerfel fuer Fertig, damit Auftraege und Uebergaben dieselben
+    # bleiben wie vor der Abnahme.
+    done_rng = random.Random(27)
     people = {account: name for account, name, _weight in _PEOPLE}
     people[SELF] = SELF_NAME
     weighted = [account for account, _name, weight in _PEOPLE for _ in range(weight)]
@@ -104,18 +107,19 @@ def demo_flow() -> FlowLoad:
                         }
                     )
                     assignee = nxt
-        issues.append(
-            {
-                "key": key,
-                "id": str(90000 + number),
-                "fields": {
-                    "summary": f"{rng.choice(_TOPICS)} ({number})",
-                    "created": _ts(created),
-                    "updated": _ts(created + dt.timedelta(days=1)),
-                    "reporter": _person(reporter, people[reporter]),
-                    "assignee": _person(assignee, people[assignee]),
-                },
-            }
-        )
+        fields: dict[str, Any] = {
+            "summary": f"{rng.choice(_TOPICS)} ({number})",
+            "created": _ts(created),
+            "updated": _ts(created + dt.timedelta(days=1)),
+            "status": {"name": "In Arbeit", "statusCategory": {"key": "indeterminate"}},
+            "reporter": _person(reporter, people[reporter]),
+            "assignee": _person(assignee, people[assignee]),
+        }
+        # Gut die Haelfte ist erledigt, nach dem letzten Bearbeiterwechsel.
+        finished = created + dt.timedelta(days=done_rng.randrange(20, 60))
+        if done_rng.random() < 0.6 and finished < NOW:
+            fields["status"] = {"name": "Erledigt", "statusCategory": {"key": "done"}}
+            fields["statuscategorychangedate"] = _ts(finished)
+        issues.append({"key": key, "id": str(90000 + number), "fields": fields})
         histories[key] = log
     return FlowLoad((SELF,), None, extract_flow(issues, histories), cached=0, fetched=len(issues))

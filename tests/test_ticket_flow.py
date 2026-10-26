@@ -15,12 +15,14 @@ import pytest
 from jira_timesheet_qt.services import ticket_flow
 from jira_timesheet_qt.services.ticket_board import AccountIdError
 from jira_timesheet_qt.services.ticket_flow import (
+    EDGE_ACCEPTANCE,
     EDGE_HANDOVER,
     EDGE_KINDS,
     EDGE_ORDER,
     FLOW_1M,
     FLOW_12M,
     FLOW_ALL,
+    FLOW_FIELDS,
     FLOW_YTD,
     build_star,
     extract_flow,
@@ -144,6 +146,71 @@ def _netz() -> Any:
     histories: dict[str, list[dict[str, Any]]] = {i["key"]: [] for i in issues}
     histories["X-6"] = [handover(ts(20), DORA, ANNA)]
     return extract_flow(issues, histories)
+
+
+def done(ticket: dict[str, Any], when: str | None) -> dict[str, Any]:
+    """Setzt ein Ticket auf Fertig, when = statuscategorychangedate."""
+    ticket["fields"]["status"] = {"name": "Erledigt", "statusCategory": {"key": "done"}}
+    if when is not None:
+        ticket["fields"]["statuscategorychangedate"] = when
+    return ticket
+
+
+def kinds_of(data: Any) -> list[tuple[str, str, str]]:
+    return [(e.kind, e.source, e.target) for e in data.edges]
+
+
+class TestAbnahme:
+    def test_bearbeiter_gibt_an_den_ersteller_zurueck(self) -> None:
+        data = extract_flow([done(issue("X-1", ANNA, BERT), ts(10))], {"X-1": []})
+        assert kinds_of(data) == [(EDGE_ORDER, ANNA, BERT), (EDGE_ACCEPTANCE, BERT, ANNA)]
+        assert data.edges[-1].when == dt.datetime(2026, 8, 10, 9, tzinfo=TZ)
+
+    def test_offenes_ticket_hat_keine_abnahme(self) -> None:
+        ticket = issue("X-1", ANNA, BERT)
+        ticket["fields"]["status"] = {"name": "In Arbeit", "statusCategory": {"key": "indeterminate"}}
+        ticket["fields"]["statuscategorychangedate"] = ts(10)
+        data = extract_flow([ticket], {"X-1": []})
+        assert kinds_of(data) == [(EDGE_ORDER, ANNA, BERT)]
+
+    def test_zaehlt_wer_es_beim_abschluss_hatte(self) -> None:
+        # Carl hat abgeschlossen, Dora bekam es erst danach - die Abnahme kommt von Carl.
+        log = [handover(ts(5), BERT, CARL), handover(ts(12), CARL, DORA)]
+        data = extract_flow([done(issue("X-1", ANNA, DORA), ts(10))], {"X-1": log})
+        assert kinds_of(data) == [
+            (EDGE_ORDER, ANNA, BERT),
+            (EDGE_HANDOVER, BERT, CARL),
+            (EDGE_ACCEPTANCE, CARL, ANNA),
+            (EDGE_HANDOVER, CARL, DORA),
+        ]
+
+    def test_ohne_bearbeiter_abgeschlossen_zaehlt_der_letzte(self) -> None:
+        log = [handover(ts(8), BERT, None)]
+        data = extract_flow([done(issue("X-1", ANNA, None), ts(10))], {"X-1": log})
+        assert (EDGE_ACCEPTANCE, BERT, ANNA) in kinds_of(data)
+
+    def test_selbst_abgeschlossen_ist_keine_abnahme(self) -> None:
+        log = [handover(ts(5), BERT, ANNA)]
+        data = extract_flow([done(issue("X-1", ANNA, ANNA), ts(10))], {"X-1": log})
+        assert EDGE_ACCEPTANCE not in [e.kind for e in data.edges]
+
+    def test_ohne_zeitpunkt_wird_nicht_geraten(self) -> None:
+        data = extract_flow([done(issue("X-1", ANNA, BERT), None)], {"X-1": []})
+        assert kinds_of(data) == [(EDGE_ORDER, ANNA, BERT)]
+
+    def test_im_stern_eingehend_und_abschaltbar(self) -> None:
+        data = extract_flow([done(issue("X-1", ANNA, BERT), ts(10))], {"X-1": []})
+        star = build_star(data, [ANNA], (EDGE_ACCEPTANCE,), None)
+        assert [(s.person.account_id if s.person else "", s.outgoing, s.incoming) for s in star.spokes] == [
+            (BERT, (), ("X-1",))
+        ]
+        assert build_star(data, [ANNA], (EDGE_ORDER, EDGE_HANDOVER), None).spokes[0].incoming == ()
+
+    def test_suche_liefert_den_zeitpunkt(self) -> None:
+        assert "statuscategorychangedate" in FLOW_FIELDS.split(",")
+
+    def test_ist_dritte_pfeilart(self) -> None:
+        assert EDGE_KINDS == (EDGE_ORDER, EDGE_HANDOVER, EDGE_ACCEPTANCE)
 
 
 class TestStern:

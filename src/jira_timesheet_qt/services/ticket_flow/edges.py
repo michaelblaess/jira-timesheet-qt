@@ -3,7 +3,10 @@
 Auftrag: Ersteller an den ersten Bearbeiter, zum Zeitpunkt dieser ersten
 Zuweisung. Uebergabe: jeder spaetere Wechsel vom letzten Bearbeiter an einen
 neuen. Ein Zwischenstand ohne Bearbeiter unterbricht die Kette nicht - wer
-zuletzt dran war, gibt an den naechsten ab.
+zuletzt dran war, gibt an den naechsten ab. Abnahme: wer das Ticket hatte,
+als es nach Fertig wechselte, gibt das Ergebnis an den Ersteller zurueck.
+Den Zeitpunkt liefert ``statuscategorychangedate`` aus der Suche - das
+Protokoll braucht dafuer keine Statuswechsel.
 """
 
 from __future__ import annotations
@@ -15,7 +18,7 @@ from typing import Any
 
 from jira_timesheet_qt.services.ticket_report.lifecycle import display_name, parse_ts
 
-from .models import EDGE_HANDOVER, EDGE_ORDER, FlowEdge, FlowStar, Person, Spoke
+from .models import EDGE_ACCEPTANCE, EDGE_HANDOVER, EDGE_ORDER, FlowEdge, FlowStar, Person, Spoke
 
 DEFAULT_SPOKES = 8
 """So viele Personen stehen einzeln im Kreis, der Rest unter "Sonstige"."""
@@ -83,6 +86,28 @@ def _assignee_changes(histories: Sequence[Mapping[str, Any]]) -> list[tuple[dt.d
     return changes
 
 
+def _done_at(fields: Mapping[str, Any]) -> dt.datetime | None:
+    """Zeitpunkt des Wechsels nach Fertig, None bei offenen Tickets."""
+    status = fields.get("status")
+    category = status.get("statusCategory") if isinstance(status, Mapping) else None
+    if not isinstance(category, Mapping) or str(category.get("key") or "") != "done":
+        return None
+    return parse_ts(str(fields.get("statuscategorychangedate") or ""))
+
+
+def _holder_at(changes: Sequence[tuple[dt.datetime, str, str, str, str]], moment: dt.datetime, current: str) -> str:
+    """Wer das Ticket zu einem Zeitpunkt hatte. Ein Zwischenstand ohne Bearbeiter zaehlt nicht."""
+    if not changes:
+        return current
+    holder = changes[0][1]
+    for when, _old, _old_name, new, _new_name in changes:
+        if when > moment:
+            break
+        if new:
+            holder = new
+    return holder
+
+
 def ticket_edges(
     issue: Mapping[str, Any],
     histories: Sequence[Mapping[str, Any]],
@@ -136,6 +161,14 @@ def ticket_edges(
         elif holder and holder != new:
             edges.append(FlowEdge(EDGE_HANDOVER, holder, new, key, when))
         holder = new
+
+    done = _done_at(fields)
+    if done is not None:
+        finisher = _holder_at(changes, done, current)
+        if finisher and reporter and finisher != reporter:
+            edges.append(FlowEdge(EDGE_ACCEPTANCE, finisher, reporter, key, done))
+            # Ein Wechsel nach dem Abschluss kann spaeter liegen als die Abnahme.
+            edges.sort(key=lambda edge: edge.when)
     return edges
 
 

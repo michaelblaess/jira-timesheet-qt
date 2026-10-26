@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QApplication, QGraphicsPixmapItem
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.services.team import Roster, TeamMember, to_storage
 from jira_timesheet_qt.services.ticket_flow import (
+    EDGE_ACCEPTANCE,
     EDGE_HANDOVER,
     EDGE_ORDER,
     FLOW_12M,
@@ -90,12 +91,14 @@ class TestStern:
 
     def test_pfeilart_abschaltbar(self, qapp: QApplication) -> None:
         view = _view()
+        view._kind_buttons[EDGE_ACCEPTANCE].click()
         view._kind_buttons[EDGE_HANDOVER].click()
         assert _namen(view) == ["Bert Beispiel", "Dora Probe"]
         assert view.current_kinds() == (EDGE_ORDER,)
 
     def test_die_letzte_pfeilart_bleibt_an(self, qapp: QApplication) -> None:
         view = _view()
+        view._kind_buttons[EDGE_ACCEPTANCE].click()
         view._kind_buttons[EDGE_HANDOVER].click()
         view._kind_buttons[EDGE_ORDER].click()
         assert view.current_kinds() == (EDGE_ORDER,)

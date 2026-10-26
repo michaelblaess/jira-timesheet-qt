@@ -67,6 +67,7 @@ from jira_timesheet_qt.services.performance import SELF_NAME
 from jira_timesheet_qt.services.ticket_board import key_sort_value
 from jira_timesheet_qt.services.ticket_flow import (
     DEFAULT_FLOW_PERIOD,
+    EDGE_ACCEPTANCE,
     EDGE_HANDOVER,
     EDGE_KINDS,
     EDGE_ORDER,
@@ -94,10 +95,11 @@ OUT = "out"
 IN = "in"
 BOTH = "both"
 
-_KIND_LABELS = {EDGE_ORDER: "Auftrag", EDGE_HANDOVER: "Übergabe"}
+_KIND_LABELS = {EDGE_ORDER: "Auftrag", EDGE_HANDOVER: "Übergabe", EDGE_ACCEPTANCE: "Abnahme"}
 _KIND_TIPS = {
     EDGE_ORDER: "Ersteller an den ersten Bearbeiter eines Tickets",
     EDGE_HANDOVER: "Bearbeiterwechsel: der bisherige gibt an den neuen ab",
+    EDGE_ACCEPTANCE: "Fertig gemeldet: wer das Ticket zuletzt hatte, gibt es an den Ersteller zurück",
 }
 
 # Masse des Sterns in Szenenkoordinaten - die Ansicht skaliert ihn ein.

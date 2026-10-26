@@ -14,7 +14,9 @@ EDGE_ORDER = "order"
 """Auftrag: Ersteller an ersten Bearbeiter."""
 EDGE_HANDOVER = "handover"
 """Uebergabe: Bearbeiterwechsel im Aenderungsprotokoll, alter an neuen."""
-EDGE_KINDS: tuple[str, ...] = (EDGE_ORDER, EDGE_HANDOVER)
+EDGE_ACCEPTANCE = "acceptance"
+"""Abnahme: wer das Ticket beim Wechsel nach Fertig hatte, an den Ersteller."""
+EDGE_KINDS: tuple[str, ...] = (EDGE_ORDER, EDGE_HANDOVER, EDGE_ACCEPTANCE)
 
 
 @dataclass(frozen=True)
