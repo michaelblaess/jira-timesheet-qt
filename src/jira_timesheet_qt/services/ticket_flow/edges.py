@@ -158,10 +158,11 @@ def extract_flow(
 
 def build_star(
     data: FlowData,
-    center: str,
+    center: Sequence[str],
     kinds: Collection[str],
     since: dt.date | None,
     limit: int = DEFAULT_SPOKES,
+    center_name: str = "",
 ) -> FlowStar:
     """Faltet die Kanten zu einem Stern um eine Person.
 
@@ -173,26 +174,30 @@ def build_star(
         data:
             Ergebnis von extract_flow.
         center:
-            accountId der Person in der Mitte.
+            Kennungen der Person in der Mitte. Eine Person kann mehrere
+            Konten fuehren, Wege zwischen ihnen zaehlen nicht.
         kinds:
             Die zugeschalteten Kantenarten.
         since:
             Erster Tag, None = alle Kanten.
         limit:
             Hoechstens so viele Personen einzeln, der Rest unter "Sonstige".
+        center_name:
+            Name der Mitte. Leer = der Jira-Name der ersten bekannten Kennung.
 
     Returns:
         Der Stern.
     """
+    own = set(center)
     outgoing: dict[str, dict[str, None]] = {}
     incoming: dict[str, dict[str, None]] = {}
     for edge in data.edges:
         if edge.kind not in kinds or (since is not None and edge.when.date() < since):
             continue
-        if edge.source == center and edge.target != center:
+        if edge.source in own and edge.target not in own:
             outgoing.setdefault(edge.target, {})[edge.key] = None
             incoming.setdefault(edge.target, {})
-        elif edge.target == center and edge.source != center:
+        elif edge.target in own and edge.source not in own:
             incoming.setdefault(edge.source, {})[edge.key] = None
             outgoing.setdefault(edge.source, {})
 
@@ -217,4 +222,6 @@ def build_star(
             out_keys.update(outgoing[account])
             in_keys.update(incoming[account])
         others = Spoke(None, tuple(out_keys), tuple(in_keys), members=len(rest))
-    return FlowStar(Person(center, name_of(center)), spokes, others)
+    first = center[0] if center else ""
+    known = next((account for account in center if account in data.people), first)
+    return FlowStar(Person(first, center_name or name_of(known)), spokes, others)
