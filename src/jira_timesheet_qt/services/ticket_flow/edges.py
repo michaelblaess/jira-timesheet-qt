@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from jira_timesheet_qt.services.ticket_report.lifecycle import display_name, parse_ts
@@ -30,6 +30,8 @@ class FlowData:
     """accountId auf Anzeigenamen."""
     missing: tuple[str, ...]
     """Tickets ohne Aenderungsprotokoll - fuer sie gibt es keine Kanten."""
+    titles: Mapping[str, str] = field(default_factory=dict)
+    """Schluessel auf Titel, fuer die Ticketliste an einem Pfeil."""
 
 
 def _account(raw: Any) -> tuple[str, str]:
@@ -138,11 +140,13 @@ def extract_flow(
     edges: list[FlowEdge] = []
     people: dict[str, str] = {}
     missing: list[str] = []
+    titles: dict[str, str] = {}
     for issue in issues:
         key = str(issue.get("key") or "")
         if not key or key in seen:
             continue
         seen.add(key)
+        titles[key] = str((issue.get("fields") or {}).get("summary") or "")
         log = histories.get(key)
         if log is None:
             missing.append(key)
@@ -153,7 +157,7 @@ def extract_flow(
             continue
         edges.extend(ticket_edges(issue, log, people))
     edges.sort(key=lambda edge: edge.when)
-    return FlowData(tuple(edges), people, tuple(missing))
+    return FlowData(tuple(edges), people, tuple(missing), titles)
 
 
 def build_star(

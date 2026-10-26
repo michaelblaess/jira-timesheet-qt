@@ -17,6 +17,7 @@ from jira_timesheet_qt.services.performance import (
     build_hints,
 )
 from jira_timesheet_qt.services.ticket_board import Board, Group, Role, Ticket
+from jira_timesheet_qt.services.ticket_flow import FlowData, FlowLoad
 
 # Zentrale Fake-Werte fuer den Anonymisierungs-Modus (Screenshots). Werden auch
 # vom ConfigPanel-Header, der Log-Zensur und dem Detail-Dialog verwendet.
@@ -322,3 +323,52 @@ def anonymize_performance(report: PerformanceReport) -> PerformanceReport:
     )
     result.hints = build_hints(result)
     return result
+
+
+# Der Stern zeigt bis zu neun Personen - die fuenf Autoren oben reichen dafuer
+# nicht. Ebenso unmissverstaendlich erfunden, schon in Leseform.
+_FAKE_FLOW_PEOPLE = [
+    "Max Mustermann",
+    "Erika Musterfrau",
+    "Bernd Beispiel",
+    "Martina Muster",
+    "Berta Beispiel",
+    "Paula Probe",
+    "Tobias Test",
+    "Pia Platzhalter",
+    "Dieter Dummy",
+    "Frida Fiktiv",
+]
+
+
+def anonymize_flow(load: FlowLoad) -> FlowLoad:
+    """Erzeugt eine anonymisierte Kopie eines Ticketfluss-Abrufs.
+
+    Ersetzt werden Namen, Ticketnummern und Titel. Erhalten bleiben die
+    Kennungen - ohne sie fuehrt der Klick auf eine Person ins Leere - und alle
+    Zeitpunkte, denn sie bestimmen, welche Wege der Zeitraum zeigt.
+
+    Args:
+        load:
+            Der echte Abruf.
+
+    Returns:
+        Eine neue Kopie, das Original bleibt fuer das Zurueckschalten erhalten.
+    """
+    rng = random.Random(42)
+    keys: dict[str, str] = {}
+
+    def fake_key(real: str) -> str:
+        if real not in keys:
+            keys[real] = f"{rng.choice(_FAKE_PROJECTS)}-{len(keys) + 1001}"
+        return keys[real]
+
+    data = load.data
+    people = {
+        account: (_FAKE_FLOW_PEOPLE[index] if index < len(_FAKE_FLOW_PEOPLE) else f"Person {index + 1}")
+        for index, account in enumerate(data.people)
+    }
+    edges = tuple(replace(edge, key=fake_key(edge.key)) for edge in data.edges)
+    titles = {fake_key(key): _FAKE_SUMMARIES[index % len(_FAKE_SUMMARIES)] for index, key in enumerate(data.titles)}
+    missing = tuple(fake_key(key) for key in data.missing)
+    return replace(load, data=FlowData(edges, people, missing, titles))

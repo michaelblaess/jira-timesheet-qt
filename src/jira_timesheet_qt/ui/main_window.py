@@ -63,6 +63,7 @@ from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
 from jira_timesheet_qt.services.anonymizer import (
     FAKE_HOST,
     anonymize_board,
+    anonymize_flow,
     anonymize_performance,
     anonymize_timesheet,
     log_censor_map,
@@ -74,6 +75,7 @@ from jira_timesheet_qt.services.performance import PERIODS, PerformanceReport
 from jira_timesheet_qt.services.team import TeamMember, add_person, from_storage, to_storage
 from jira_timesheet_qt.services.ticket_board import AccountIdError, Board, Group, Marker, Role, check_account_id
 from jira_timesheet_qt.services.ticket_board import Ticket as BoardTicket
+from jira_timesheet_qt.services.ticket_flow import EDGE_KINDS, FLOW_PERIODS, FlowLoad
 from jira_timesheet_qt.services.ticket_preview import IssuePreviewCache, TicketPreviewData, german_datetime
 from jira_timesheet_qt.ui.about_dialog import AboutDialog
 from jira_timesheet_qt.ui.arrow_cursor import use_arrow_cursor
@@ -113,6 +115,8 @@ from jira_timesheet_qt.ui.ticket_board_worker import (
     TicketStatsWorker,
     config_from,
 )
+from jira_timesheet_qt.ui.ticket_flow_view import GUEST, TicketFlowView
+from jira_timesheet_qt.ui.ticket_flow_worker import TicketFlowWorker
 from jira_timesheet_qt.ui.ticket_preview import TicketPreview
 from jira_timesheet_qt.ui.timesheet_model import ENTRY_ROLE, SORT_ROLE, TimesheetModel
 from jira_timesheet_qt.ui.timesheet_tree_model import TimesheetTreeModel
@@ -128,6 +132,7 @@ _VIEWS = (
     "Mein Team",
     "Neue Tickets",
     "Performance-Booster",
+    "Ticketfluss",
 )
 
 # Welche Stapelseite welche Ticket-Ansicht ist. Aus _VIEWS abgeleitet,
@@ -146,6 +151,8 @@ _YEAR_VIEW: int = _VIEWS.index("Jahr")
 _PERF_VIEW: int = _VIEWS.index("Performance-Booster")
 # Stapelseite der neuen Tickets, ebenso abgeleitet.
 _NEW_VIEW: int = _VIEWS.index("Neue Tickets")
+# Stapelseite des Ticketflusses, ebenso abgeleitet.
+_FLOW_VIEW: int = _VIEWS.index("Ticketfluss")
 # Stapelseite der Monatsansicht - stand bis 09/2026 als feste 1 im Code.
 _MONTH_VIEW: int = _VIEWS.index("Monat")
 
@@ -244,6 +251,14 @@ class MainWindow(QMainWindow):
         self._perf_generation = 0
         self._perf_loaded = False
         self._real_perf: PerformanceReport | None = None
+        # Ticketfluss: eigener Zaehler, Geladen-Flag, echter Abruf wie beim
+        # Booster. Dazu der Gast, der per Klick in die Mitte kam, und die
+        # eigenen Kennungen - sie stehen erst nach dem ersten eigenen Abruf fest.
+        self._flow_generation = 0
+        self._flow_loaded = False
+        self._real_flow: FlowLoad | None = None
+        self._flow_guest: TeamMember | None = None
+        self._own_ids: tuple[str, ...] = ()
         # Neue Tickets: ebenso eigener Zaehler und eigenes Geladen-Flag.
         self._new_generation = 0
         self._new_loaded = False
@@ -417,6 +432,21 @@ class MainWindow(QMainWindow):
         self._performance.refresh_requested.connect(self._load_performance)
         self._performance.ticket_selected.connect(lambda _key: self._on_perf_ticket_selected())
         self._performance.hint_ticket_clicked.connect(self._on_perf_hint_ticket)
+        self._ticket_flow = TicketFlowView(self._mode)
+        stored_flow_period = str(self._qsettings.value("ticket_flow/period", "") or "")
+        if stored_flow_period in FLOW_PERIODS:
+            self._ticket_flow.set_period(stored_flow_period)
+        stored_kinds = str(self._qsettings.value("ticket_flow/kinds", "") or "")
+        if stored_kinds:
+            self._ticket_flow.set_kinds(tuple(k for k in stored_kinds.split(",") if k in EDGE_KINDS))
+        self._ticket_flow.member_changed.connect(lambda _name: self._load_ticket_flow())
+        self._ticket_flow.period_changed.connect(self._on_flow_period_changed)
+        self._ticket_flow.kinds_changed.connect(
+            lambda: self._qsettings.setValue("ticket_flow/kinds", ",".join(self._ticket_flow.current_kinds()))
+        )
+        self._ticket_flow.refresh_requested.connect(self._load_ticket_flow)
+        self._ticket_flow.person_clicked.connect(self._on_flow_person_clicked)
+        self._ticket_flow.ticket_activated.connect(self._open_flow_ticket)
         self._new_tickets = NewTicketsView()
         stored_window = str(self._qsettings.value("new_tickets/window", "") or "")
         if stored_window in WINDOWS:
@@ -453,6 +483,7 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._team_board)
         self._stack.addWidget(self._new_tickets)
         self._stack.addWidget(self._performance)
+        self._stack.addWidget(self._ticket_flow)
         outer.addWidget(self._stack, 1)
         # Eine Vorschau fuer alle Listen: sie zieht mit der sichtbaren Seite um.
         # Am Stapel statt am Reiter, weil manche Wege die Seite direkt setzen.
@@ -1620,6 +1651,7 @@ class MainWindow(QMainWindow):
             self._team_board.clear_guest()
         self._team_board.set_members([member.display_name for member in roster.members])
         self._performance.set_members([member.display_name for member in roster.members])
+        self._ticket_flow.set_members([member.display_name for member in roster.members])
         self._new_tickets.set_members([member.display_name for member in roster.members])
         # Wer auf der Merkliste steht, bekommt im Kontextmenue kein "hinzufuegen".
         team_ids = frozenset(a for member in roster.members for a in member.account_ids)
@@ -1781,6 +1813,115 @@ class MainWindow(QMainWindow):
         self._performance.show_message(message)
         self._set_status(message, "error")
 
+    # --- Ticketfluss ----------------------------------------------------
+
+    def _flow_member(self) -> TeamMember | None:
+        """Die Person in der Mitte: Merkliste, Gast oder None fuer sich selbst."""
+        name = self._ticket_flow.current_member()
+        if name == GUEST:
+            return self._flow_guest
+        roster = from_storage(self._settings.team_members)
+        return next((member for member in roster.members if member.display_name == name), None)
+
+    def _on_flow_period_changed(self, period: str) -> None:
+        """Merkt den Zeitraum. Neu geladen wird nur, wenn er weiter zurueckreicht."""
+        self._qsettings.setValue("ticket_flow/period", period)
+        loaded = self._real_flow
+        since = self._ticket_flow.current_since()
+        covered = loaded is not None and (loaded.since is None or (since is not None and since >= loaded.since))
+        if not covered:
+            self._load_ticket_flow()
+
+    def _on_flow_person_clicked(self, account_id: str, name: str) -> None:
+        """Setzt eine Person aus dem Kreis in die Mitte."""
+        if self._anonymize:
+            # Der Name im Bild ist erfunden - als Gast stuende er sonst in der
+            # Auswahl, und ein Klick im Screenshot-Modus soll keine fremde
+            # Person abrufen.
+            self._set_status("Im Screenshot-Modus lässt sich die Mitte nicht per Klick wechseln.")
+            return
+        if account_id in self._own_ids:
+            self._ticket_flow.select_member("")
+            return
+        roster = from_storage(self._settings.team_members)
+        member = next((m for m in roster.members if account_id in m.account_ids), None)
+        if member is not None:
+            self._ticket_flow.select_member(member.display_name)
+            return
+        self._flow_guest = TeamMember(display_name=name, account_ids=(account_id,))
+        self._ticket_flow.set_guest(name)
+
+    def _open_flow_ticket(self, key: str) -> None:
+        """Ticket aus der Liste am Pfeil in Jira oeffnen - nicht im Screenshot-Modus."""
+        if self._anonymize or not self._settings.jira_host:
+            return
+        QDesktopServices.openUrl(QUrl(f"{self._settings.jira_host.rstrip('/')}/browse/{key}"))
+
+    def _show_flow(self, load: FlowLoad) -> None:
+        """Zeigt einen Abruf, im Screenshot-Modus als Kopie mit erfundenen Namen."""
+        if self._anonymize:
+            self._ticket_flow.set_flow(anonymize_flow(load))
+            return
+        member = self._flow_member()
+        self._ticket_flow.set_flow(load, member.display_name if member is not None else "")
+
+    def _load_ticket_flow(self) -> None:
+        """Holt den Ticketfluss der gewaehlten Person im Hintergrund."""
+        if not self._settings_complete():
+            self._ticket_flow.show_message("Zugangsdaten fehlen - bitte zuerst die Einstellungen ausfüllen.")
+            return
+        name = self._ticket_flow.current_member()
+        member = self._flow_member()
+        if name and member is None:
+            self._ticket_flow.show_message(f"{name} steht nicht mehr in der Merkliste von Mein Team.")
+            return
+
+        self._flow_generation += 1
+        generation = self._flow_generation
+        self._flow_loaded = True
+        self._real_flow = None
+        self._ticket_flow.show_message("Ticketfluss wird geladen ...")
+        self._set_status("Ticketfluss wird geladen ...", "busy")
+        worker = TicketFlowWorker(
+            self._settings,
+            member,
+            self._ticket_flow.current_since(),
+            Settings.SETTINGS_DIR / "cache" / "ticket_flow",
+            self,
+        )
+        worker.progress.connect(lambda text, g=generation: self._on_flow_progress(text, g))
+        worker.log.connect(self._log.write)
+        worker.finished_ok.connect(lambda result, g=generation: self._on_flow_loaded(result, g))
+        worker.failed.connect(lambda message, g=generation: self._on_flow_failed(message, g))
+        worker.finished.connect(worker.deleteLater)
+        self._running_workers.append(worker)
+        worker.start()
+
+    def _on_flow_progress(self, text: str, generation: int) -> None:
+        """Zwischenmeldung - nur vom juengsten Abruf."""
+        if generation == self._flow_generation:
+            self._set_status(text, "busy")
+
+    def _on_flow_loaded(self, result: object, generation: int) -> None:
+        """Uebernimmt einen fertigen Abruf."""
+        self._running_workers = [w for w in self._running_workers if w.isRunning()]
+        if generation != self._flow_generation or not isinstance(result, FlowLoad):
+            return
+        if self._ticket_flow.current_member() == "":
+            self._own_ids = result.center
+        self._real_flow = result
+        self._show_flow(result)
+        self._set_status(f"Ticketfluss: {len(result.data.edges)} Wege geladen")
+
+    def _on_flow_failed(self, message: str, generation: int) -> None:
+        """Meldet einen gescheiterten Abruf."""
+        self._running_workers = [w for w in self._running_workers if w.isRunning()]
+        if generation != self._flow_generation:
+            return
+        self._flow_loaded = False
+        self._ticket_flow.show_message(message)
+        self._set_status(message, "error")
+
     def _invalidate_boards(self) -> None:
         """Verwirft die geladenen Ticket-Ansichten nach einer Aenderung.
 
@@ -1794,6 +1935,7 @@ class MainWindow(QMainWindow):
         self._perf_loaded = False
         # Die Merkliste kann sich geaendert haben.
         self._new_loaded = False
+        self._flow_loaded = False
         mode = _BOARD_MODES.get(self._stack.currentIndex())
         if mode is not None and self._settings_complete():
             self._load_board(mode)
@@ -1801,6 +1943,8 @@ class MainWindow(QMainWindow):
             self._load_performance()
         elif self._stack.currentIndex() == _NEW_VIEW and self._settings_complete():
             self._load_new_tickets()
+        elif self._stack.currentIndex() == _FLOW_VIEW and self._settings_complete():
+            self._load_ticket_flow()
 
     def _board_view(self, mode: str) -> TicketBoardView:
         """Liefert die Ansicht zu einem Abrufmodus.
@@ -2097,6 +2241,8 @@ class MainWindow(QMainWindow):
                 view.set_board(self._display_board(real))
         if self._real_perf is not None:
             self._performance.set_report(self._display_performance(self._real_perf))
+        if self._real_flow is not None:
+            self._show_flow(self._real_flow)
         self._new_tickets.set_anonymized(self._anonymize, self._display_new_tickets)
         self._refresh_summary_bar()
         self._update_preview()
@@ -2223,6 +2369,8 @@ class MainWindow(QMainWindow):
                 self._load_performance()
             elif position == _NEW_VIEW:
                 self._load_new_tickets()
+            elif position == _FLOW_VIEW:
+                self._load_ticket_flow()
             elif position == _YEAR_VIEW:
                 self.load_year()
             else:
@@ -2239,6 +2387,8 @@ class MainWindow(QMainWindow):
             self._perf_loaded = False
         if position != _NEW_VIEW:
             self._new_loaded = False
+        if position != _FLOW_VIEW:
+            self._flow_loaded = False
 
         if mode is not None:
             self._load_board(mode)
@@ -2246,6 +2396,8 @@ class MainWindow(QMainWindow):
             self._load_performance()
         elif position == _NEW_VIEW:
             self._load_new_tickets()
+        elif position == _FLOW_VIEW:
+            self._load_ticket_flow()
         elif position == _YEAR_VIEW:
             self._year_loaded_for = None
             self.load_year()
@@ -2432,6 +2584,8 @@ class MainWindow(QMainWindow):
             self._load_performance()
         if position == _NEW_VIEW and not self._new_loaded and self._settings_complete():
             self._load_new_tickets()
+        if position == _FLOW_VIEW and not self._flow_loaded and self._settings_complete():
+            self._load_ticket_flow()
 
     def _update_year_view(self, timesheet: Timesheet | None) -> None:
         """Traegt die Summen des geladenen Zeitraums in die Jahresansicht.
@@ -2754,6 +2908,7 @@ class MainWindow(QMainWindow):
         self._summary.apply_mode(self._mode)
         self._preview.apply_mode(self._mode)
         self._performance.apply_mode(self._mode)
+        self._ticket_flow.apply_mode(self._mode)
         self._recolor_menu_icons()
         # Das Protokoll traegt seine Farben als HTML und bleibt sonst stehen.
         self._log.apply_theme()

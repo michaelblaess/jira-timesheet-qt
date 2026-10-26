@@ -120,6 +120,11 @@ class TestKanten:
         data = extract_flow([issue("X-1", ANNA, BERT), issue("X-1", ANNA, BERT)], {"X-1": []})
         assert len(data.edges) == 1
 
+    def test_titel_fuer_die_ticketliste(self) -> None:
+        raw = issue("X-1", ANNA, BERT)
+        raw["fields"]["summary"] = "Kaffee nachfuellen"
+        assert extract_flow([raw], {}).titles == {"X-1": "Kaffee nachfuellen"}
+
     def test_namen_in_leseform(self) -> None:
         data = extract_flow([issue("X-1", ANNA, BERT)], {"X-1": []})
         assert data.people == {ANNA: "Anna Muster", BERT: "Bert Beispiel"}

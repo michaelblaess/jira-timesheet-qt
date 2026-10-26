@@ -182,10 +182,12 @@ def _fenster(team: list[TeamMember] | None = None) -> Any:
 
 
 class TestHauptfenster:
-    def test_reiter_steht_ganz_rechts(self, qapp: QApplication) -> None:
+    def test_reiter_steht_hinter_neue_tickets(self, qapp: QApplication) -> None:
+        # Bis 26.10.2026 ganz rechts. Seitdem steht der Ticketfluss dahinter,
+        # damit "Neue Tickets" direkt vor dem Booster bleibt.
         fenster = _fenster()
         views = main_window._VIEWS
-        assert views[-1] == "Performance-Booster"
+        assert views.index("Performance-Booster") == views.index("Neue Tickets") + 1
         assert fenster._stack.widget(main_window._PERF_VIEW) is fenster._performance
         assert fenster._tabs.tabText(main_window._PERF_VIEW) == "Performance-Booster"
 
