@@ -431,6 +431,8 @@ class TicketFlowView(QWidget):
     person_clicked = Signal(str, str)
     # Ticket in der Liste doppelt angeklickt.
     ticket_activated = Signal(str)
+    # Gewaehltes Ticket der Liste fuer die Vorschau: Nummer oder None.
+    ticket_selected = Signal(object)
     # Kennungen im Bild, fuer die noch kein Profilbild vorliegt.
     avatars_needed = Signal(list)
     # Kontextmenues: Ticket-Analyse, Tickets einer Person, Person in die Merkliste.
@@ -520,6 +522,13 @@ class TicketFlowView(QWidget):
             self._zoom_buttons[name] = zoom
             head.addWidget(zoom)
         self._paint_zoom_icons()
+        # Ein Knopf nur mit Symbol ist niedriger als einer mit Text - alle drei
+        # bekommen die Hoehe des Reset-Knopfs, Plus und Minus sind quadratisch.
+        height = max(button.sizeHint().height() for button in self._zoom_buttons.values())
+        for name, zoom in self._zoom_buttons.items():
+            zoom.setFixedHeight(height)
+            if name != "fit":
+                zoom.setFixedWidth(height + 4)
         outer.addLayout(head)
 
         rule = QFrame()
@@ -592,6 +601,7 @@ class TicketFlowView(QWidget):
         self._list.itemDoubleClicked.connect(lambda item, _col: self.ticket_activated.emit(item.text(0)))
         self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._list.customContextMenuRequested.connect(self._on_list_menu)
+        self._list.currentItemChanged.connect(lambda *_args: self.ticket_selected.emit(self.current_key()))
         side_layout.addWidget(self._list, 1)
 
         self._split = QSplitter(Qt.Orientation.Horizontal)
@@ -600,7 +610,12 @@ class TicketFlowView(QWidget):
         self._split.addWidget(side)
         self._split.setStretchFactor(0, 3)
         self._split.setStretchFactor(1, 1)
-        self._pages.addWidget(self._split)
+        # Aussen ein zweiter Trenner: dort haengt das Fenster die Ticket-Vorschau
+        # rechts an, wie in den anderen Reitern.
+        self._preview_split = QSplitter(Qt.Orientation.Horizontal)
+        self._preview_split.setChildrenCollapsible(False)
+        self._preview_split.addWidget(self._split)
+        self._pages.addWidget(self._preview_split)
         outer.addWidget(self._pages, 1)
         self._paint_legend()
 
@@ -828,7 +843,7 @@ class TicketFlowView(QWidget):
         self._legend.setToolTip("Aus Sicht der Person in der Mitte. Die Pfeildicke folgt der Zahl der Tickets.")
 
     def _paint_zoom_icons(self) -> None:
-        for name, glyph in (("out", "zoom-out"), ("in", "zoom-in"), ("fit", "zoom-reset")):
+        for name, glyph in (("out", "minus"), ("in", "plus")):
             self._zoom_buttons[name].setIcon(load_icon(glyph, self._mode))
 
     @staticmethod
@@ -1113,6 +1128,15 @@ class TicketFlowView(QWidget):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(len(labels) - 1, QHeaderView.ResizeMode.Stretch)
         self._list.sortByColumn(0, Qt.SortOrder.AscendingOrder)
+
+    def preview_host(self) -> QSplitter:
+        """Der waagerechte Trenner, in den das Fenster die Ticket-Vorschau haengt."""
+        return self._preview_split
+
+    def current_key(self) -> str | None:
+        """Nummer des gewaehlten Tickets der Liste, None ohne Auswahl."""
+        item = self._list.currentItem()
+        return item.text(0) if item is not None else None
 
     def list_headers(self) -> list[str]:
         """Die Spaltenkoepfe der Ticketliste, fuer Tests."""

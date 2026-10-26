@@ -610,3 +610,34 @@ class TestKontextmenues:
             "2team_add_requested(QString,QString)",
         ):
             assert view.receivers(signal) == 1, signal
+
+
+class TestVorschauUndKnoepfe:
+    def test_knoepfe_gleich_hoch_plus_minus_quadratisch(self, qapp: QApplication) -> None:
+        view = _view()
+        # Feste Hoehe, und zwar dieselbe - ungezeigt waeren sie sonst nur zufaellig gleich.
+        hoehen = {(b.minimumHeight(), b.maximumHeight()) for b in view._zoom_buttons.values()}
+        assert len(hoehen) == 1
+        (unten, oben) = hoehen.pop()
+        # Das Maximum der natuerlichen Hoehen - der Knopf mit Symbol ist hoeher als der mit Text.
+        assert unten == oben == max(b.sizeHint().height() for b in view._zoom_buttons.values())
+        assert view._zoom_buttons["in"].width() == view._zoom_buttons["out"].width()
+        assert view._zoom_buttons["in"].text() == "" and not view._zoom_buttons["in"].icon().isNull()
+
+    def test_auswahl_in_der_liste_meldet_das_ticket(self, qapp: QApplication) -> None:
+        view = _view()
+        gemeldet: list[object] = []
+        view.ticket_selected.connect(gemeldet.append)
+        bert = next(s for s in view.star().spokes if s.person and s.person.account_id == BERT)  # type: ignore[union-attr]
+        view.show_tickets(bert, "out")
+        erste = view._list.topLevelItem(0)
+        assert erste is not None
+        view._list.setCurrentItem(erste)
+        assert view.current_key() == "X-1"
+        assert gemeldet[-1] == "X-1"
+
+    def test_vorschau_zieht_in_den_teamflow(self, qapp: QApplication, fake: list[Any]) -> None:
+        fenster = _fenster()
+        fenster._settings.show_ticket_preview = True
+        fenster._stack.setCurrentIndex(main_window._FLOW_VIEW)
+        assert fenster._ticket_flow.preview_host().indexOf(fenster._preview) >= 0

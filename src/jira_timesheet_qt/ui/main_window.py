@@ -445,6 +445,7 @@ class MainWindow(QMainWindow):
             lambda: self._qsettings.setValue("ticket_flow/kinds", ",".join(self._ticket_flow.current_kinds()))
         )
         self._ticket_flow.avatars_needed.connect(self._load_avatars)
+        self._ticket_flow.ticket_selected.connect(lambda _key: self._on_flow_ticket_selected())
         self._ticket_flow.report_requested.connect(self.open_ticket_report)
         self._ticket_flow.person_requested.connect(self.show_person_tickets)
         self._ticket_flow.team_add_requested.connect(self.add_person_to_team)
@@ -1855,6 +1856,11 @@ class MainWindow(QMainWindow):
         self._flow_guest = TeamMember(display_name=name, account_ids=(account_id,))
         self._ticket_flow.set_guest(name)
 
+    def _on_flow_ticket_selected(self) -> None:
+        """Neue Auswahl in der Ticketliste. Zaehlt nur, wenn der Reiter vorn steht."""
+        if self._settings.show_ticket_preview and self._stack.currentWidget() is self._ticket_flow:
+            self._preview_timer.start()
+
     def _open_flow_ticket(self, key: str) -> None:
         """Ticket aus der Liste am Pfeil in Jira oeffnen - nicht im Screenshot-Modus."""
         if self._anonymize or not self._settings.jira_host:
@@ -2682,6 +2688,8 @@ class MainWindow(QMainWindow):
             return self._performance.preview_host()
         if page == _NEW_VIEW:
             return self._new_tickets.preview_host()
+        if page == _FLOW_VIEW:
+            return self._ticket_flow.preview_host()
         mode = _BOARD_MODES.get(page)
         return self._board_view(mode).preview_host() if mode is not None else None
 
@@ -2773,6 +2781,9 @@ class MainWindow(QMainWindow):
         elif page == _NEW_VIEW:
             key = self._new_tickets.current_key()
             nothing = "Kein Ticket gewählt"
+        elif page == _FLOW_VIEW:
+            key = self._ticket_flow.current_key()
+            nothing = "Klick auf einen Pfeil, dann auf ein Ticket"
         elif mode is not None:
             ticket = self._board_view(mode).current_ticket()
             key = ticket.key if ticket is not None else None
