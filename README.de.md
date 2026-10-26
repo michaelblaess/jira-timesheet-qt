@@ -94,6 +94,13 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   <img src="docs/screenshots/board-relevant-light.png" width="49%" alt="Meine Aktivitäten (hell)">
 </p>
 
+### Teamflow - wer wem Tickets gibt
+
+<p align="center">
+  <img src="docs/screenshots/teamflow-dark.png" width="49%" alt="Teamflow (dunkel)">
+  <img src="docs/screenshots/teamflow-light.png" width="49%" alt="Teamflow (hell)">
+</p>
+
 ### Ticket-Details
 
 <p align="center">
@@ -173,6 +180,7 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   stehen getrennt im Performance-Booster. Im Kontextmenü jeder Ticketliste nimmt "X zu meinem Team hinzufügen" eine Person direkt auf.
 - **Neue Tickets** - Der Blick am Morgen: welche Tickets die Kolleginnen und Kollegen aus "Mein Team" zuletzt angelegt haben. Die Person wählst Du im Auswahlfeld, "Alle" steht vorn, den Zeitraum über 1T, 2T, 3T oder 7T. Gezählt wird in Arbeitstagen: 1T heißt seit Beginn des letzten Arbeitstags, am Montag also ab Freitag, und Feiertage zählen nicht mit. Die Anzahl steht im Reitertitel, und auf Wunsch öffnet der Reiter gleich beim Start. Rechts steht die Ticket-Vorschau
 - **Performance-Booster** - Kennzahlen je Person wie bei einer Aktie, für 1M, 3M, 6M oder seit Jahresbeginn und im Vergleich zur Vorperiode: erledigte und erstellte Tickets, Durchlaufzeit in aktiven Arbeitstagen, Arbeitstage je Story Point, Anteil kleiner Tickets und gebuchte Stunden. Dazu Diagramme und Hinweise mit verlinkten Tickets, etwa zu langen Tickets oder vielen kleinen. Gedacht zuerst für den Blick auf die eigene Arbeit, die Schwellen stehen in den Einstellungen
+- **Teamflow** - Wer wem Tickets gibt, als Stern um eine Person: Du selbst, jemand aus "Mein Team" oder wen Du im Stern anklickst. Gezählt werden Aufträge (Ersteller an den ersten Bearbeiter) und Übergaben (jeder Bearbeiterwechsel), beide getrennt schaltbar, für YTD, 1M, 3M, 12M oder alles. Bis zu acht Personen stehen alphabetisch im Kreis, der Rest unter "Sonstige". Ein Klick auf einen Pfeil zeigt seine Tickets, ein Klick auf eine Person setzt sie in die Mitte, über den Rechtsklick kommt sie in "Mein Team". Daneben stehen Deine Top 3 Kontakte. Die Profilbilder kommen aus Jira. Zoomen per Mausrad, verschieben per Ziehen. Das erste Laden dauert wenige Sekunden, weil Jira alle Änderungsverläufe in einem Abruf liefert
 - **Pile of Shame** - Markiert Tickets, deren Status Aktivität behauptet, obwohl es seit der
   Schwelle weder eine Änderung noch eine gebuchte Stunde gab. Die zweite Hälfte ist der
   Trick: ein bewusst offengehaltenes Dauerticket mit regelmäßigen Buchungen bleibt draußen,
