@@ -641,3 +641,16 @@ class TestVorschauUndKnoepfe:
         fenster._settings.show_ticket_preview = True
         fenster._stack.setCurrentIndex(main_window._FLOW_VIEW)
         assert fenster._ticket_flow.preview_host().indexOf(fenster._preview) >= 0
+
+
+def test_demodaten_zeigen_stern_mit_sonstigen() -> None:
+    from jira_timesheet_qt.services.ticket_flow import EDGE_KINDS, build_star
+    from jira_timesheet_qt.ui.demo_flow import demo_flow
+
+    load = demo_flow()
+    star = build_star(load.data, load.center, EDGE_KINDS, None)
+    # Das Motiv der README-Bilder: volle acht Speichen, ein Rest, beide Kantenarten.
+    assert len(star.spokes) == 8 and star.others is not None
+    assert {e.kind for e in load.data.edges} == set(EDGE_KINDS)
+    assert star.center.name == "Max Mustermann"
+    assert demo_flow().data.edges == load.data.edges

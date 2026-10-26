@@ -43,10 +43,12 @@ from jira_timesheet_qt.services.ticket_preview import TicketPreviewData  # noqa:
 from jira_timesheet_qt.ui.about_dialog import AboutDialog  # noqa: E402
 from jira_timesheet_qt.ui.demo import demo_timesheet  # noqa: E402
 from jira_timesheet_qt.ui.demo_board import demo_board, demo_statistics  # noqa: E402
+from jira_timesheet_qt.ui.demo_flow import NOW as FLOW_NOW  # noqa: E402
+from jira_timesheet_qt.ui.demo_flow import demo_flow  # noqa: E402
 from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog  # noqa: E402
 from jira_timesheet_qt.ui.disclaimer_dialog import DisclaimerDialog  # noqa: E402
 from jira_timesheet_qt.ui.fonts import load_fonts  # noqa: E402
-from jira_timesheet_qt.ui.main_window import MainWindow  # noqa: E402
+from jira_timesheet_qt.ui.main_window import _FLOW_VIEW, MainWindow  # noqa: E402
 from jira_timesheet_qt.ui.settings_dialog import SettingsDialog  # noqa: E402
 from jira_timesheet_qt.ui.theme import Mode, build_palette, build_qss  # noqa: E402
 from jira_timesheet_qt.ui.ticket_board_worker import MODE_ASSIGNED, MODE_RELEVANT  # noqa: E402
@@ -199,6 +201,33 @@ def _preview_window(mode: Mode) -> MainWindow:
     return win
 
 
+def _flow_window(mode: Mode) -> MainWindow:
+    """Erzeugt ein Hauptfenster mit dem Reiter Teamflow und erfundenen Wegen.
+
+    Die Daten werden direkt gesetzt, nicht abgerufen. Ohne Zugang zeigt der
+    Reiter sonst nur den Hinweis auf fehlende Zugangsdaten. Profilbilder gibt
+    es nicht - die Kreise zeigen Initialen.
+
+    Args:
+        mode:
+            Helles oder dunkles Erscheinungsbild.
+
+    Returns:
+        Das vorbereitete Fenster, noch nicht angezeigt.
+    """
+    win = MainWindow(Settings(), mode)
+    win._tabs.setCurrentIndex(_FLOW_VIEW)
+    view = win._ticket_flow
+    # Der Zeitraum rechnet sonst ab heute - die Demodaten haben einen festen Bezug.
+    view._today = FLOW_NOW.date()
+    view.set_flow(demo_flow(), "Max Mustermann")
+    star = view.star()
+    if star is not None and star.spokes:
+        erika = next((s for s in star.spokes if s.person and s.person.name == "Erika Musterfrau"), star.spokes[0])
+        view.show_tickets(erika, "out")
+    return win
+
+
 def _board_window(mode: Mode, *, relevant: bool = False) -> MainWindow:
     """Erzeugt ein Hauptfenster mit einer gefuellten Ticket-Ansicht.
 
@@ -340,6 +369,9 @@ def main() -> int:
 
         # Ticket-Vorschau in einer Ticketliste, Personen als Links
         _grab(_board_preview_window(mode), OUT / f"board-preview-{tag}.png", W, H)
+
+        # Teamflow - wer wem Tickets gibt
+        _grab(_flow_window(mode), OUT / f"teamflow-{tag}.png", W, H)
 
         # Einstellungen - Arbeitszeit
         dlg = SettingsDialog(Settings())
