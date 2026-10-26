@@ -37,7 +37,7 @@ class Period:
         return self.start <= day <= self.end
 
 
-def _months_back(day: dt.date, months: int) -> dt.date:
+def months_back(day: dt.date, months: int) -> dt.date:
     """Gleicher Kalendertag einige Monate frueher, am Monatsende gekappt."""
     index = day.year * 12 + day.month - 1 - months
     year, month = divmod(index, 12)
@@ -72,7 +72,7 @@ def period_for(kind: str, today: dt.date) -> tuple[Period, Period]:
     if kind == PERIOD_YTD:
         start = dt.date(today.year, 1, 1)
     elif kind in _MONTHS:
-        start = _months_back(today, _MONTHS[kind]) + dt.timedelta(days=1)
+        start = months_back(today, _MONTHS[kind]) + dt.timedelta(days=1)
     else:
         raise ValueError(f"Unbekannter Zeitraum: {kind!r}")
     current = Period(start, today)
