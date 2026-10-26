@@ -445,6 +445,9 @@ class MainWindow(QMainWindow):
             lambda: self._qsettings.setValue("ticket_flow/kinds", ",".join(self._ticket_flow.current_kinds()))
         )
         self._ticket_flow.avatars_needed.connect(self._load_avatars)
+        self._ticket_flow.report_requested.connect(self.open_ticket_report)
+        self._ticket_flow.person_requested.connect(self.show_person_tickets)
+        self._ticket_flow.team_add_requested.connect(self.add_person_to_team)
         self._ticket_flow.person_clicked.connect(self._on_flow_person_clicked)
         self._ticket_flow.ticket_activated.connect(self._open_flow_ticket)
         self._new_tickets = NewTicketsView()
@@ -1521,6 +1524,7 @@ class MainWindow(QMainWindow):
             view.set_report_available(available)
             view.set_anonymized(self._anonymize)
         self._new_tickets.set_report_available(available)
+        self._ticket_flow.set_report_available(available)
         self._new_tickets.set_anonymized(self._anonymize, self._display_new_tickets)
         # Nach Ostermontag zaehlt 1T ab Gruendonnerstag, nicht ab dem Montag.
         self._new_tickets.set_workday_check(HolidayService(self._settings.federal_state).is_workday)
@@ -1657,6 +1661,7 @@ class MainWindow(QMainWindow):
         for view in (self._assigned_board, self._relevant_board, self._team_board):
             view.set_team_ids(team_ids)
         self._new_tickets.set_team_ids(team_ids)
+        self._ticket_flow.set_team_ids(team_ids)
 
     # --- Neue Tickets ---------------------------------------------------
 

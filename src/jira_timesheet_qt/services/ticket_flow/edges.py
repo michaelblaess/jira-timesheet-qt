@@ -211,6 +211,47 @@ def _ways(
     return outgoing, incoming
 
 
+def ticket_partners(
+    data: FlowData,
+    center: Sequence[str],
+    kinds: Collection[str],
+    since: dt.date | None,
+) -> tuple[dict[str, tuple[str, ...]], dict[str, tuple[str, ...]]]:
+    """Wer bei jedem Ticket auf der anderen Seite stand.
+
+    Fuer die Ticketliste unter "Sonstige": dort stehen viele Personen hinter
+    einem Pfeil, und ohne Namen ist die Liste nicht zu lesen.
+
+    Args:
+        data:
+            Ergebnis von extract_flow.
+        center:
+            Kennungen der Mitte.
+        kinds:
+            Die zugeschalteten Kantenarten.
+        since:
+            Erster Tag, None = alle Kanten.
+
+    Returns:
+        Ausgehend und eingehend je Ticket die Kennungen der Gegenseite, in
+        der Reihenfolge der Wege.
+    """
+    own = set(center)
+    outgoing: dict[str, dict[str, None]] = {}
+    incoming: dict[str, dict[str, None]] = {}
+    for edge in data.edges:
+        if edge.kind not in kinds or (since is not None and edge.when.date() < since):
+            continue
+        if edge.source in own and edge.target not in own:
+            outgoing.setdefault(edge.key, {})[edge.target] = None
+        elif edge.target in own and edge.source not in own:
+            incoming.setdefault(edge.key, {})[edge.source] = None
+    return (
+        {key: tuple(people) for key, people in outgoing.items()},
+        {key: tuple(people) for key, people in incoming.items()},
+    )
+
+
 def top_contacts(
     data: FlowData,
     center: Sequence[str],

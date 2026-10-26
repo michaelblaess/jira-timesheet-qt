@@ -135,6 +135,9 @@ GLYPHS: dict[str, str] = {
     "log": "mdi6.console-line",
     "refresh": "mdi6.refresh",
     "group": "mdi6.format-list-group",
+    "zoom-in": "mdi6.magnify-plus-outline",
+    "zoom-out": "mdi6.magnify-minus-outline",
+    "zoom-reset": "mdi6.fit-to-screen-outline",
 }
 
 

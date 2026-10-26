@@ -6,7 +6,16 @@ Plan und Entscheidungen in PLAN-ticketfluss.md.
 
 from __future__ import annotations
 
-from .edges import DEFAULT_CONTACTS, DEFAULT_SPOKES, FlowData, build_star, extract_flow, ticket_edges, top_contacts
+from .edges import (
+    DEFAULT_CONTACTS,
+    DEFAULT_SPOKES,
+    FlowData,
+    build_star,
+    extract_flow,
+    ticket_edges,
+    ticket_partners,
+    top_contacts,
+)
 from .loader import CHANGELOG_CHUNK, CHANGELOG_CONCURRENCY, FlowLoad, FlowSource, HistoryStore, load_flow
 from .models import EDGE_HANDOVER, EDGE_KINDS, EDGE_ORDER, FlowEdge, FlowStar, Person, Spoke
 from .period import (
@@ -51,5 +60,6 @@ __all__ = [
     "flow_since",
     "load_flow",
     "ticket_edges",
+    "ticket_partners",
     "top_contacts",
 ]

@@ -17,11 +17,13 @@ import functools
 import math
 from collections.abc import Callable, Mapping
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
+    QAction,
     QBrush,
     QColor,
     QFont,
+    QGuiApplication,
     QMouseEvent,
     QPainter,
     QPainterPath,
@@ -35,11 +37,13 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
     QComboBox,
+    QFrame,
     QGraphicsEllipseItem,
     QGraphicsItem,
     QGraphicsPathItem,
     QGraphicsPixmapItem,
     QGraphicsScene,
+    QGraphicsSceneContextMenuEvent,
     QGraphicsSceneHoverEvent,
     QGraphicsSceneMouseEvent,
     QGraphicsSimpleTextItem,
@@ -47,6 +51,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
+    QPushButton,
     QSplitter,
     QStackedWidget,
     QStyleOptionGraphicsItem,
@@ -58,6 +64,7 @@ from PySide6.QtWidgets import (
 )
 
 from jira_timesheet_qt.services.performance import SELF_NAME
+from jira_timesheet_qt.services.ticket_board import key_sort_value
 from jira_timesheet_qt.services.ticket_flow import (
     DEFAULT_FLOW_PERIOD,
     EDGE_HANDOVER,
@@ -71,9 +78,11 @@ from jira_timesheet_qt.services.ticket_flow import (
     Spoke,
     build_star,
     flow_since,
+    ticket_partners,
     top_contacts,
 )
 
+from .icons import load_icon
 from .theme import Mode, Palette, palette_for
 
 # Kennung des Gast-Eintrags in der Personenauswahl: jemand, der nicht auf der
@@ -109,6 +118,14 @@ _DIMMED = 0.22
 
 # Rolle in der Kontaktliste: die Speiche hinter der Zeile.
 _SPOKE_ROLE = Qt.ItemDataRole.UserRole + 1
+# Sortierwert je Zelle, damit Zahlen und Ticketnummern richtig sortieren.
+_SORT_ROLE = Qt.ItemDataRole.UserRole + 2
+# Rolle in der Ticketliste: (Kennung, Name) der Gegenseite, fuer das Kontextmenue.
+_PARTNERS_ROLE = Qt.ItemDataRole.UserRole + 3
+
+# Beschriftung der Richtungen - Legende und Spaltenkoepfe sagen dasselbe.
+OUT_LABEL = "ausgehend"
+IN_LABEL = "eingehend"
 
 
 def _period_tip(kind: str) -> str:
@@ -177,6 +194,21 @@ def round_pixmap(data: bytes, diameter: int) -> QPixmap | None:
     return result
 
 
+class _SortItem(QTreeWidgetItem):
+    """Zeile, die nach ihrem Sortierwert statt nach dem Text sortiert."""
+
+    def __lt__(self, other: QTreeWidgetItem) -> bool:
+        tree = self.treeWidget()
+        column = tree.sortColumn() if tree is not None else 0
+        mine, theirs = self.data(column, _SORT_ROLE), other.data(column, _SORT_ROLE)
+        if mine is None or theirs is None:
+            return super().__lt__(other)
+        try:
+            return bool(mine < theirs)
+        except TypeError:
+            return super().__lt__(other)
+
+
 class _Node(QGraphicsEllipseItem):
     """Ein Kreis. Hover hebt ihn hervor, Klick meldet ihn, sofern er klickbar ist."""
 
@@ -186,10 +218,12 @@ class _Node(QGraphicsEllipseItem):
         radius: float,
         on_click: Callable[[], None] | None,
         on_hover: Callable[[bool], None] | None = None,
+        on_menu: Callable[[QPoint], None] | None = None,
     ) -> None:
         super().__init__(QRectF(center.x() - radius, center.y() - radius, 2 * radius, 2 * radius))
         self._on_click = on_click
         self._on_hover = on_hover
+        self._on_menu = on_menu
         self._pen = QPen()
         self._hover_pen = QPen()
         if on_click is not None:
@@ -214,6 +248,14 @@ class _Node(QGraphicsEllipseItem):
         if self._on_hover is not None:
             self._on_hover(False)
         super().hoverLeaveEvent(event)
+
+    def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent) -> None:  # noqa: N802 - Qt-Schreibweise
+        """Rechtsklick oeffnet das Menue zur Person."""
+        if self._on_menu is not None:
+            self._on_menu(event.screenPos())
+            event.accept()
+            return
+        super().contextMenuEvent(event)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:  # noqa: N802 - Qt-Schreibweise
         """Meldet den Klick, statt die Szene zu verschieben."""
@@ -391,6 +433,10 @@ class TicketFlowView(QWidget):
     ticket_activated = Signal(str)
     # Kennungen im Bild, fuer die noch kein Profilbild vorliegt.
     avatars_needed = Signal(list)
+    # Kontextmenues: Ticket-Analyse, Tickets einer Person, Person in die Merkliste.
+    report_requested = Signal(str)
+    person_requested = Signal(str, str)
+    team_add_requested = Signal(str, str)
 
     def __init__(self, mode: Mode = Mode.DARK, parent: QWidget | None = None, today: dt.date | None = None) -> None:
         super().__init__(parent)
@@ -402,6 +448,8 @@ class TicketFlowView(QWidget):
         self._avatar_data: dict[str, bytes] = {}
         self._asked: set[str] = set()
         self._anonymized = False
+        self._team_ids: frozenset[str] = frozenset()
+        self._report_available = True
         # Je Speiche die Elemente, die beim Hover sichtbar bleiben.
         self._groups: list[list[QGraphicsItem]] = []
         self._dimmable: list[QGraphicsItem] = []
@@ -460,20 +508,25 @@ class TicketFlowView(QWidget):
         head.addWidget(self._legend)
 
         head.addStretch(1)
-        self._zoom_buttons: dict[str, QToolButton] = {}
+        self._zoom_buttons: dict[str, QPushButton] = {}
         for name, text, tip in (
-            ("out", "-", "Verkleinern (Mausrad zurück)"),
-            ("in", "+", "Vergrößern (Mausrad vor)"),
-            ("fit", "Einpassen", "Ganzen Stern zeigen (Doppelklick ins Leere)"),
+            ("out", "", "Verkleinern (Mausrad zurück)"),
+            ("in", "", "Vergrößern (Mausrad vor)"),
+            ("fit", "Reset", "Ganzen Stern zeigen (Doppelklick ins Leere)"),
         ):
-            button = QToolButton()
-            button.setObjectName("PerfPeriod")
-            button.setText(text)
-            button.setToolTip(tip)
-            button.clicked.connect(lambda _checked=False, n=name: self._on_zoom_button(n))
-            self._zoom_buttons[name] = button
-            head.addWidget(button)
+            zoom = QPushButton(text)
+            zoom.setToolTip(tip)
+            zoom.clicked.connect(lambda _checked=False, n=name: self._on_zoom_button(n))
+            self._zoom_buttons[name] = zoom
+            head.addWidget(zoom)
+        self._paint_zoom_icons()
         outer.addLayout(head)
+
+        rule = QFrame()
+        rule.setObjectName("FlowRule")
+        rule.setFrameShape(QFrame.Shape.HLine)
+        rule.setFrameShadow(QFrame.Shadow.Sunken)
+        outer.addWidget(rule)
 
         self._pages = QStackedWidget()
         self._message = QLabel("")
@@ -504,14 +557,23 @@ class TicketFlowView(QWidget):
         side_layout.addWidget(contacts_title)
         self._contacts = QTreeWidget()
         self._contacts.setObjectName("FlowContacts")
-        self._contacts.setHeaderLabels(["Person", "Tickets", "gibt ab", "bekommt"])
+        self._contacts.setHeaderLabels(["Person", "Tickets", OUT_LABEL, IN_LABEL])
         self._contacts.setRootIsDecorated(False)
         self._contacts.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._contacts.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         contacts_header = self._contacts.header()
         contacts_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        # Die Zahlenspalten so breit wie ihr Titel plus Platz fuer den Sortierpfeil.
+        # "Auf Inhalt anpassen" nahm deutlich mehr und schnitt die Namen ab.
+        metrics = contacts_header.fontMetrics()
         for column in (1, 2, 3):
-            contacts_header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+            contacts_header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
+            label = self._contacts.headerItem().text(column)
+            contacts_header.resizeSection(column, metrics.horizontalAdvance(label) + 22)
+        # Sonst zieht die letzte Spalte den Rest der Breite und die Zahl klebt am Rand.
+        contacts_header.setStretchLastSection(False)
+        self._contacts.setSortingEnabled(True)
+        self._contacts.sortByColumn(1, Qt.SortOrder.DescendingOrder)
         self._contacts.itemClicked.connect(lambda item, _col: self._on_contact_clicked(item))
         self._contacts.itemDoubleClicked.connect(lambda item, _col: self._on_contact_activated(item))
         side_layout.addWidget(self._contacts)
@@ -522,14 +584,14 @@ class TicketFlowView(QWidget):
         side_layout.addWidget(self._list_title)
         self._list = QTreeWidget()
         self._list.setObjectName("FlowTickets")
-        self._list.setHeaderLabels(["Ticket", "Titel"])
         self._list.setRootIsDecorated(False)
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._list.setToolTip("Doppelklick öffnet das Ticket in Jira")
-        header = self._list.header()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._list.setToolTip("Doppelklick öffnet das Ticket in Jira, Rechtsklick zeigt mehr")
+        self._list.setSortingEnabled(True)
+        self._set_list_columns(with_person=False)
         self._list.itemDoubleClicked.connect(lambda item, _col: self.ticket_activated.emit(item.text(0)))
+        self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._list.customContextMenuRequested.connect(self._on_list_menu)
         side_layout.addWidget(self._list, 1)
 
         self._split = QSplitter(Qt.Orientation.Horizontal)
@@ -540,10 +602,6 @@ class TicketFlowView(QWidget):
         self._split.setStretchFactor(1, 1)
         self._pages.addWidget(self._split)
         outer.addWidget(self._pages, 1)
-
-        self._footer = QLabel("")
-        self._footer.setObjectName("FlowFooter")
-        outer.addWidget(self._footer)
         self._paint_legend()
 
     # --- Auswahl ---------------------------------------------------------
@@ -669,7 +727,6 @@ class TicketFlowView(QWidget):
         self._clear_scene()
         self._list.clear()
         self._contacts.clear()
-        self._footer.setText("")
         self._message.setText(text)
         self._pages.setCurrentIndex(0)
 
@@ -723,16 +780,6 @@ class TicketFlowView(QWidget):
         self._list_title.setText("Klick auf einen Pfeil zeigt seine Tickets.")
         self._fill_contacts(top_contacts(load.data, load.center, kinds, since))
         self._draw(star, refit=refit)
-        self._footer.setText(self._footer_text(load, star, since))
-
-    def _footer_text(self, load: FlowLoad, star: FlowStar, since: dt.date | None) -> str:
-        parts = [f"Zeitraum ab {since:%d.%m.%Y}" if since is not None else "Gesamter Zeitraum"]
-        parts.append(f"{len(star.spokes)} Personen einzeln")
-        if star.others is not None:
-            parts.append(f"{star.others.members} unter Sonstige")
-        if load.data.missing:
-            parts.append(f"{_tickets(len(load.data.missing))} ohne Änderungsverlauf - ohne Pfeile")
-        return ", ".join(parts)
 
     def _fill_contacts(self, contacts: tuple[Spoke, ...]) -> None:
         self._contacts.clear()
@@ -740,8 +787,11 @@ class TicketFlowView(QWidget):
             if spoke.person is None:
                 continue
             shared = len(set(spoke.outgoing) | set(spoke.incoming))
-            item = QTreeWidgetItem([spoke.person.name, str(shared), str(len(spoke.outgoing)), str(len(spoke.incoming))])
-            for column in (1, 2, 3):
+            values = (shared, len(spoke.outgoing), len(spoke.incoming))
+            item = _SortItem([spoke.person.name, *(str(value) for value in values)])
+            item.setData(0, _SORT_ROLE, spoke.person.name.casefold())
+            for column, value in enumerate(values, start=1):
+                item.setData(column, _SORT_ROLE, value)
                 item.setTextAlignment(column, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             item.setData(0, _SPOKE_ROLE, spoke)
             item.setToolTip(0, "Klick: gemeinsame Tickets zeigen, Doppelklick: in die Mitte setzen")
@@ -772,10 +822,14 @@ class TicketFlowView(QWidget):
     def _paint_legend(self) -> None:
         colors = palette_for(self._mode)
         self._legend.setText(
-            f'<span style="color:{self._out_color(colors)}">&#9632;</span> gibt ab &nbsp; '
-            f'<span style="color:{self._in_color(colors)}">&#9632;</span> bekommt'
+            f'<span style="color:{self._out_color(colors)}">&#9632;</span> {OUT_LABEL} &nbsp; '
+            f'<span style="color:{self._in_color(colors)}">&#9632;</span> {IN_LABEL}'
         )
         self._legend.setToolTip("Aus Sicht der Person in der Mitte. Die Pfeildicke folgt der Zahl der Tickets.")
+
+    def _paint_zoom_icons(self) -> None:
+        for name, glyph in (("out", "zoom-out"), ("in", "zoom-in"), ("fit", "zoom-reset")):
+            self._zoom_buttons[name].setIcon(load_icon(glyph, self._mode))
 
     @staticmethod
     def _out_color(colors: Palette) -> str:
@@ -923,18 +977,16 @@ class TicketFlowView(QWidget):
             def on_click() -> None:
                 self.person_clicked.emit(account, name)
 
-        node = _Node(point, _NODE, on_click, functools.partial(self._hover, index))
+        on_menu = functools.partial(self._open_person_menu, spoke) if person is not None else None
+        node = _Node(point, _NODE, on_click, functools.partial(self._hover, index), on_menu)
         node.setBrush(QBrush(QColor(colors.bg_elevated)))
         node.set_pens(QPen(QColor(colors.border_hover), 1.5), QPen(QColor(colors.accent), 4.0))
         node.setZValue(3)
         title = person.name if person is not None else f"Sonstige ({spoke.members})"
-        # Aus Sicht dieser Person: was die Mitte abgibt, bekommt sie.
-        tip = (
-            f"{title}\nbekommt von der Mitte: {_tickets(len(spoke.outgoing))}\n"
-            f"gibt an die Mitte: {_tickets(len(spoke.incoming))}"
-        )
+        # Aus Sicht der Mitte, wie Legende und Kontaktliste.
+        tip = f"{title}\n{OUT_LABEL}: {_tickets(len(spoke.outgoing))}\n{IN_LABEL}: {_tickets(len(spoke.incoming))}"
         if person is not None:
-            tip += "\nKlick: in die Mitte setzen"
+            tip += "\nKlick: in die Mitte setzen, Rechtsklick: mehr"
         node.setToolTip(tip)
         self._scene.addItem(node)
         if person is not None:
@@ -1017,11 +1069,136 @@ class TicketFlowView(QWidget):
             keys: tuple[str, ...] = tuple(dict.fromkeys((*spoke.outgoing, *spoke.incoming)))
         else:
             keys = spoke.outgoing if direction == OUT else spoke.incoming
-        titles = self._load.data.titles if self._load is not None else {}
+        load = self._load
+        titles = load.data.titles if load is not None else {}
         self._list_title.setText(f"{self._arrow_title(spoke, direction)}: {_tickets(len(keys))}")
+        # Unter "Sonstige" stehen viele Personen hinter einem Pfeil - dort die
+        # Gegenseite je Ticket mit anzeigen.
+        partners: dict[str, tuple[str, ...]] = {}
+        if spoke.person is None and load is not None:
+            outgoing, incoming = ticket_partners(load.data, load.center, self.current_kinds(), self.current_since())
+            for key in keys:
+                found = (
+                    (*outgoing.get(key, ()), *incoming.get(key, ()))
+                    if direction == BOTH
+                    else (outgoing if direction == OUT else incoming).get(key, ())
+                )
+                partners[key] = tuple(dict.fromkeys(found))
+        with_person = spoke.person is None
+        self._list.setSortingEnabled(False)
         self._list.clear()
+        self._set_list_columns(with_person)
+        people = load.data.people if load is not None else {}
         for key in keys:
-            self._list.addTopLevelItem(QTreeWidgetItem([key, titles.get(key, "")]))
+            accounts = partners.get(key, ())
+            names = [people.get(account) or account for account in accounts]
+            values = [key, ", ".join(names), titles.get(key, "")] if with_person else [key, titles.get(key, "")]
+            item = _SortItem(values)
+            item.setData(0, _SORT_ROLE, key_sort_value(key))
+            for column in range(1, len(values)):
+                item.setData(column, _SORT_ROLE, values[column].casefold())
+            item.setData(0, _PARTNERS_ROLE, list(zip(accounts, names, strict=True)))
+            self._list.addTopLevelItem(item)
+        self._list.setSortingEnabled(True)
+
+    def _set_list_columns(self, with_person: bool) -> None:
+        """Spalten der Ticketliste - mit Person nur, wenn der Pfeil viele Personen buendelt."""
+        labels = ["Ticket", "Person", "Titel"] if with_person else ["Ticket", "Titel"]
+        if [self._list.headerItem().text(i) for i in range(self._list.columnCount())] == labels:
+            return
+        self._list.setColumnCount(len(labels))
+        self._list.setHeaderLabels(labels)
+        header = self._list.header()
+        for column in range(len(labels) - 1):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(len(labels) - 1, QHeaderView.ResizeMode.Stretch)
+        self._list.sortByColumn(0, Qt.SortOrder.AscendingOrder)
+
+    def list_headers(self) -> list[str]:
+        """Die Spaltenkoepfe der Ticketliste, fuer Tests."""
+        return [self._list.headerItem().text(i) for i in range(self._list.columnCount())]
+
+    def list_rows(self) -> list[list[str]]:
+        """Die Zeilen der Ticketliste in der angezeigten Reihenfolge, fuer Tests."""
+        items = (self._list.topLevelItem(row) for row in range(self._list.topLevelItemCount()))
+        return [[item.text(c) for c in range(self._list.columnCount())] for item in items if item is not None]
+
+    def set_team_ids(self, ids: frozenset[str]) -> None:
+        """Merkt die Kennungen der Merkliste fuer die Menuepunkte."""
+        self._team_ids = ids
+
+    def set_report_available(self, available: bool) -> None:
+        """Ticket-Analyse nur mit Zugangsdaten - sonst bleibt der Menuepunkt grau."""
+        self._report_available = available
+
+    # --- Kontextmenues ---------------------------------------------------
+
+    def build_ticket_menu(self, item: QTreeWidgetItem | None) -> QMenu:
+        """Rechtsklick auf ein Ticket der Liste."""
+        menu = QMenu(self)
+        key = item.text(0) if item is not None else ""
+        open_action = QAction("Ticket im Browser öffnen", menu)
+        open_action.setEnabled(bool(key) and not self._anonymized)
+        open_action.triggered.connect(lambda _=False, k=key: self.ticket_activated.emit(k))
+        menu.addAction(open_action)
+        report = QAction("Ticket-Analyse erstellen", menu)
+        report.setEnabled(bool(key) and self._report_available and not self._anonymized)
+        report.triggered.connect(lambda _=False, k=key: self.report_requested.emit(k))
+        menu.addAction(report)
+        partners = item.data(0, _PARTNERS_ROLE) if item is not None else None
+        if partners:
+            menu.addSeparator()
+            for account, name in partners:
+                center = QAction(f"{name} in die Mitte setzen", menu)
+                center.setEnabled(not self._anonymized)
+                center.triggered.connect(lambda _=False, a=account, n=name: self.person_clicked.emit(a, n))
+                menu.addAction(center)
+        menu.addSeparator()
+        copy_action = QAction("Ticketnummer kopieren", menu)
+        copy_action.setEnabled(bool(key))
+        copy_action.triggered.connect(lambda _=False, k=key: self._copy(k))
+        menu.addAction(copy_action)
+        return menu
+
+    def _on_list_menu(self, position: QPoint) -> None:
+        item = self._list.itemAt(position)
+        self.build_ticket_menu(item).exec(self._list.viewport().mapToGlobal(position))
+
+    def build_person_menu(self, spoke: Spoke) -> QMenu:
+        """Rechtsklick auf einen Kreis."""
+        menu = QMenu(self)
+        person = spoke.person
+        if person is None:
+            return menu
+        account, name = person.account_id, person.name
+        center = QAction(f"{name} in die Mitte setzen", menu)
+        center.triggered.connect(lambda _=False: self.person_clicked.emit(account, name))
+        menu.addAction(center)
+        shared = QAction("Gemeinsame Tickets zeigen", menu)
+        shared.triggered.connect(lambda _=False: self.show_tickets(spoke, BOTH))
+        menu.addAction(shared)
+        menu.addSeparator()
+        show = QAction(f"Tickets von {name} anzeigen", menu)
+        show.setEnabled(not self._anonymized)
+        show.triggered.connect(lambda _=False: self.person_requested.emit(account, name))
+        menu.addAction(show)
+        in_team = account in self._team_ids
+        add = QAction(f"{name} ist schon in Mein Team" if in_team else f"{name} zu meinem Team hinzufügen", menu)
+        # Im Screenshot-Modus steht ein erfundener Name da - aufnehmen wuerde
+        # die echte Person unter falschem Namen.
+        add.setEnabled(not in_team and not self._anonymized)
+        add.triggered.connect(lambda _=False: self.team_add_requested.emit(account, name))
+        menu.addAction(add)
+        return menu
+
+    def _open_person_menu(self, spoke: Spoke, position: QPoint) -> None:
+        self.build_person_menu(spoke).exec(position)
+
+    @staticmethod
+    def _copy(text: str) -> None:
+        clipboard = QGuiApplication.clipboard()
+        if clipboard is not None and text:
+            clipboard.setText(text)
 
     def listed_keys(self) -> list[str]:
         """Die Tickets in der Liste, fuer Tests."""
@@ -1032,5 +1209,6 @@ class TicketFlowView(QWidget):
         """Zeichnet in den Farben des neuen Erscheinungsbilds neu."""
         self._mode = mode
         self._paint_legend()
+        self._paint_zoom_icons()
         if self._star is not None:
             self._draw(self._star)

@@ -128,10 +128,26 @@ class TestStern:
                 node._on_click()
         assert sorted(gemeldet) == [(BERT, "Bert Beispiel"), (CARL, "Carl Mustermann"), (DORA, "Dora Probe")]
 
-    def test_fusszeile_nennt_tickets_ohne_verlauf(self, qapp: QApplication) -> None:
-        text = _view()._footer.text()
-        assert "1 Ticket ohne Änderungsverlauf" in text
-        assert "ab 27.10.2025" in text
+    def test_keine_fusszeile_mehr(self, qapp: QApplication) -> None:
+        assert not hasattr(_view(), "_footer")
+
+    def test_legende_sagt_ausgehend_und_eingehend(self, qapp: QApplication) -> None:
+        text = _view()._legend.text()
+        assert "ausgehend" in text and "eingehend" in text
+
+    def test_trenner_unter_der_kopfzeile(self, qapp: QApplication) -> None:
+        from PySide6.QtWidgets import QFrame
+
+        rule = _view().findChild(QFrame, "FlowRule")
+        assert rule is not None and rule.frameShape() == QFrame.Shape.HLine
+
+    def test_zoom_sind_echte_knoepfe_mit_reset(self, qapp: QApplication) -> None:
+        from PySide6.QtWidgets import QPushButton
+
+        view = _view()
+        assert all(isinstance(b, QPushButton) for b in view._zoom_buttons.values())
+        assert view._zoom_buttons["fit"].text() == "Reset"
+        assert not view._zoom_buttons["in"].icon().isNull()
 
     def test_hinweis_raeumt_den_alten_stern_weg(self, qapp: QApplication) -> None:
         view = _view()
@@ -450,3 +466,147 @@ class TestHauptfenster:
         for view in (fenster._ticket_flow, fenster._new_tickets, fenster._performance):
             texte = [b.text() for b in view.findChildren(QPushButton)]
             assert "Aktualisieren" not in texte, type(view).__name__
+
+
+def _viele() -> FlowLoad:
+    """Anna gibt an zehn erfundene Personen ab - zwei landen unter Sonstige."""
+    issues: list[dict[str, Any]] = []
+    for n in range(1, 11):
+        for k in range(n):
+            issues.append(
+                {
+                    "key": f"V-{n * 10 + k}",
+                    "fields": {
+                        "created": at(1, 10),
+                        "summary": f"Aufgabe {n}.{k}",
+                        "reporter": {"accountId": ANNA, "displayName": "Muster, Anna"},
+                        "assignee": {"accountId": f"id-p{n}", "displayName": f"Platzhalter{n:02d}, Pia"},
+                    },
+                }
+            )
+    return FlowLoad((ANNA,), None, extract_flow(issues, {i["key"]: [] for i in issues}), cached=0, fetched=0)
+
+
+class TestTicketliste:
+    def test_sonstige_zeigen_die_person(self, qapp: QApplication) -> None:
+        view = TicketFlowView(Mode.DARK, today=TODAY)
+        view.set_flow(_viele())
+        star = view.star()
+        assert star is not None and star.others is not None
+        view.show_tickets(star.others, "out")
+        assert view.list_headers() == ["Ticket", "Person", "Titel"]
+        # Mit den wenigsten Wegen: Person 1 (ein Ticket) und Person 2 (zwei).
+        assert {row[1] for row in view.list_rows()} == {"Pia Platzhalter01", "Pia Platzhalter02"}
+
+    def test_einzelne_person_ohne_personenspalte(self, qapp: QApplication) -> None:
+        view = _view()
+        bert = next(s for s in view.star().spokes if s.person and s.person.account_id == BERT)  # type: ignore[union-attr]
+        view.show_tickets(bert, "out")
+        assert view.list_headers() == ["Ticket", "Titel"]
+
+    def test_sortiert_nummern_als_zahl(self, qapp: QApplication) -> None:
+        from PySide6.QtCore import Qt
+
+        issues = [issue(key, ANNA, BERT, at(1, 10)) for key in ("X-10", "X-9", "X-100")]
+        view = TicketFlowView(Mode.DARK, today=TODAY)
+        view.set_flow(FlowLoad((ANNA,), None, extract_flow(issues, {i["key"]: [] for i in issues}), 0, 0))
+        bert = view.star().spokes[0]  # type: ignore[union-attr]
+        view.show_tickets(bert, "out")
+        # Als Text stuende X-100 vor X-9.
+        assert [row[0] for row in view.list_rows()] == ["X-9", "X-10", "X-100"]
+        view._list.sortByColumn(0, Qt.SortOrder.DescendingOrder)
+        assert [row[0] for row in view.list_rows()] == ["X-100", "X-10", "X-9"]
+
+    def test_kontakte_lassen_sich_sortieren(self, qapp: QApplication) -> None:
+        from PySide6.QtCore import Qt
+
+        view = TicketFlowView(Mode.DARK, today=TODAY)
+        view.set_flow(_viele())
+        assert view.contact_names()[0] == "Pia Platzhalter10"
+        view._contacts.sortByColumn(1, Qt.SortOrder.AscendingOrder)
+        assert view.contact_names()[0] == "Pia Platzhalter08"
+
+
+def _texte(menu: Any) -> dict[str, bool]:
+    return {a.text(): a.isEnabled() for a in menu.actions() if a.text()}
+
+
+class TestKontextmenues:
+    def test_ticket_menue(self, qapp: QApplication) -> None:
+        view = _view()
+        bert = next(s for s in view.star().spokes if s.person and s.person.account_id == BERT)  # type: ignore[union-attr]
+        view.show_tickets(bert, "out")
+        menu = view.build_ticket_menu(view._list.topLevelItem(0))
+        assert _texte(menu) == {
+            "Ticket im Browser öffnen": True,
+            "Ticket-Analyse erstellen": True,
+            "Ticketnummer kopieren": True,
+        }
+        analyse: list[str] = []
+        view.report_requested.connect(analyse.append)
+        next(a for a in menu.actions() if a.text() == "Ticket-Analyse erstellen").trigger()
+        assert analyse == ["X-1"]
+
+    def test_ticket_menue_unter_sonstige_bietet_die_mitte_an(self, qapp: QApplication) -> None:
+        view = TicketFlowView(Mode.DARK, today=TODAY)
+        view.set_flow(_viele())
+        view.show_tickets(view.star().others, "out")  # type: ignore[union-attr, arg-type]
+        texte = _texte(view.build_ticket_menu(view._list.topLevelItem(0)))
+        assert any(t.endswith("in die Mitte setzen") for t in texte)
+
+    def test_analyse_ohne_zugang_grau(self, qapp: QApplication) -> None:
+        view = _view()
+        view.set_report_available(False)
+        assert _texte(view.build_ticket_menu(None))["Ticket-Analyse erstellen"] is False
+
+    def test_person_menue_mit_mein_team(self, qapp: QApplication) -> None:
+        view = _view()
+        dora = next(s for s in view.star().spokes if s.person and s.person.account_id == DORA)  # type: ignore[union-attr]
+        texte = _texte(view.build_person_menu(dora))
+        assert texte["Dora Probe zu meinem Team hinzufügen"] is True
+        assert texte["Dora Probe in die Mitte setzen"] is True
+        assert texte["Tickets von Dora Probe anzeigen"] is True
+        gemeldet: list[tuple[str, str]] = []
+        view.team_add_requested.connect(lambda a, n: gemeldet.append((a, n)))
+        menu = view.build_person_menu(dora)
+        next(a for a in menu.actions() if a.text().endswith("hinzufügen")).trigger()
+        assert gemeldet == [(DORA, "Dora Probe")]
+
+    def test_schon_im_team_ist_grau(self, qapp: QApplication) -> None:
+        view = _view()
+        view.set_team_ids(frozenset({DORA}))
+        dora = next(s for s in view.star().spokes if s.person and s.person.account_id == DORA)  # type: ignore[union-attr]
+        assert _texte(view.build_person_menu(dora))["Dora Probe ist schon in Mein Team"] is False
+
+    def test_screenshot_modus_nimmt_niemanden_auf(self, qapp: QApplication) -> None:
+        view = _view()
+        view.set_anonymized(True)
+        dora = next(s for s in view.star().spokes if s.person and s.person.account_id == DORA)  # type: ignore[union-attr]
+        texte = _texte(view.build_person_menu(dora))
+        assert texte["Dora Probe zu meinem Team hinzufügen"] is False
+        assert texte["Tickets von Dora Probe anzeigen"] is False
+
+    def test_rechtsklick_auf_den_kreis_oeffnet_das_menue(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        view = _view()
+        geoeffnet: list[str] = []
+        monkeypatch.setattr(
+            TicketFlowView, "_open_person_menu", lambda self, spoke, pos: geoeffnet.append(spoke.person.name)
+        )
+        view._render()
+        node = next(n for n in _items(view, _Node) if "Dora" in n.toolTip())
+        from PySide6.QtCore import QPoint
+
+        node._on_menu(QPoint(0, 0))
+        assert geoeffnet == ["Dora Probe"]
+
+    def test_fenster_verdrahtet_die_menues(self, qapp: QApplication) -> None:
+        fenster = _fenster()
+        view = fenster._ticket_flow
+        for signal in (
+            "2report_requested(QString)",
+            "2person_requested(QString,QString)",
+            "2team_add_requested(QString,QString)",
+        ):
+            assert view.receivers(signal) == 1, signal
