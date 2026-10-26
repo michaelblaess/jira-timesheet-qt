@@ -79,6 +79,7 @@ from jira_timesheet_qt.services.ticket_flow import EDGE_KINDS, FLOW_PERIODS, Flo
 from jira_timesheet_qt.services.ticket_preview import IssuePreviewCache, TicketPreviewData, german_datetime
 from jira_timesheet_qt.ui.about_dialog import AboutDialog
 from jira_timesheet_qt.ui.arrow_cursor import use_arrow_cursor
+from jira_timesheet_qt.ui.avatar_worker import AvatarWorker
 from jira_timesheet_qt.ui.calendar_view import CalendarView, DayCell
 from jira_timesheet_qt.ui.cell_delegate import CellDelegate
 from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
@@ -132,7 +133,7 @@ _VIEWS = (
     "Mein Team",
     "Neue Tickets",
     "Performance-Booster",
-    "Ticketfluss",
+    "Teamflow",
 )
 
 # Welche Stapelseite welche Ticket-Ansicht ist. Aus _VIEWS abgeleitet,
@@ -151,8 +152,8 @@ _YEAR_VIEW: int = _VIEWS.index("Jahr")
 _PERF_VIEW: int = _VIEWS.index("Performance-Booster")
 # Stapelseite der neuen Tickets, ebenso abgeleitet.
 _NEW_VIEW: int = _VIEWS.index("Neue Tickets")
-# Stapelseite des Ticketflusses, ebenso abgeleitet.
-_FLOW_VIEW: int = _VIEWS.index("Ticketfluss")
+# Stapelseite des Teamflows, ebenso abgeleitet.
+_FLOW_VIEW: int = _VIEWS.index("Teamflow")
 # Stapelseite der Monatsansicht - stand bis 09/2026 als feste 1 im Code.
 _MONTH_VIEW: int = _VIEWS.index("Monat")
 
@@ -429,7 +430,6 @@ class MainWindow(QMainWindow):
             self._performance.set_period(stored_period)
         self._performance.member_changed.connect(lambda _name: self._load_performance())
         self._performance.period_changed.connect(self._on_perf_period_changed)
-        self._performance.refresh_requested.connect(self._load_performance)
         self._performance.ticket_selected.connect(lambda _key: self._on_perf_ticket_selected())
         self._performance.hint_ticket_clicked.connect(self._on_perf_hint_ticket)
         self._ticket_flow = TicketFlowView(self._mode)
@@ -444,7 +444,7 @@ class MainWindow(QMainWindow):
         self._ticket_flow.kinds_changed.connect(
             lambda: self._qsettings.setValue("ticket_flow/kinds", ",".join(self._ticket_flow.current_kinds()))
         )
-        self._ticket_flow.refresh_requested.connect(self._load_ticket_flow)
+        self._ticket_flow.avatars_needed.connect(self._load_avatars)
         self._ticket_flow.person_clicked.connect(self._on_flow_person_clicked)
         self._ticket_flow.ticket_activated.connect(self._open_flow_ticket)
         self._new_tickets = NewTicketsView()
@@ -452,7 +452,6 @@ class MainWindow(QMainWindow):
         if stored_window in WINDOWS:
             self._new_tickets.set_window(stored_window)
         self._new_tickets.window_changed.connect(lambda kind: self._qsettings.setValue("new_tickets/window", kind))
-        self._new_tickets.refresh_requested.connect(self._load_new_tickets)
         self._new_tickets.count_changed.connect(self._on_new_count)
         self._new_tickets.detail_requested.connect(self._show_detail)
         self._new_tickets.report_requested.connect(self.open_ticket_report)
@@ -1859,11 +1858,36 @@ class MainWindow(QMainWindow):
 
     def _show_flow(self, load: FlowLoad) -> None:
         """Zeigt einen Abruf, im Screenshot-Modus als Kopie mit erfundenen Namen."""
+        self._ticket_flow.set_anonymized(self._anonymize)
         if self._anonymize:
             self._ticket_flow.set_flow(anonymize_flow(load))
             return
         member = self._flow_member()
         self._ticket_flow.set_flow(load, member.display_name if member is not None else "")
+
+    def _load_avatars(self, accounts: list[str]) -> None:
+        """Holt Profilbilder fuer die Kreise im Hintergrund.
+
+        Die Adressen stammen aus der Suche. Wer dort nicht vorkam, bekommt
+        seine im Faden nachgeschlagen. Im Screenshot-Modus nichts - die
+        Bilder zeigen echte Menschen.
+        """
+        if self._anonymize or not self._settings_complete() or not accounts:
+            return
+        known = self._real_flow.data.avatars if self._real_flow is not None else {}
+        wanted = {account: known.get(account, "") for account in accounts}
+        worker = AvatarWorker(self._settings, wanted, Settings.SETTINGS_DIR / "cache" / "avatars", self)
+        worker.log.connect(self._log.write)
+        worker.finished_ok.connect(self._on_avatars_loaded)
+        worker.finished.connect(worker.deleteLater)
+        self._running_workers.append(worker)
+        worker.start()
+
+    def _on_avatars_loaded(self, images: object) -> None:
+        """Reicht geladene Profilbilder an die Ansicht."""
+        self._running_workers = [w for w in self._running_workers if w.isRunning()]
+        if isinstance(images, dict) and not self._anonymize:
+            self._ticket_flow.set_avatars(images)
 
     def _load_ticket_flow(self) -> None:
         """Holt den Ticketfluss der gewaehlten Person im Hintergrund."""
@@ -1880,8 +1904,8 @@ class MainWindow(QMainWindow):
         generation = self._flow_generation
         self._flow_loaded = True
         self._real_flow = None
-        self._ticket_flow.show_message("Ticketfluss wird geladen ...")
-        self._set_status("Ticketfluss wird geladen ...", "busy")
+        self._ticket_flow.show_message("Teamflow wird geladen ...")
+        self._set_status("Teamflow wird geladen ...", "busy")
         worker = TicketFlowWorker(
             self._settings,
             member,
@@ -1911,7 +1935,7 @@ class MainWindow(QMainWindow):
             self._own_ids = result.center
         self._real_flow = result
         self._show_flow(result)
-        self._set_status(f"Ticketfluss: {len(result.data.edges)} Wege geladen")
+        self._set_status(f"Teamflow: {len(result.data.edges)} Wege geladen")
 
     def _on_flow_failed(self, message: str, generation: int) -> None:
         """Meldet einen gescheiterten Abruf."""

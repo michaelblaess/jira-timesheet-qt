@@ -20,6 +20,11 @@ from .models import EDGE_HANDOVER, EDGE_ORDER, FlowEdge, FlowStar, Person, Spoke
 DEFAULT_SPOKES = 8
 """So viele Personen stehen einzeln im Kreis, der Rest unter "Sonstige"."""
 
+DEFAULT_CONTACTS = 3
+"""So viele Personen nennt die Liste der engsten Kontakte."""
+
+_AVATAR_SIZES = ("48x48", "32x32", "24x24", "16x16")
+
 
 @dataclass(frozen=True)
 class FlowData:
@@ -32,6 +37,9 @@ class FlowData:
     """Tickets ohne Aenderungsprotokoll - fuer sie gibt es keine Kanten."""
     titles: Mapping[str, str] = field(default_factory=dict)
     """Schluessel auf Titel, fuer die Ticketliste an einem Pfeil."""
+    avatars: Mapping[str, str] = field(default_factory=dict)
+    """accountId auf die groesste Profilbild-Adresse. Wer nur im
+    Aenderungsprotokoll vorkommt, fehlt hier - dort stehen keine Bilder."""
 
 
 def _account(raw: Any) -> tuple[str, str]:
@@ -39,6 +47,17 @@ def _account(raw: Any) -> tuple[str, str]:
     if not isinstance(raw, Mapping):
         return "", ""
     return str(raw.get("accountId") or ""), display_name(str(raw.get("displayName") or ""))
+
+
+def _avatar(raw: Any) -> tuple[str, str]:
+    """accountId und groesste Profilbild-Adresse aus einem Personen-Objekt."""
+    if not isinstance(raw, Mapping):
+        return "", ""
+    urls = raw.get("avatarUrls")
+    if not isinstance(urls, Mapping):
+        return str(raw.get("accountId") or ""), ""
+    url = next((str(urls[size]) for size in _AVATAR_SIZES if urls.get(size)), "")
+    return str(raw.get("accountId") or ""), url
 
 
 def _assignee_changes(histories: Sequence[Mapping[str, Any]]) -> list[tuple[dt.datetime, str, str, str, str]]:
@@ -141,12 +160,18 @@ def extract_flow(
     people: dict[str, str] = {}
     missing: list[str] = []
     titles: dict[str, str] = {}
+    avatars: dict[str, str] = {}
     for issue in issues:
         key = str(issue.get("key") or "")
         if not key or key in seen:
             continue
         seen.add(key)
-        titles[key] = str((issue.get("fields") or {}).get("summary") or "")
+        fields = issue.get("fields") or {}
+        titles[key] = str(fields.get("summary") or "")
+        for role in ("reporter", "assignee"):
+            account, url = _avatar(fields.get(role))
+            if account and url:
+                avatars.setdefault(account, url)
         log = histories.get(key)
         if log is None:
             missing.append(key)
@@ -157,7 +182,76 @@ def extract_flow(
             continue
         edges.extend(ticket_edges(issue, log, people))
     edges.sort(key=lambda edge: edge.when)
-    return FlowData(tuple(edges), people, tuple(missing), titles)
+    return FlowData(tuple(edges), people, tuple(missing), titles, avatars)
+
+
+def _ways(
+    data: FlowData,
+    center: Sequence[str],
+    kinds: Collection[str],
+    since: dt.date | None,
+) -> tuple[dict[str, dict[str, None]], dict[str, dict[str, None]]]:
+    """Tickets je anderer Person, getrennt nach Richtung aus Sicht der Mitte.
+
+    Die Dicts dienen als geordnete Mengen. Jede Person mit einem Weg steht
+    in beiden, notfalls mit leerem Eintrag.
+    """
+    own = set(center)
+    outgoing: dict[str, dict[str, None]] = {}
+    incoming: dict[str, dict[str, None]] = {}
+    for edge in data.edges:
+        if edge.kind not in kinds or (since is not None and edge.when.date() < since):
+            continue
+        if edge.source in own and edge.target not in own:
+            outgoing.setdefault(edge.target, {})[edge.key] = None
+            incoming.setdefault(edge.target, {})
+        elif edge.target in own and edge.source not in own:
+            incoming.setdefault(edge.source, {})[edge.key] = None
+            outgoing.setdefault(edge.source, {})
+    return outgoing, incoming
+
+
+def top_contacts(
+    data: FlowData,
+    center: Sequence[str],
+    kinds: Collection[str],
+    since: dt.date | None,
+    limit: int = DEFAULT_CONTACTS,
+) -> tuple[Spoke, ...]:
+    """Die Personen mit den meisten gemeinsamen Tickets, in beide Richtungen.
+
+    Anders als der Stern bewusst nach Menge geordnet - die Liste beantwortet
+    "mit wem habe ich am meisten zu tun". Gezaehlt werden Tickets, nicht
+    Wege: ein Ticket, das hin und zurueck ging, zaehlt einmal.
+
+    Args:
+        data:
+            Ergebnis von extract_flow.
+        center:
+            Kennungen der Mitte.
+        kinds:
+            Die zugeschalteten Kantenarten.
+        since:
+            Erster Tag, None = alle Kanten.
+        limit:
+            So viele Personen.
+
+    Returns:
+        Je Person eine Speiche, die meisten gemeinsamen Tickets zuerst.
+    """
+    outgoing, incoming = _ways(data, center, kinds, since)
+
+    def shared(account: str) -> int:
+        return len(outgoing[account].keys() | incoming[account].keys())
+
+    def name_of(account: str) -> str:
+        return data.people.get(account) or account
+
+    ranked = sorted(outgoing, key=lambda account: (-shared(account), name_of(account).casefold()))
+    return tuple(
+        Spoke(Person(account, name_of(account)), tuple(outgoing[account]), tuple(incoming[account]))
+        for account in ranked[: max(0, limit)]
+    )
 
 
 def build_star(
@@ -192,18 +286,7 @@ def build_star(
     Returns:
         Der Stern.
     """
-    own = set(center)
-    outgoing: dict[str, dict[str, None]] = {}
-    incoming: dict[str, dict[str, None]] = {}
-    for edge in data.edges:
-        if edge.kind not in kinds or (since is not None and edge.when.date() < since):
-            continue
-        if edge.source in own and edge.target not in own:
-            outgoing.setdefault(edge.target, {})[edge.key] = None
-            incoming.setdefault(edge.target, {})
-        elif edge.target in own and edge.source not in own:
-            incoming.setdefault(edge.source, {})[edge.key] = None
-            outgoing.setdefault(edge.source, {})
+    outgoing, incoming = _ways(data, center, kinds, since)
 
     def name_of(account: str) -> str:
         return data.people.get(account) or account

@@ -24,9 +24,10 @@ from jira_timesheet_qt.services.ticket_flow import (
     FLOW_YTD,
     build_star,
     extract_flow,
-    flow_jql,
+    flow_jqls,
     flow_since,
     load_flow,
+    top_contacts,
 )
 
 TZ = dt.timezone(dt.timedelta(hours=2))
@@ -226,47 +227,73 @@ class TestZeitraum:
 
 
 class TestAbfrage:
-    def test_mit_untergrenze(self) -> None:
-        assert flow_jql([ACCOUNT], dt.date(2025, 10, 27)) == (
-            f'(reporter IN ("{ACCOUNT}") OR assignee WAS "{ACCOUNT}") AND updated >= "2025-10-27" ORDER BY updated DESC'
-        )
+    def test_zwei_ausdruecke_mit_untergrenze(self) -> None:
+        tail = ' AND updated >= "2025-10-27" ORDER BY updated DESC'
+        assert flow_jqls([ACCOUNT], dt.date(2025, 10, 27)) == [
+            f'reporter IN ("{ACCOUNT}"){tail}',
+            f'assignee WAS "{ACCOUNT}"{tail}',
+        ]
 
     def test_ohne_untergrenze(self) -> None:
-        assert "updated >=" not in flow_jql([ACCOUNT], None)
+        assert all("updated >=" not in jql for jql in flow_jqls([ACCOUNT], None))
 
     def test_mehrere_kennungen(self) -> None:
-        jql = flow_jql(["id-a", "id-b"], None)
-        assert jql.startswith('(reporter IN ("id-a", "id-b") OR assignee WAS "id-a" OR assignee WAS "id-b")')
+        reporter, assignee = flow_jqls(["id-a", "id-b"], None)
+        assert reporter.startswith('reporter IN ("id-a", "id-b")')
+        # Klammern, damit eine spaetere Untergrenze fuer beide Kennungen gilt.
+        assert assignee.startswith('(assignee WAS "id-a" OR assignee WAS "id-b")')
 
     def test_ohne_kennung(self) -> None:
         with pytest.raises(AccountIdError):
-            flow_jql([], None)
+            flow_jqls([], None)
 
     def test_kennung_wird_geprueft(self) -> None:
         with pytest.raises(AccountIdError):
-            flow_jql([ACCOUNT, 'x" OR project = Y'], None)
+            flow_jqls([ACCOUNT, 'x" OR project = Y'], None)
 
 
 class FakeSource:
     """Steht fuer den JiraClient: liefert feste Tickets und merkt sich die Abrufe."""
 
-    def __init__(self, issues: list[dict[str, Any]], logs: dict[str, list[dict[str, Any]]], own: str = ANNA) -> None:
+    def __init__(
+        self,
+        issues: list[dict[str, Any]],
+        logs: dict[str, list[dict[str, Any]]],
+        own: str = ANNA,
+        bulk: bool = False,
+    ) -> None:
         self.issues = issues
         self.logs = logs
         self.own = own
+        self.bulk = bulk
         self.jqls: list[str] = []
+        self.parallel: list[bool] = []
         self.requested: list[list[str]] = []
+        self.concurrency: list[int] = []
+        self.bulk_ids: list[list[str]] = []
 
     async def fetch_issues(
-        self, build_jqls: Callable[[str], Sequence[str]], fields: str
+        self, build_jqls: Callable[[str], Sequence[str]], fields: str, parallel: bool = False
     ) -> tuple[str, list[dict[str, Any]]]:
         self.jqls.extend(build_jqls(self.own))
+        self.parallel.append(parallel)
         return self.own, self.issues
 
     async def fetch_changelogs(self, keys: Sequence[str], concurrency: int = 4) -> dict[str, list[dict[str, Any]]]:
         self.requested.append(list(keys))
+        self.concurrency.append(concurrency)
         # Wie der echte Client: was scheitert, fehlt im Ergebnis.
         return {key: self.logs[key] for key in keys if key in self.logs}
+
+    async def fetch_changelogs_bulk(
+        self, issue_ids: Sequence[str], field_ids: Sequence[str]
+    ) -> dict[str, list[dict[str, Any]]] | None:
+        self.bulk_ids.append(list(issue_ids))
+        if not self.bulk:
+            return None
+        # Wie der echte Client: jede Id steht drin, ohne Wechsel mit leerer Liste.
+        keys = {str(i["id"]): i["key"] for i in self.issues if "id" in i}
+        return {i: self.logs.get(keys[i], []) for i in issue_ids}
 
 
 class MemoryStore:
@@ -283,10 +310,12 @@ class MemoryStore:
         self.items[key] = (stamp, histories)
 
 
-def stamped(key: str, reporter: str, assignee: str, updated: str) -> dict[str, Any]:
-    """Suchtreffer mit ``updated`` als Stempel."""
+def stamped(key: str, reporter: str, assignee: str, updated: str, with_id: bool = False) -> dict[str, Any]:
+    """Suchtreffer mit ``updated`` als Stempel, auf Wunsch mit numerischer Id."""
     raw = issue(key, reporter, assignee)
     raw["fields"]["updated"] = updated
+    if with_id:
+        raw["id"] = f"100{key.split('-')[1]}"
     return raw
 
 
@@ -295,7 +324,7 @@ class TestLader:
         source = FakeSource([stamped("X-1", ANNA, BERT, ts(9))], {"X-1": []})
         result = asyncio.run(load_flow(source, MemoryStore(), [], None))
         assert result.center == (ANNA,)
-        assert f'assignee WAS "{ANNA}"' in source.jqls[0]
+        assert f'assignee WAS "{ANNA}"' in source.jqls[1]
 
     def test_ablage_mit_gleichem_stempel_spart_den_abruf(self) -> None:
         store = MemoryStore()
@@ -333,3 +362,103 @@ class TestLader:
         asyncio.run(load_flow(source, MemoryStore(), [ANNA], None, meldungen.append))
         assert [len(chunk) for chunk in source.requested] == [2, 2, 1]
         assert [m.split(":")[1].split(" geholt")[0].strip() for m in meldungen] == ["0 von 5", "2 von 5", "4 von 5"]
+
+    def test_beide_suchen_laufen_gleichzeitig(self) -> None:
+        source = FakeSource([stamped("X-1", ANNA, BERT, ts(9))], {"X-1": []})
+        asyncio.run(load_flow(source, MemoryStore(), [ANNA], None))
+        assert len(source.jqls) == 2
+        assert source.parallel == [True]
+
+
+class TestSammelabruf:
+    def test_ersetzt_die_einzelabrufe(self) -> None:
+        store = MemoryStore()
+        issues = [stamped("X-1", ANNA, BERT, ts(9), True), stamped("X-2", ANNA, CARL, ts(9), True)]
+        source = FakeSource(issues, {"X-2": [handover(ts(5), CARL, DORA)]}, bulk=True)
+        result = asyncio.run(load_flow(source, store, [ANNA], None))
+        assert source.bulk_ids == [["1001", "1002"]]
+        assert source.requested == []
+        # Ein Ticket ohne Bearbeiterwechsel hat ein leeres Protokoll, es fehlt nicht.
+        assert result.data.missing == ()
+        assert result.fetched == 2
+        assert store.items["X-1"] == (ts(9), [])
+
+    def test_ohne_endpunkt_einzeln_mit_acht_gleichzeitig(self) -> None:
+        issues = [stamped("X-1", ANNA, BERT, ts(9), True)]
+        source = FakeSource(issues, {"X-1": []}, bulk=False)
+        result = asyncio.run(load_flow(source, MemoryStore(), [ANNA], None))
+        assert source.bulk_ids == [["1001"]]
+        assert source.requested == [["X-1"]]
+        assert source.concurrency == [ticket_flow.CHANGELOG_CONCURRENCY] == [8]
+        assert result.fetched == 1
+
+    def test_ablage_geht_vor(self) -> None:
+        store = MemoryStore()
+        store.save("X-1", ts(9), [])
+        issues = [stamped("X-1", ANNA, BERT, ts(9), True), stamped("X-2", ANNA, CARL, ts(9), True)]
+        source = FakeSource(issues, {}, bulk=True)
+        asyncio.run(load_flow(source, store, [ANNA], None))
+        assert source.bulk_ids == [["1002"]]
+
+
+class TestProfilbilder:
+    def test_groesste_adresse_aus_der_suche(self) -> None:
+        raw = issue("X-1", ANNA, BERT)
+        raw["fields"]["reporter"]["avatarUrls"] = {"16x16": "https://a/16", "48x48": "https://a/48"}
+        data = extract_flow([raw], {"X-1": []})
+        assert data.avatars == {ANNA: "https://a/48"}
+
+    def test_auch_ohne_protokoll(self) -> None:
+        raw = issue("X-1", ANNA, BERT)
+        raw["fields"]["assignee"]["avatarUrls"] = {"24x24": "https://b/24"}
+        assert extract_flow([raw], {}).avatars == {BERT: "https://b/24"}
+
+
+class TestKontakte:
+    def test_meiste_gemeinsame_tickets_zuerst(self) -> None:
+        kontakte = top_contacts(_netz(), [ANNA], EDGE_KINDS, None)
+        # Bert und Dora je zwei Tickets, Carl eins - bei Gleichstand nach Namen.
+        assert [k.person.account_id for k in kontakte if k.person] == [BERT, DORA, CARL]
+
+    def test_hin_und_zurueck_zaehlt_einmal(self) -> None:
+        issues = [issue("X-1", ANNA, BERT), issue("X-2", CARL, ANNA), issue("X-3", CARL, ANNA)]
+        histories: dict[str, list[dict[str, Any]]] = {
+            "X-1": [handover(ts(5), BERT, ANNA)],
+            "X-2": [],
+            "X-3": [],
+        }
+        kontakte = top_contacts(extract_flow(issues, histories), [ANNA], EDGE_KINDS, None)
+        # Mit Bert ging X-1 hin und zurueck: ein Ticket. Mit Carl zwei.
+        assert [(k.person.account_id, len(set(k.outgoing) | set(k.incoming))) for k in kontakte if k.person] == [
+            (CARL, 2),
+            (BERT, 1),
+        ]
+
+    def test_grenze(self) -> None:
+        assert len(top_contacts(_netz(), [ANNA], EDGE_KINDS, None, limit=1)) == 1
+
+
+class TestEpochZeitstempel:
+    """Der Sammelabruf liefert ``created`` als Epoch-Millisekunden (gemessen am 26.10.2026)."""
+
+    def test_wird_zu_iso_mit_utc(self) -> None:
+        from jira_timesheet_qt.services.jira_client import _with_iso_created
+
+        eintrag = _with_iso_created({"created": 1_788_861_600_000, "items": []})
+        assert eintrag["created"] == "2026-09-08T10:00:00.000+00:00"
+
+    def test_iso_bleibt_wie_es_ist(self) -> None:
+        from jira_timesheet_qt.services.jira_client import _with_iso_created
+
+        roh = {"created": ts(5)}
+        assert _with_iso_created(roh) is roh
+
+    def test_ergibt_eine_kante_zur_richtigen_zeit(self) -> None:
+        from jira_timesheet_qt.services.jira_client import _with_iso_created
+
+        roh = handover(ts(5), BERT, CARL)
+        roh["created"] = 1_788_861_600_000
+        data = extract_flow([issue("X-1", ANNA, CARL)], {"X-1": [_with_iso_created(roh)]})
+        uebergabe = data.edges[-1]
+        assert (uebergabe.kind, uebergabe.source, uebergabe.target) == (EDGE_HANDOVER, BERT, CARL)
+        assert uebergabe.when == dt.datetime(2026, 9, 8, 10, tzinfo=dt.UTC)

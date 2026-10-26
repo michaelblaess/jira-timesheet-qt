@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QPushButton,
     QScrollArea,
     QSizePolicy,
     QSplitter,
@@ -190,8 +189,6 @@ class PerformanceView(QWidget):
     member_changed = Signal(str)
     # Anderer Zeitraum gewaehlt: 1M, 3M, 6M oder YTD.
     period_changed = Signal(str)
-    # Neu laden, auch wenn Person und Zeitraum gleich bleiben.
-    refresh_requested = Signal()
     # Gewaehltes Ticket fuer die Vorschau: Nummer oder None.
     ticket_selected = Signal(object)
     # Ticketnummer in einem Hinweis angeklickt. Die Ansicht waehlt das Ticket
@@ -252,10 +249,6 @@ class PerformanceView(QWidget):
         head.addLayout(span)
 
         head.addStretch(1)
-        refresh = QPushButton("Aktualisieren")
-        refresh.setToolTip("Zeitraum und Person neu aus Jira laden")
-        refresh.clicked.connect(lambda _checked=False: self.refresh_requested.emit())
-        head.addWidget(refresh)
         outer.addLayout(head)
 
         self._period_label = QLabel("")

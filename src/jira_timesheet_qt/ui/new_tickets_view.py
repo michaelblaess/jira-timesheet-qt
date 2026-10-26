@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QMenu,
-    QPushButton,
     QSplitter,
     QStackedWidget,
     QTableWidget,
@@ -89,8 +88,6 @@ class NewTicketsView(QWidget):
 
     # Neue Auswahl, Nummer oder None.
     ticket_selected = Signal(object)
-    # Erneut aus Jira laden.
-    refresh_requested = Signal()
     # Zeitraum gewechselt, mit Kuerzel - das Fenster merkt es sich.
     window_changed = Signal(str)
     # Angezeigte Anzahl hat sich geaendert (fuer den Reitertitel).
@@ -161,10 +158,6 @@ class NewTicketsView(QWidget):
         head.addWidget(self._count)
 
         head.addStretch(1)
-        refresh = QPushButton("Aktualisieren")
-        refresh.setToolTip("Neue Tickets erneut aus Jira laden")
-        refresh.clicked.connect(lambda _checked=False: self.refresh_requested.emit())
-        head.addWidget(refresh)
         outer.addLayout(head)
 
         self._table = QTableWidget(0, len(_COLUMNS))

@@ -275,7 +275,7 @@ class TestHauptfenster:
     def test_ueberholter_abruf_wird_verworfen(self, qapp: QApplication, fake: list[Any]) -> None:
         fenster = _fenster([ANNA, BERT])
         fenster._tabs.setCurrentIndex(main_window._NEW_VIEW)
-        fenster._new_tickets.refresh_requested.emit()
+        fenster._load_new_tickets()
         fake[0].finished_ok.emit(_tickets())
         assert fenster._new_tickets.tickets() is None
         fake[1].finished_ok.emit(_tickets()[:1])

@@ -14,7 +14,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Callable, Sequence
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -25,6 +25,28 @@ from jira_timesheet_qt.models.timesheet import WorklogEntry
 from jira_timesheet_qt.services.ssl_support import TlsSettings, build_verify, is_ssl_error
 
 logger = logging.getLogger(__name__)
+
+
+def _with_iso_created(history: dict[str, Any]) -> dict[str, Any]:
+    """Schreibt ein ``created`` in Epoch-Millisekunden als ISO-Zeitstempel mit UTC.
+
+    Args:
+        history:
+            Ein Eintrag aus dem Sammelabruf der Aenderungsprotokolle.
+
+    Returns:
+        Eine Kopie mit ISO-Zeitstempel. Andere Formen bleiben unberuehrt.
+    """
+    created = history.get("created")
+    if isinstance(created, bool) or not isinstance(created, (int, float, str)):
+        return history
+    if isinstance(created, str) and not created.strip().isdigit():
+        return history
+    try:
+        moment = datetime.fromtimestamp(int(created) / 1000, tz=UTC)
+    except (OverflowError, OSError, ValueError):
+        return history
+    return {**history, "created": moment.isoformat(timespec="milliseconds")}
 
 
 class JiraClientError(Exception):
@@ -442,6 +464,7 @@ class JiraClient:
         self,
         build_jqls: Callable[[str], Sequence[str]],
         fields: str,
+        parallel: bool = False,
     ) -> tuple[str, list[dict[str, Any]]]:
         """Fuehrt mehrere JQL-Suchen in EINER Sitzung aus.
 
@@ -460,6 +483,11 @@ class JiraClient:
                 konfigurierte Abfrage nichts kaputt macht.
             fields:
                 Kommaliste der angeforderten Felder.
+            parallel:
+                Die Suchen gleichzeitig statt nacheinander ausfuehren. Gemessen
+                am 26.10.2026: "reporter IN (X) OR assignee WAS X" brauchte
+                8,3 s, beide Teile getrennt und gleichzeitig 2,0 s fuer
+                dieselben 338 Tickets.
 
         Returns:
             Die eigene accountId und alle gefundenen Issues. Doppelte
@@ -479,11 +507,16 @@ class JiraClient:
             if not self._legacy:
                 account_id = await self._fetch_account_id(client)
                 self._account_id = account_id
-            for jql in build_jqls(account_id):
-                if not jql.strip():
-                    continue
+            jqls = [jql for jql in build_jqls(account_id) if jql.strip()]
+            for jql in jqls:
                 self._log(t("jira.jql", jql=jql))
-                issues.extend(await self._search_issues(client, jql, fields))
+            if parallel:
+                pages = await asyncio.gather(*(self._search_issues(client, jql, fields) for jql in jqls))
+                for page in pages:
+                    issues.extend(page)
+            else:
+                for jql in jqls:
+                    issues.extend(await self._search_issues(client, jql, fields))
 
         self._log(t("jira.issues_found", count=len(issues)))
         return account_id, issues
@@ -622,6 +655,136 @@ class JiraClient:
 
         async with self._session() as client:
             await asyncio.gather(*(one(client, key) for key in keys))
+        return result
+
+    async def fetch_changelogs_bulk(
+        self,
+        issue_ids: Sequence[str],
+        field_ids: Sequence[str],
+    ) -> dict[str, list[dict[str, Any]]] | None:
+        """Holt die Aenderungsprotokolle vieler Tickets in wenigen Abrufen.
+
+        Ueber ``POST /rest/api/3/changelog/bulkfetch``, beschraenkt auf die
+        genannten Felder. Gemessen am 26.10.2026: 338 Tickets in 1,9 s statt
+        rund 25 s mit einem Abruf je Ticket. Die Eintraege haben dieselben
+        Felder wie beim Einzelabruf (author, created, id, items), ``created``
+        kommt hier aber als Epoch-Millisekunden (gemessen am 26.10.2026: 304
+        von 304 als int). Es wird in ISO mit UTC umgeschrieben, sonst laesst
+        parse_ts den Eintrag fallen oder liest ein falsches Datum.
+
+        Args:
+            issue_ids:
+                Die numerischen Ticket-Ids aus der Suche. Die Antwort nennt
+                nur Ids, keine Schluessel.
+            field_ids:
+                Hoechstens zehn Feld-Ids, etwa ``["assignee"]``.
+
+        Returns:
+            Je Id die Eintraege, ein Ticket ohne Aenderung an diesen Feldern
+            mit leerer Liste. None, wenn der Endpunkt nicht zur Verfuegung
+            steht oder ein Abruf scheitert - dann holt der Aufrufer einzeln.
+        """
+        if self._legacy:
+            return None
+        ids = list(dict.fromkeys(str(i) for i in issue_ids if str(i)))
+        result: dict[str, list[dict[str, Any]]] = {i: [] for i in ids}
+        url = f"{self._host}/rest/api/3/changelog/bulkfetch"
+        async with self._session() as client:
+            # Je Abruf hoechstens 1000 Tickets, das ist die Grenze des Endpunkts.
+            for start in range(0, len(ids), 1000):
+                token: str | None = None
+                while True:
+                    body: dict[str, Any] = {
+                        "issueIdsOrKeys": ids[start : start + 1000],
+                        "fieldIds": list(field_ids),
+                        "maxResults": 1000,
+                    }
+                    if token:
+                        body["nextPageToken"] = token
+                    try:
+                        response = await client.post(url, json=body, headers=self._headers())
+                    except httpx.HTTPError as exc:
+                        logger.warning("Sammelabruf der Protokolle gescheitert: %s", exc)
+                        self._log(f"Sammelabruf der Änderungsprotokolle gescheitert: {exc}")
+                        return None
+                    if response.status_code != 200:
+                        self._log(f"Sammelabruf der Änderungsprotokolle nicht verfügbar (HTTP {response.status_code})")
+                        return None
+                    data = response.json()
+                    for entry in data.get("issueChangeLogs", []):
+                        issue = str(entry.get("issueId") or "")
+                        if issue in result:
+                            result[issue].extend(
+                                _with_iso_created(history) for history in entry.get("changeHistories") or []
+                            )
+                    token = data.get("nextPageToken")
+                    if not token:
+                        break
+        return result
+
+    async def fetch_avatar(self, url: str) -> bytes | None:
+        """Laedt ein Profilbild.
+
+        Bewusst ohne Anmeldedaten: die Adressen zeigen auf Atlassians
+        Bildablage oder auf Gravatar, und dorthin darf der Jira-Token nicht.
+        Proxy und Zertifikatspruefung gelten wie fuer Jira.
+
+        Args:
+            url:
+                Die Adresse aus ``avatarUrls``.
+
+        Returns:
+            Die Bilddaten, None bei jedem Fehler.
+        """
+        if not url.startswith("https://"):
+            return None
+        try:
+            async with httpx.AsyncClient(
+                verify=self._verify,
+                timeout=20.0,
+                follow_redirects=True,
+                proxy=self._proxy or None,
+            ) as client:
+                response = await client.get(url)
+        except httpx.HTTPError as exc:
+            logger.warning("Profilbild nicht ladbar: %s", exc)
+            return None
+        if response.status_code != 200 or not response.headers.get("content-type", "").startswith("image/"):
+            return None
+        return response.content
+
+    async def fetch_avatar_urls(self, account_ids: Sequence[str]) -> dict[str, str]:
+        """Sucht die Profilbild-Adressen zu Kennungen, die die Suche nicht lieferte.
+
+        Wer nur im Aenderungsprotokoll vorkommt, hat dort keine ``avatarUrls``.
+
+        Args:
+            account_ids:
+                Die Kennungen.
+
+        Returns:
+            Je Kennung die groesste angebotene Adresse. Was scheitert, fehlt.
+        """
+        if self._legacy or not account_ids:
+            return {}
+        result: dict[str, str] = {}
+        url = f"{self._host}/rest/api/3/user"
+        async with self._session() as client:
+
+            async def one(account: str) -> None:
+                try:
+                    response = await client.get(url, params={"accountId": account}, headers=self._headers())
+                except httpx.HTTPError:
+                    return
+                if response.status_code != 200:
+                    return
+                urls = response.json().get("avatarUrls") or {}
+                for size in ("48x48", "32x32", "24x24", "16x16"):
+                    if urls.get(size):
+                        result[account] = str(urls[size])
+                        return
+
+            await asyncio.gather(*(one(account) for account in account_ids))
         return result
 
     async def fetch_statuses(self) -> list[tuple[str, str]]:

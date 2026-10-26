@@ -1,4 +1,4 @@
-"""Tests der Oberflaeche des Ticketflusses - Stern, Schalter, Ticketliste, Verdrahtung.
+"""Tests der Oberflaeche des Teamflows - Stern, Schalter, Ticketliste, Verdrahtung.
 
 Alle Namen sind erfunden. Der Stern rechnet mit einem festen "heute", das
 Fenster mit dem echten - dort wird der Zeitraum deshalb aus flow_since
@@ -12,8 +12,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from PySide6.QtCore import QObject, Signal
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QObject, Signal
+from PySide6.QtGui import QColor, QPixmap
+from PySide6.QtWidgets import QApplication, QGraphicsPixmapItem
 
 from jira_timesheet_qt.models.settings import Settings
 from jira_timesheet_qt.services.team import Roster, TeamMember, to_storage
@@ -28,7 +29,7 @@ from jira_timesheet_qt.services.ticket_flow import (
 )
 from jira_timesheet_qt.ui import main_window
 from jira_timesheet_qt.ui.theme import Mode
-from jira_timesheet_qt.ui.ticket_flow_view import GUEST, TicketFlowView, _Arrow, _Node
+from jira_timesheet_qt.ui.ticket_flow_view import GUEST, TicketFlowView, _Arrow, _Node, initials
 from tests.test_ticket_flow import ANNA, BERT, CARL, DORA, handover, issue
 
 TODAY = dt.date(2026, 10, 26)
@@ -48,6 +49,7 @@ def _abruf(since: dt.date | None = None) -> FlowLoad:
         issue("X-9", ANNA, BERT, at(2, 10)),
     ]
     issues[0]["fields"]["summary"] = "Kaffeemaschine entkalken"
+    issues[0]["fields"]["assignee"]["avatarUrls"] = {"48x48": "https://bilder.example/bert"}
     histories: dict[str, list[dict[str, Any]]] = {
         "X-1": [],
         "X-2": [],
@@ -133,7 +135,7 @@ class TestStern:
 
     def test_hinweis_raeumt_den_alten_stern_weg(self, qapp: QApplication) -> None:
         view = _view()
-        view.show_message("Ticketfluss wird geladen ...")
+        view.show_message("Teamflow wird geladen ...")
         assert view.star() is None and view.flow() is None
         assert view._scene.items() == []
 
@@ -142,6 +144,114 @@ class TestStern:
         vorher = len(view._scene.items())
         view.apply_mode(Mode.LIGHT)
         assert len(view._scene.items()) == vorher
+
+
+def _png() -> bytes:
+    """Ein kleines Bild, wie es aus der Bildablage kaeme."""
+    pixmap = QPixmap(8, 8)
+    pixmap.fill(QColor("#336699"))
+    data = QByteArray()
+    buffer = QBuffer(data)
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    pixmap.save(buffer, "PNG")
+    return bytes(data.data())
+
+
+class TestZoomUndHover:
+    def test_knoepfe_zoomen_und_einpassen(self, qapp: QApplication) -> None:
+        view = _view()
+        view._zoom_buttons["in"].click()
+        assert view.zoom_level() == pytest.approx(1.15)
+        view._zoom_buttons["out"].click()
+        view._zoom_buttons["out"].click()
+        assert view.zoom_level() == pytest.approx(1 / 1.15)
+        view._zoom_buttons["fit"].click()
+        assert view.zoom_level() == pytest.approx(1.0)
+
+    def test_zoom_hat_grenzen(self, qapp: QApplication) -> None:
+        view = _view()
+        for _ in range(40):
+            view._zoom_buttons["in"].click()
+        assert view.zoom_level() == pytest.approx(5.0)
+
+    def test_hover_auf_person_blendet_den_rest_aus(self, qapp: QApplication) -> None:
+        view = _view()
+        bert = next(n for n in _items(view, _Node) if "Bert" in n.toolTip())
+        bert._on_hover(True)
+        hell = [i for i in view._dimmable if i.opacity() == 1.0]
+        # Bert: Kreis, Initialen, Name, ein Pfeil und seine Zahl.
+        assert len(hell) == 5
+        assert all(i.opacity() < 1.0 for i in view._dimmable if i not in hell)
+        bert._on_hover(False)
+        assert all(i.opacity() == 1.0 for i in view._dimmable)
+
+    def test_hover_auf_pfeil_hebt_seine_speiche(self, qapp: QApplication) -> None:
+        view = _view()
+        arrow = _items(view, _Arrow)[0]
+        arrow._on_hover(True)
+        assert arrow.opacity() == 1.0
+        assert any(i.opacity() < 1.0 for i in view._dimmable)
+
+
+class TestKontakte:
+    def test_drei_kontakte_bei_gleichstand_nach_namen(self, qapp: QApplication) -> None:
+        assert _view().contact_names() == ["Bert Beispiel", "Carl Mustermann", "Dora Probe"]
+
+    def test_klick_zeigt_gemeinsame_tickets(self, qapp: QApplication) -> None:
+        view = _view()
+        view._on_contact_clicked(view._contacts.topLevelItem(0))  # type: ignore[arg-type]
+        assert view.listed_keys() == ["X-1"]
+        assert view._list_title.text() == "Anna Muster und Bert Beispiel: 1 Ticket"
+
+    def test_doppelklick_setzt_in_die_mitte(self, qapp: QApplication) -> None:
+        view = _view()
+        gemeldet: list[tuple[str, str]] = []
+        view.person_clicked.connect(lambda account, name: gemeldet.append((account, name)))
+        view._on_contact_activated(view._contacts.topLevelItem(2))  # type: ignore[arg-type]
+        assert gemeldet == [(DORA, "Dora Probe")]
+
+    def test_zeitraum_wirkt_auch_auf_die_kontakte(self, qapp: QApplication) -> None:
+        view = _view()
+        view._period_buttons["1M"].click()
+        assert view.contact_names() == ["Bert Beispiel", "Carl Mustermann"]
+
+
+class TestProfilbilder:
+    @pytest.mark.parametrize(
+        ("name", "kurz"),
+        [("Michael Blaess", "MB"), ("Blaess, Michael", "MB"), ("Anna-Lena Muster", "AM"), ("Cher", "CH"), ("", "?")],
+    )
+    def test_initialen(self, name: str, kurz: str) -> None:
+        assert initials(name) == kurz
+
+    def test_fehlende_bilder_werden_einmal_erfragt(self, qapp: QApplication) -> None:
+        view = TicketFlowView(Mode.DARK, today=TODAY)
+        gefragt: list[list[str]] = []
+        view.avatars_needed.connect(gefragt.append)
+        view.set_flow(_abruf())
+        view._period_buttons["1M"].click()
+        assert gefragt == [[ANNA, BERT, CARL, DORA]]
+
+    def test_bild_ersetzt_die_initialen(self, qapp: QApplication) -> None:
+        view = _view()
+        assert _items(view, QGraphicsPixmapItem) == []
+        view.set_avatars({BERT: _png()})
+        assert len(_items(view, QGraphicsPixmapItem)) == 1
+
+    def test_kaputte_bilddaten_fallen_auf_initialen_zurueck(self, qapp: QApplication) -> None:
+        view = _view()
+        view.set_avatars({BERT: b"kein Bild"})
+        assert _items(view, QGraphicsPixmapItem) == []
+
+    def test_screenshot_modus_ohne_bilder(self, qapp: QApplication) -> None:
+        view = TicketFlowView(Mode.DARK, today=TODAY)
+        gefragt: list[list[str]] = []
+        view.avatars_needed.connect(gefragt.append)
+        view.set_anonymized(True)
+        view.set_flow(_abruf())
+        view.set_avatars({BERT: _png()})
+        assert gefragt == []
+        assert _items(view, QGraphicsPixmapItem) == []
 
 
 class TestGast:
@@ -190,10 +300,39 @@ class FakeFlowWorker(QObject):
         return True
 
 
+class FakeAvatarWorker(QObject):
+    """Ersetzt den Bilder-Faden. Merkt sich, was gewuenscht war."""
+
+    finished_ok = Signal(object)
+    log = Signal(str)
+    finished = Signal()
+
+    erzeugt: list[FakeAvatarWorker] = []
+
+    def __init__(
+        self, settings: Settings, wanted: dict[str, str], cache_dir: Path, parent: QObject | None = None
+    ) -> None:
+        super().__init__(parent)
+        self.wanted = dict(wanted)
+        self.cache_dir = cache_dir
+        FakeAvatarWorker.erzeugt.append(self)
+
+    def isRunning(self) -> bool:  # noqa: N802 - Qt-Schreibweise
+        return True
+
+    def start(self) -> None:
+        pass
+
+    def wait(self, msecs: int = 0) -> bool:
+        return True
+
+
 @pytest.fixture
 def fake(monkeypatch: pytest.MonkeyPatch) -> list[FakeFlowWorker]:
     FakeFlowWorker.erzeugt = []
+    FakeAvatarWorker.erzeugt = []
     monkeypatch.setattr(main_window, "TicketFlowWorker", FakeFlowWorker)
+    monkeypatch.setattr(main_window, "AvatarWorker", FakeAvatarWorker)
     return FakeFlowWorker.erzeugt
 
 
@@ -212,10 +351,10 @@ class TestHauptfenster:
         # Hinter den Booster, weil "Neue Tickets" direkt davor bleiben soll
         # (Michael, 24.09.2026, siehe test_new_tickets).
         fenster = _fenster()
-        assert main_window._VIEWS[-1] == "Ticketfluss"
+        assert main_window._VIEWS[-1] == "Teamflow"
         assert main_window._FLOW_VIEW == main_window._PERF_VIEW + 1
         assert fenster._stack.widget(main_window._FLOW_VIEW) is fenster._ticket_flow
-        assert fenster._tabs.tabText(main_window._FLOW_VIEW) == "Ticketfluss"
+        assert fenster._tabs.tabText(main_window._FLOW_VIEW) == "Teamflow"
 
     def test_erster_besuch_laedt_die_eigenen_wege(self, qapp: QApplication, fake: list[Any]) -> None:
         fenster = _fenster()
@@ -284,3 +423,30 @@ class TestHauptfenster:
         # Ein Klick ruft im Screenshot-Modus niemanden ab.
         fenster._ticket_flow.person_clicked.emit(DORA, "erfunden")
         assert len(fake) == 1
+
+    def test_profilbilder_mit_adresse_aus_der_suche(self, qapp: QApplication, fake: list[Any]) -> None:
+        fenster = _fenster()
+        _besuch(fenster)
+        fake[0].finished_ok.emit(_abruf(fake[0].since))
+        assert len(FakeAvatarWorker.erzeugt) == 1
+        wunsch = FakeAvatarWorker.erzeugt[0].wanted
+        # Bert kam mit Adresse aus der Suche, die anderen schlaegt der Faden nach.
+        assert wunsch == {ANNA: "", BERT: "https://bilder.example/bert", CARL: "", DORA: ""}
+        assert FakeAvatarWorker.erzeugt[0].cache_dir.name == "avatars"
+        FakeAvatarWorker.erzeugt[0].finished_ok.emit({BERT: _png()})
+        assert len(_items(fenster._ticket_flow, QGraphicsPixmapItem)) == 1
+
+    def test_screenshot_modus_laedt_keine_bilder(self, qapp: QApplication, fake: list[Any]) -> None:
+        fenster = _fenster()
+        fenster._toggle_anonymize()
+        _besuch(fenster)
+        fake[0].finished_ok.emit(_abruf(fake[0].since))
+        assert FakeAvatarWorker.erzeugt == []
+
+    def test_kein_eigener_aktualisieren_knopf(self, qapp: QApplication) -> None:
+        from PySide6.QtWidgets import QPushButton
+
+        fenster = _fenster()
+        for view in (fenster._ticket_flow, fenster._new_tickets, fenster._performance):
+            texte = [b.text() for b in view.findChildren(QPushButton)]
+            assert "Aktualisieren" not in texte, type(view).__name__

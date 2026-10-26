@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Signal
@@ -76,15 +77,16 @@ class TicketFlowWorker(QThread):
             self.finished_ok.emit(result)
 
     def _phase(self, text: str) -> None:
-        """Meldet einen Zwischenstand in Statuszeile und Verlauf."""
+        """Meldet einen Zwischenstand. Ins Protokoll schreibt ihn das Fenster
+        ueber die Statuszeile - ein zweites log.emit verdoppelte jede Zeile."""
         self.progress.emit(text)
-        self.log.emit(text)
 
     async def _fetch(self) -> FlowLoad:
         """Holt Suche und Protokolle und baut die Kanten."""
         settings = self._settings
         span = f"seit {self._since:%d.%m.%Y}" if self._since is not None else "ohne Untergrenze"
-        self._phase(f"Ticketfluss: {self._name}, {span} wird geladen ...")
+        started = time.perf_counter()
+        self._phase(f"Teamflow: {self._name}, {span} wird geladen ...")
         client = JiraClient(
             host=settings.jira_host,
             email=settings.email,
@@ -99,8 +101,9 @@ class TicketFlowWorker(QThread):
         result = await load_flow(client, cache, self._ids, self._since, self._phase)
         data = result.data
         self.log.emit(
-            f"Ticketfluss: {len(data.edges)} Wege, Protokolle {result.cached} aus der Ablage, "
-            f"{result.fetched} abgerufen, {len(data.missing)} ohne Protokoll"
+            f"Teamflow: {len(data.edges)} Wege, Protokolle {result.cached} aus der Ablage, "
+            f"{result.fetched} abgerufen, {len(data.missing)} ohne Protokoll, "
+            f"{time.perf_counter() - started:.1f} s".replace(".", ",")
         )
         if data.missing:
             # Die Schluessel ins Protokoll, damit "fehlt" nachpruefbar bleibt.

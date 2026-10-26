@@ -6,8 +6,8 @@ Plan und Entscheidungen in PLAN-ticketfluss.md.
 
 from __future__ import annotations
 
-from .edges import DEFAULT_SPOKES, FlowData, build_star, extract_flow, ticket_edges
-from .loader import CHANGELOG_CHUNK, FlowLoad, FlowSource, HistoryStore, load_flow
+from .edges import DEFAULT_CONTACTS, DEFAULT_SPOKES, FlowData, build_star, extract_flow, ticket_edges, top_contacts
+from .loader import CHANGELOG_CHUNK, CHANGELOG_CONCURRENCY, FlowLoad, FlowSource, HistoryStore, load_flow
 from .models import EDGE_HANDOVER, EDGE_KINDS, EDGE_ORDER, FlowEdge, FlowStar, Person, Spoke
 from .period import (
     DEFAULT_FLOW_PERIOD,
@@ -19,11 +19,13 @@ from .period import (
     FLOW_YTD,
     flow_since,
 )
-from .queries import FLOW_FIELDS, flow_jql
+from .queries import FLOW_FIELDS, flow_jqls
 
 __all__ = [
     "CHANGELOG_CHUNK",
+    "CHANGELOG_CONCURRENCY",
     "DEFAULT_FLOW_PERIOD",
+    "DEFAULT_CONTACTS",
     "DEFAULT_SPOKES",
     "EDGE_HANDOVER",
     "EDGE_KINDS",
@@ -45,8 +47,9 @@ __all__ = [
     "Spoke",
     "build_star",
     "extract_flow",
-    "flow_jql",
+    "flow_jqls",
     "flow_since",
     "load_flow",
     "ticket_edges",
+    "top_contacts",
 ]
