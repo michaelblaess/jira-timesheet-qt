@@ -12,11 +12,12 @@ from .edges import (
     FlowData,
     build_star,
     extract_flow,
+    merge_accounts,
     ticket_edges,
     ticket_partners,
     top_contacts,
 )
-from .loader import CHANGELOG_CHUNK, CHANGELOG_CONCURRENCY, FlowLoad, FlowSource, HistoryStore, load_flow
+from .loader import CHANGELOG_CHUNK, CHANGELOG_CONCURRENCY, FlowLoad, FlowSource, HistoryStore, load_flow, merge_load
 from .models import EDGE_ACCEPTANCE, EDGE_HANDOVER, EDGE_KINDS, EDGE_ORDER, FlowEdge, FlowStar, Person, Spoke
 from .period import (
     DEFAULT_FLOW_PERIOD,
@@ -60,6 +61,8 @@ __all__ = [
     "flow_jqls",
     "flow_since",
     "load_flow",
+    "merge_accounts",
+    "merge_load",
     "ticket_edges",
     "ticket_partners",
     "top_contacts",

@@ -176,6 +176,28 @@ def _png() -> bytes:
     return bytes(data.data())
 
 
+class TestMehrfachkonten:
+    def test_konten_aus_der_merkliste_sind_eine_speiche(self, qapp: QApplication) -> None:
+        view = _view()
+        view.set_account_groups([(BERT, CARL), (DORA,)])
+        assert _namen(view) == ["Bert Beispiel", "Dora Probe"]
+        star = view.star()
+        assert star is not None
+        assert (star.spokes[0].outgoing, star.spokes[0].incoming) == (("X-1",), ("X-3",))
+
+    def test_neuer_abruf_behaelt_die_gruppen(self, qapp: QApplication) -> None:
+        view = _view()
+        view.set_account_groups([(BERT, CARL)])
+        view.set_flow(_abruf())
+        assert _namen(view) == ["Bert Beispiel", "Dora Probe"]
+
+    def test_hauptfenster_reicht_die_merkliste_durch(self, qapp: QApplication, fake: list[Any]) -> None:
+        fenster = _fenster([TeamMember(display_name="Bert", account_ids=(BERT, CARL))])
+        _besuch(fenster)
+        fake[0].finished_ok.emit(_abruf(fake[0].since))
+        assert _namen(fenster._ticket_flow) == ["Bert Beispiel", "Dora Probe"]
+
+
 class TestZoomUndHover:
     def test_knoepfe_zoomen_und_einpassen(self, qapp: QApplication) -> None:
         view = _view()

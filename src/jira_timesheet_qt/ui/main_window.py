@@ -1663,6 +1663,7 @@ class MainWindow(QMainWindow):
             view.set_team_ids(team_ids)
         self._new_tickets.set_team_ids(team_ids)
         self._ticket_flow.set_team_ids(team_ids)
+        self._ticket_flow.set_account_groups([member.account_ids for member in roster.members])
 
     # --- Neue Tickets ---------------------------------------------------
 

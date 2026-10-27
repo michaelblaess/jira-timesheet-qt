@@ -15,7 +15,7 @@ from __future__ import annotations
 import datetime as dt
 import functools
 import math
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 
 from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
@@ -79,6 +79,7 @@ from jira_timesheet_qt.services.ticket_flow import (
     Spoke,
     build_star,
     flow_since,
+    merge_load,
     ticket_partners,
     top_contacts,
 )
@@ -447,6 +448,10 @@ class TicketFlowView(QWidget):
         self._mode = mode
         self._today = today
         self._load: FlowLoad | None = None
+        # Der Abruf vor dem Zusammenfassen der Konten - eine geaenderte
+        # Merkliste fasst daraus neu zusammen, ohne Jira zu fragen.
+        self._raw_load: FlowLoad | None = None
+        self._account_groups: tuple[tuple[str, ...], ...] = ()
         self._center_name = ""
         self._star: FlowStar | None = None
         self._avatar_data: dict[str, bytes] = {}
@@ -740,6 +745,7 @@ class TicketFlowView(QWidget):
         vorherigen Person neben der neuen Auswahl.
         """
         self._load = None
+        self._raw_load = None
         self._star = None
         self._clear_scene()
         self._list.clear()
@@ -779,7 +785,8 @@ class TicketFlowView(QWidget):
             center_name:
                 Name der Mitte. Leer = der Jira-Name.
         """
-        self._load = load
+        self._raw_load = load
+        self._load = merge_load(load, self._account_groups)
         self._center_name = center_name
         self._pages.setCurrentIndex(1)
         self._render(refit=True)
@@ -1152,6 +1159,13 @@ class TicketFlowView(QWidget):
     def set_team_ids(self, ids: frozenset[str]) -> None:
         """Merkt die Kennungen der Merkliste fuer die Menuepunkte."""
         self._team_ids = ids
+
+    def set_account_groups(self, groups: Sequence[Sequence[str]]) -> None:
+        """Konten je Person aus der Merkliste - sie stehen als eine Speiche im Kreis."""
+        self._account_groups = tuple(tuple(group) for group in groups if len(group) > 1)
+        if self._raw_load is not None:
+            self._load = merge_load(self._raw_load, self._account_groups)
+            self._render()
 
     def set_report_available(self, available: bool) -> None:
         """Ticket-Analyse nur mit Zugangsdaten - sonst bleibt der Menuepunkt grau."""

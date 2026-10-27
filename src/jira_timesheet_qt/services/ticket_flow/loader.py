@@ -8,11 +8,11 @@ Der Qt-Faden reicht nur noch durch, die Tests kommen ohne Netz aus.
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
-from .edges import FlowData, extract_flow
+from .edges import FlowData, extract_flow, merge_accounts
 from .queries import FLOW_FIELDS, flow_jqls
 
 CHANGELOG_CHUNK = 40
@@ -81,6 +81,28 @@ class FlowLoad:
     """Protokolle aus der Ablage."""
     fetched: int
     """Protokolle frisch abgerufen. Was fehlschlug, steht in data.missing."""
+
+
+def merge_load(load: FlowLoad, groups: Iterable[Sequence[str]]) -> FlowLoad:
+    """Wendet merge_accounts auf einen Abruf an, die Mitte eingeschlossen.
+
+    Args:
+        load:
+            Der Abruf.
+        groups:
+            Je Person ihre Kennungen, die erste gilt.
+
+    Returns:
+        Eine Kopie. Das Original bleibt, damit eine geaenderte Merkliste neu
+        zusammenfassen kann.
+    """
+    groups = [tuple(group) for group in groups]
+    data = merge_accounts(load.data, groups)
+    if data is load.data:
+        return load
+    alias = {account: group[0] for group in groups for account in group[1:] if group}
+    center = tuple(dict.fromkeys(alias.get(account, account) for account in load.center))
+    return replace(load, center=center, data=data)
 
 
 async def load_flow(

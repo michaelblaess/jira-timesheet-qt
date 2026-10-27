@@ -29,6 +29,8 @@ from jira_timesheet_qt.services.ticket_flow import (
     flow_jqls,
     flow_since,
     load_flow,
+    merge_accounts,
+    merge_load,
     top_contacts,
 )
 
@@ -273,6 +275,58 @@ class TestStern:
     def test_name_der_mitte_aus_der_merkliste(self) -> None:
         star = build_star(_netz(), [ANNA], EDGE_KINDS, None, center_name="Anni")
         assert star.center.name == "Anni"
+
+
+class TestKontenZusammenfassen:
+    """Carl ist hier das Zweitkonto von Bert, wie in der Merkliste von Mein Team."""
+
+    GRUPPEN = [(BERT, CARL)]
+
+    def _data(self) -> Any:
+        issues = [issue("X-1", ANNA, BERT), issue("X-2", ANNA, CARL), issue("X-3", DORA, ANNA)]
+        return extract_flow(issues, {"X-1": [], "X-2": [], "X-3": []})
+
+    def test_zwei_konten_eine_speiche(self) -> None:
+        data = merge_accounts(self._data(), self.GRUPPEN)
+        star = build_star(data, [ANNA], EDGE_KINDS, None)
+        assert [(s.person.account_id if s.person else "", s.outgoing) for s in star.spokes] == [
+            (BERT, ("X-1", "X-2")),
+            (DORA, ()),
+        ]
+
+    def test_weg_zwischen_den_konten_faellt_weg(self) -> None:
+        log = [handover(ts(5), BERT, CARL)]
+        data = merge_accounts(extract_flow([issue("X-1", ANNA, CARL)], {"X-1": log}), self.GRUPPEN)
+        assert [(e.kind, e.source, e.target) for e in data.edges] == [(EDGE_ORDER, ANNA, BERT)]
+
+    def test_name_und_bild_der_ersten_kennung(self) -> None:
+        issues = [issue("X-1", ANNA, BERT), issue("X-2", ANNA, CARL)]
+        issues[1]["fields"]["assignee"]["avatarUrls"] = {"48x48": "https://bilder.example/carl"}
+        data = merge_accounts(extract_flow(issues, {"X-1": [], "X-2": []}), self.GRUPPEN)
+        assert data.people[BERT] == "Bert Beispiel"
+        assert CARL not in data.people
+        # Bert selbst hat kein Bild, also gilt das des Zweitkontos.
+        assert data.avatars == {BERT: "https://bilder.example/carl"}
+
+    def test_kontakte_zaehlen_beide_konten(self) -> None:
+        data = merge_accounts(self._data(), self.GRUPPEN)
+        assert [
+            (c.person.account_id if c.person else "", c.total) for c in top_contacts(data, [ANNA], EDGE_KINDS, None)
+        ] == [
+            (BERT, 2),
+            (DORA, 1),
+        ]
+
+    def test_ohne_gruppen_unveraendert(self) -> None:
+        data = self._data()
+        assert merge_accounts(data, []) is data
+        assert merge_accounts(data, [(BERT,)]) is data
+
+    def test_mitte_mit_zweitkonto(self) -> None:
+        load = ticket_flow.FlowLoad((CARL, ANNA), None, self._data(), cached=0, fetched=0)
+        merged = merge_load(load, [(ANNA, CARL)])
+        assert merged.center == (ANNA,)
+        assert load.center == (CARL, ANNA)
 
 
 class TestZeitraum:

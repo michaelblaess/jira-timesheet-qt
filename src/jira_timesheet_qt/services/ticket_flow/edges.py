@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from jira_timesheet_qt.services.ticket_report.lifecycle import display_name, parse_ts
@@ -216,6 +216,53 @@ def extract_flow(
         edges.extend(ticket_edges(issue, log, people))
     edges.sort(key=lambda edge: edge.when)
     return FlowData(tuple(edges), people, tuple(missing), titles, avatars)
+
+
+def merge_accounts(data: FlowData, groups: Iterable[Sequence[str]]) -> FlowData:
+    """Fasst die Konten einer Person zu ihrer ersten Kennung zusammen.
+
+    Jira kennt keine Verbindung zwischen zwei Konten derselben Person - die
+    weiss nur die Merkliste von Mein Team. Ohne Zusammenfassung stuende eine
+    Person zweimal im Kreis, mit je einem Teil ihrer Tickets.
+
+    Args:
+        data:
+            Ergebnis von extract_flow.
+        groups:
+            Je Person ihre Kennungen, die erste gilt. Gruppen mit nur einer
+            Kennung aendern nichts.
+
+    Returns:
+        Kanten, Namen und Profilbilder unter der ersten Kennung. Ein Weg
+        zwischen zwei Konten derselben Person faellt weg.
+    """
+    alias: dict[str, str] = {}
+    for group in groups:
+        ids = [account for account in group if account]
+        for account in ids[1:]:
+            if account != ids[0]:
+                alias.setdefault(account, ids[0])
+    if not alias:
+        return data
+
+    def canon(account: str) -> str:
+        return alias.get(account, account)
+
+    edges: list[FlowEdge] = []
+    for edge in data.edges:
+        source, target = canon(edge.source), canon(edge.target)
+        if source != target:
+            edges.append(replace(edge, source=source, target=target))
+
+    def folded(values: Mapping[str, str]) -> dict[str, str]:
+        # Der eigene Eintrag der ersten Kennung geht vor, sonst der eines Zweitkontos.
+        result = {account: value for account, value in values.items() if account not in alias}
+        for account, value in values.items():
+            if account in alias and value:
+                result.setdefault(alias[account], value)
+        return result
+
+    return replace(data, edges=tuple(edges), people=folded(data.people), avatars=folded(data.avatars))
 
 
 def _ways(
