@@ -17,7 +17,7 @@ import functools
 import math
 from collections.abc import Callable, Mapping, Sequence
 
-from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QModelIndex, QPoint, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QAction,
     QBrush,
@@ -116,6 +116,8 @@ _MAX_FIT = 2.2
 _ZOOM_STEP = 1.15
 _ZOOM_MIN = 0.4
 _ZOOM_MAX = 5.0
+# So schmal wird der Stern hoechstens, auch wenn die Vorschau daneben steht.
+FLOW_CANVAS_MIN = 320
 # Deckkraft alles Uebrigen, solange die Maus ueber einer Person oder einem Pfeil steht.
 _DIMMED = 0.22
 
@@ -610,6 +612,12 @@ class TicketFlowView(QWidget):
         self._list.customContextMenuRequested.connect(self._on_list_menu)
         self._list.currentItemChanged.connect(lambda *_args: self.ticket_selected.emit(self.current_key()))
         side_layout.addWidget(self._list, 1)
+        # Ohne Untergrenze drueckt die Vorschau die Seitenleiste auf einen
+        # Streifen zusammen, in dem kein Name mehr lesbar ist (Michael, 27.10.2026).
+        # Platz fuer die drei Zahlenspalten und einen Namen wie "Erika Musterfrau-Beispiel".
+        numbers = sum(contacts_header.sectionSize(column) for column in (1, 2, 3))
+        side.setMinimumWidth(numbers + metrics.horizontalAdvance("M" * 14))
+        self._canvas_slot.setMinimumWidth(FLOW_CANVAS_MIN)
 
         self._split = QSplitter(Qt.Orientation.Horizontal)
         self._split.setChildrenCollapsible(False)
@@ -878,6 +886,7 @@ class TicketFlowView(QWidget):
         if self._canvas is None:
             self._canvas = _StarView(self._scene)
             self._canvas.setObjectName("FlowCanvas")
+            self._canvas.setMinimumWidth(FLOW_CANVAS_MIN)
             self._split.replaceWidget(0, self._canvas)
             self._canvas_slot.deleteLater()
             # Der Platzhalter hatte keine Groesse - ohne Startbreiten bekaeme die
@@ -1141,6 +1150,11 @@ class TicketFlowView(QWidget):
     def preview_host(self) -> QSplitter:
         """Der waagerechte Trenner, in den das Fenster die Ticket-Vorschau haengt."""
         return self._preview_split
+
+    def clear_selection(self) -> None:
+        """Hebt die Auswahl auf - ohne Auswahl blendet das Fenster die Vorschau aus."""
+        self._list.clearSelection()
+        self._list.setCurrentIndex(QModelIndex())
 
     def current_key(self) -> str | None:
         """Nummer des gewaehlten Tickets der Liste, None ohne Auswahl."""

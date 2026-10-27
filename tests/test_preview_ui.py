@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from PySide6.QtCore import QModelIndex, QObject, QUrl, Signal
+from PySide6.QtCore import QModelIndex, QObject, Qt, QUrl, Signal
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel
 from QAppFramework.color import contrast_ratio
 
@@ -692,6 +693,7 @@ class TestVorschauInTicketlisten:
         view = self._liste_mit(fenster, name, "ABC-7")
         fenster._stack.setCurrentIndex(self._seite(name))
         assert view.isAncestorOf(fenster._preview)
+        assert view.select_ticket("ABC-7")
         assert not fenster._preview.isHidden()
         # Rechts NEBEN der Liste, nicht darueber: in "Meine Tickets" stand sie
         # zuerst ueber Liste und Auswertung, weil der Trenner dort leer blieb.
@@ -717,6 +719,8 @@ class TestVorschauInTicketlisten:
         fenster = _fenster()
         view = self._liste_mit(fenster, "Mein Team", "ABC-7", "ABC-8")
         fenster._stack.setCurrentIndex(self._seite("Mein Team"))
+        # Die erste Auswahl laedt sofort, erst das Weiterblaettern wartet.
+        assert view.select_ticket("ABC-7")
         attrappe.clear()
         assert view.select_ticket("ABC-8")
         assert fenster._preview_timer.isActive(), "Auch in der Ticketliste erst nach der Wartezeit"
@@ -792,6 +796,188 @@ class TestVorschauInTicketlisten:
         assert fenster._preview.parentWidget() is fenster._list_splitter
 
 
+class TestEinblendenNurMitAuswahl:
+    """Ohne gewaehltes Ticket keine Vorschau, mit Auswahl gleitet sie herein (Michael, 27.10.2026)."""
+
+    _seite = staticmethod(TestVorschauInTicketlisten._seite)
+
+    @staticmethod
+    def _liste_mit(fenster: Any, name: str, *keys: str) -> Any:
+        return TestVorschauInTicketlisten()._liste_mit(fenster, name, *keys)
+
+    @pytest.mark.parametrize("name", TestVorschauInTicketlisten.NAMEN)
+    def test_ohne_auswahl_keine_vorschau(self, qapp: QApplication, attrappe: list[Any], name: str) -> None:
+        fenster = _fenster()
+        self._liste_mit(fenster, name, "ABC-7")
+        fenster._stack.setCurrentIndex(self._seite(name))
+        assert fenster._preview.isHidden()
+
+    def test_erste_auswahl_laedt_sofort(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        # Mit Wartezeit glitte der Stand des vorigen Tickets herein.
+        fenster = _fenster()
+        view = self._liste_mit(fenster, "Mein Team", "ABC-7")
+        fenster._stack.setCurrentIndex(self._seite("Mein Team"))
+        attrappe.clear()
+        assert view.select_ticket("ABC-7")
+        assert not fenster._preview.isHidden()
+        assert not fenster._preview_timer.isActive()
+        assert [w.key for w in attrappe] == ["ABC-7"]
+
+    def test_x_hebt_die_auswahl_auf(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        fenster = _fenster()
+        view = self._liste_mit(fenster, "Meine Tickets", "ABC-7")
+        fenster._stack.setCurrentIndex(self._seite("Meine Tickets"))
+        assert view.select_ticket("ABC-7")
+        fenster._preview.close_requested.emit()
+        assert view.current_ticket() is None
+        assert fenster._preview.isHidden()
+        # Weil die Auswahl weg ist, bringt derselbe Klick sie zurueck.
+        assert view.select_ticket("ABC-7")
+        assert not fenster._preview.isHidden()
+
+    def test_x_auch_im_stundenzettel(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        fenster = _fenster()
+        fenster._current_entry = _entry("ABC-1")
+        fenster._list_stack.setCurrentIndex(1)
+        assert not fenster._preview.isHidden()
+        fenster._close_preview()
+        assert fenster._current_entry is None
+        assert fenster._preview.isHidden()
+
+    def test_x_steht_auch_beim_laden(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        # Waehrend des Ladens zeigt die Vorschau einen Hinweis statt des Tickets.
+        fenster = _fenster()
+        gemeldet: list[bool] = []
+        fenster._preview.close_requested.connect(lambda: gemeldet.append(True))
+        fenster._preview.show_placeholder("ABC-1 wird geladen ...")
+        fenster._preview._close_placeholder.click()
+        assert gemeldet == [True]
+
+    def test_esc_in_der_liste_schliesst(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        fenster = _fenster()
+        fenster._preview_anim_ms = 0
+        view = self._liste_mit(fenster, "Mein Team", "ABC-7")
+        fenster._stack.setCurrentIndex(self._seite("Mein Team"))
+        fenster.show()
+        fenster.activateWindow()
+        assert view.select_ticket("ABC-7")
+        view._tree.setFocus()
+        qapp.processEvents()
+        ziel = QApplication.focusWidget()
+        assert ziel is not None and ziel is view._tree
+        QTest.keyClick(ziel, Qt.Key.Key_Escape)
+        assert view.current_ticket() is None
+        assert fenster._preview.isHidden()
+        fenster.hide()
+
+    def test_gleitet_herein_und_hinaus(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        fenster = _fenster()
+        fenster.resize(1400, 800)
+        fenster._preview_anim_ms = 60
+        view = self._liste_mit(fenster, "Mein Team", "ABC-7")
+        fenster._stack.setCurrentIndex(self._seite("Mein Team"))
+        fenster.show()
+        qapp.processEvents()
+        host = fenster._preview.parentWidget()
+        liste = host.widget(0)
+        breit = liste.width()
+        assert view.select_ticket("ABC-7")
+        assert fenster._preview_anim is not None, "Die Auswahl startet eine Fahrt"
+        # Sie gleitet ueber der Liste, die Liste behaelt waehrenddessen ihre Breite.
+        assert fenster._preview.parentWidget() is not host
+        assert liste.width() == breit
+        assert fenster._preview.autoFillBackground(), "Sonst scheint die Liste durch"
+        QTest.qWait(300)
+        assert fenster._preview_anim is None
+        assert host.indexOf(fenster._preview) == 1
+        assert not fenster._preview.isHidden()
+        assert liste.width() < breit
+        view.clear_selection()
+        assert fenster._preview_anim is not None
+        assert not fenster._preview.isHidden(), "Waehrend der Fahrt steht sie noch"
+        # Die Liste ist schon am Anfang wieder breit, die Vorschau gleitet darueber hinaus.
+        assert host.count() == 1
+        QTest.qWait(300)
+        assert fenster._preview.isHidden()
+        assert host.indexOf(fenster._preview) == 1
+        fenster.hide()
+
+    def test_reiterwechsel_ohne_fahrt(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        fenster = _fenster()
+        fenster.resize(1400, 800)
+        fenster._preview_anim_ms = 60
+        team = self._liste_mit(fenster, "Mein Team", "ABC-7")
+        self._liste_mit(fenster, "Meine Tickets", "ABC-8")
+        fenster._stack.setCurrentIndex(self._seite("Mein Team"))
+        fenster.show()
+        assert team.select_ticket("ABC-7")
+        QTest.qWait(300)
+        fenster._stack.setCurrentIndex(self._seite("Meine Tickets"))
+        assert fenster._preview_anim is None and fenster._preview.isHidden()
+        fenster._stack.setCurrentIndex(self._seite("Mein Team"))
+        assert fenster._preview_anim is None and not fenster._preview.isHidden()
+        fenster.hide()
+
+    def test_gezogene_breite_wird_gemerkt(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        fenster = _fenster()
+        fenster.resize(1400, 800)
+        fenster._preview_anim_ms = 0
+        view = self._liste_mit(fenster, "Mein Team", "ABC-7")
+        fenster._stack.setCurrentIndex(self._seite("Mein Team"))
+        fenster.show()
+        assert view.select_ticket("ABC-7")
+        host = fenster._preview.parentWidget()
+        total = sum(host.sizes())
+        host.setSizes([total - 480, 480])
+        host.splitterMoved.emit(total - 480, 1)
+        breite = fenster._preview.width()
+        assert fenster._preview_width == breite
+        fenster.hide()
+        # Ein neues Fenster liest sie aus den Einstellungen.
+        assert _fenster()._preview_width == breite
+
+    def test_liste_behaelt_ihre_mindestbreite(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        from jira_timesheet_qt.ui.main_window import PREVIEW_LIST_MIN
+
+        fenster = _fenster()
+        fenster.resize(1400, 800)
+        fenster._preview_anim_ms = 0
+        # Eine frueher sehr breit gezogene Vorschau.
+        fenster._preview_width = 5000
+        view = self._liste_mit(fenster, "Mein Team", "ABC-7")
+        fenster._stack.setCurrentIndex(self._seite("Mein Team"))
+        fenster.show()
+        assert view.select_ticket("ABC-7")
+        host = fenster._preview.parentWidget()
+        assert host.sizes()[0] >= PREVIEW_LIST_MIN
+        # Auch beim Ziehen am Trenner haelt QSplitter diese Breite ein.
+        assert host.widget(0).minimumWidth() >= PREVIEW_LIST_MIN
+        fenster.hide()
+
+    def test_teamflow_behaelt_stern_und_seitenleiste(self, qapp: QApplication, attrappe: list[Any]) -> None:
+        from jira_timesheet_qt.ui.demo_flow import demo_flow
+        from jira_timesheet_qt.ui.ticket_flow_view import FLOW_CANVAS_MIN
+
+        fenster = _fenster()
+        fenster.resize(1400, 800)
+        fenster._preview_width = 5000
+        fenster._stack.setCurrentIndex(self._seite("Teamflow"))
+        # Mit Daten, sonst steht statt Stern und Listen nur ein Hinweistext da,
+        # und die Zeichenflaeche (mit eigener Mindestbreite) entsteht gar nicht.
+        fenster._ticket_flow.set_flow(demo_flow())
+        fenster.show()
+        assert fenster._ticket_flow._canvas is not None
+        flow = fenster._ticket_flow
+        host = flow.preview_host()
+        assert fenster._preview.parentWidget() is host
+        side = flow._split.widget(1)
+        # Platz fuer einen Namen neben den drei Zahlenspalten, nicht nur fuer seine ersten Buchstaben.
+        assert side.minimumWidth() > 300
+        frei = host.width() - host.handleWidth() - fenster._preview_target(host)
+        assert frei >= side.minimumWidth() + FLOW_CANVAS_MIN
+        fenster.hide()
+
+
 class TestLeerzustandOhneVorschau:
     """Neben dem leeren Stundenzettel steht keine graue Vorschau-Flaeche."""
 
@@ -804,12 +990,15 @@ class TestLeerzustandOhneVorschau:
         from jira_timesheet_qt.ui.main_window import _VIEWS
 
         fenster = _fenster()
+        view = TestVorschauInTicketlisten()._liste_mit(fenster, "Meine Tickets", "ABC-7")
         fenster._stack.setCurrentIndex(_VIEWS.index("Meine Tickets"))
+        assert view.select_ticket("ABC-7")
         assert not fenster._preview.isHidden()
         fenster._stack.setCurrentIndex(0)
         assert fenster._preview.isHidden()
 
     def test_mit_eintraegen_steht_sie_neben_der_liste(self, qapp: QApplication, attrappe: list[Any]) -> None:
         fenster = _fenster()
+        fenster._current_entry = _entry("ABC-1")
         fenster._list_stack.setCurrentIndex(1)
         assert not fenster._preview.isHidden()

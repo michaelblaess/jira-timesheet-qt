@@ -129,6 +129,8 @@ class TicketPreview(QWidget):
     refresh_requested = Signal()
     # Klick auf eine Person: accountId und Anzeigename.
     person_requested = Signal(str, str)
+    # x oben rechts: das Fenster hebt die Auswahl auf, die Vorschau gleitet hinaus.
+    close_requested = Signal()
 
     def __init__(self, mode: Mode = Mode.DARK, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -154,7 +156,15 @@ class TicketPreview(QWidget):
         self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._placeholder.setWordWrap(True)
         self._placeholder.setMargin(24)
-        self._stack.addWidget(self._placeholder)
+        # Auch Laden und Fehler stehen bei gewaehltem Ticket - das x gehoert dazu.
+        placeholder_page = QWidget()
+        placeholder_layout = QVBoxLayout(placeholder_page)
+        placeholder_layout.setContentsMargins(0, 10, 8, 0)
+        placeholder_layout.setSpacing(0)
+        self._close_placeholder = self._close_button()
+        placeholder_layout.addWidget(self._close_placeholder, 0, Qt.AlignmentFlag.AlignRight)
+        placeholder_layout.addWidget(self._placeholder, 1)
+        self._stack.addWidget(placeholder_page)
 
         # Seite 1: das Ticket.
         page = QWidget()
@@ -177,6 +187,15 @@ class TicketPreview(QWidget):
         self.show_placeholder("Kein Eintrag gewählt")
 
     # --- Aufbau ---------------------------------------------------------
+
+    def _close_button(self) -> QToolButton:
+        button = QToolButton()
+        button.setObjectName("PreviewClose")
+        button.setAutoRaise(True)
+        button.setToolTip("Vorschau schließen (Esc)")
+        button.setIcon(load_icon("close", self._mode))
+        button.clicked.connect(lambda _checked=False: self.close_requested.emit())
+        return button
 
     def _build_header(self) -> QFrame:
         header = QFrame()
@@ -243,6 +262,8 @@ class TicketPreview(QWidget):
         top.addSpacing(16)
         top.addWidget(hours_widget, 0, Qt.AlignmentFlag.AlignTop)
         top.addWidget(self._refresh, 0, Qt.AlignmentFlag.AlignTop)
+        self._close = self._close_button()
+        top.addWidget(self._close, 0, Qt.AlignmentFlag.AlignTop)
         content.addLayout(top)
 
         # Zeile 2: nur noch Status, Typ und Prioritaet - einzeilig.
@@ -397,6 +418,8 @@ class TicketPreview(QWidget):
         """Uebernimmt ein anderes Erscheinungsbild - Symbol und Linkfarbe haengen daran."""
         self._mode = mode
         self._refresh.setIcon(load_icon("refresh", mode))
+        for button in (self._close, self._close_placeholder):
+            button.setIcon(load_icon("close", mode))
         self._apply_document_style()
         if self._data is not None:
             # Links im Kopf tragen ihre Farbe im Text, siehe _link. Ohne Neuaufbau

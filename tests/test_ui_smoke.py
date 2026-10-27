@@ -242,12 +242,22 @@ class TestWindow:
         window._fill_description(window._table, window._model)
         assert window._table.columnWidth(di) > window._model.column_width(di)
 
-    def test_user_description_width_survives_fill(self, window: MainWindow) -> None:
-        """Eine selbst gezogene Beschreibungsbreite bleibt von der Fuellung unangetastet."""
+    def test_user_description_width_is_the_floor(self, window: MainWindow) -> None:
+        """Eine gezogene Beschreibungsbreite ist Untergrenze, freier Platz wird trotzdem gefuellt.
+
+        Frueher schaltete sie das Fuellen ab, und rechts blieb ein leerer Streifen.
+        """
         window._settings.column_widths["description"] = 300
-        window._table.resize(1600, 400)
-        window._apply_column_layout(window._table, window._model)
         di = window._model.column_keys().index("description")
+        window._table.resize(1600, 400)
+        QApplication.processEvents()
+        window._apply_column_layout(window._table, window._model)
+        used = sum(window._table.columnWidth(s) for s in range(window._model.columnCount()))
+        assert window._table.columnWidth(di) > 300
+        assert used == window._table.viewport().width()
+        window._table.resize(400, 400)
+        QApplication.processEvents()
+        window._fill_description(window._table, window._model)
         assert window._table.columnWidth(di) == 300
 
     def test_group_toggle_collapses_and_persists(self, window: MainWindow) -> None:

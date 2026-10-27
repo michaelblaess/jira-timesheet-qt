@@ -136,6 +136,7 @@ GLYPHS: dict[str, str] = {
     "refresh": "mdi6.refresh",
     "group": "mdi6.format-list-group",
     "minus": "mdi6.minus",
+    "close": "mdi6.close",
 }
 
 

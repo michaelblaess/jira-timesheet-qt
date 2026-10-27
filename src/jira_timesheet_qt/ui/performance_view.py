@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QScrollArea,
     QSizePolicy,
@@ -48,6 +47,7 @@ from jira_timesheet_qt.services.performance import (
 from jira_timesheet_qt.services.ticket_board import key_sort_value
 
 from .cell_delegate import CellDelegate
+from .fill_column import FillColumn
 from .performance_charts import CourseChart, CycleChart, ProfileChart, SizeChart
 from .theme import Mode, palette_for
 
@@ -363,9 +363,8 @@ class PerformanceView(QWidget):
         self._table.setItemDelegate(CellDelegate(self._table))
         vertical = self._table.verticalHeader()
         vertical.setVisible(False)
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(_STRETCH, QHeaderView.ResizeMode.Stretch)
+        # Der Titel fuellt die Restbreite, alle Spalten bleiben ziehbar.
+        self._columns = FillColumn(self._table, _STRETCH)
         self._table.currentCellChanged.connect(lambda *_args: self.ticket_selected.emit(self.current_key()))
         table_layout.addWidget(self._table, 1)
 
@@ -681,13 +680,7 @@ class PerformanceView(QWidget):
         # Spalte 0 und wirft die Reihenfolge "auffaellig zuerst" weg.
         self._table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
         self._table.setSortingEnabled(True)
-        self._table.resizeColumnsToContents()
-        # resizeColumnsToContents kennt den Innenabstand des Delegates nicht.
-        header = self._table.horizontalHeader()
-        for column in range(self._table.columnCount()):
-            if column != _STRETCH:
-                header.resizeSection(column, header.sectionSize(column) + 16)
-        header.setSectionResizeMode(_STRETCH, QHeaderView.ResizeMode.Stretch)
+        self._columns.autosize()
         if previous is None or not self.select_ticket(previous):
             self.ticket_selected.emit(None)
 
@@ -696,6 +689,11 @@ class PerformanceView(QWidget):
     def preview_host(self) -> QSplitter:
         """Der waagerechte Trenner, in den das Fenster die Ticket-Vorschau haengt."""
         return self._side
+
+    def clear_selection(self) -> None:
+        """Hebt die Auswahl auf - ohne Auswahl blendet das Fenster die Vorschau aus."""
+        self._table.clearSelection()
+        self._table.setCurrentCell(-1, -1)
 
     def current_key(self) -> str | None:
         """Nummer des gewaehlten Tickets, None ohne Auswahl."""

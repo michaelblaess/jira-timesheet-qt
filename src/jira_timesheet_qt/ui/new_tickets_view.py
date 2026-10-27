@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QComboBox,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QMenu,
     QSplitter,
@@ -40,6 +39,7 @@ from jira_timesheet_qt.services.new_tickets import (
 from jira_timesheet_qt.services.ticket_board import Ticket, key_sort_value
 
 from .cell_delegate import CellDelegate
+from .fill_column import FillColumn
 from .person_menu import person_actions
 
 # Beschriftung des Eintrags "alle Mitglieder" - steht immer zuerst.
@@ -172,9 +172,8 @@ class NewTicketsView(QWidget):
         self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._table.customContextMenuRequested.connect(self._on_context_menu)
         self._table.verticalHeader().setVisible(False)
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(_STRETCH, QHeaderView.ResizeMode.Stretch)
+        # Der Titel fuellt die Restbreite, alle Spalten bleiben ziehbar.
+        self._columns = FillColumn(self._table, _STRETCH)
         self._table.currentCellChanged.connect(lambda *_args: self.ticket_selected.emit(self.current_key()))
         self._table.cellClicked.connect(self._on_click)
         self._table.cellDoubleClicked.connect(lambda row, _column: self._emit_detail(self._ticket_at(row)))
@@ -344,12 +343,7 @@ class NewTicketsView(QWidget):
         # Spalte 0 und wirft "neueste zuerst" weg.
         self._table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
         self._table.setSortingEnabled(True)
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        for column in range(self._table.columnCount()):
-            if column != _STRETCH:
-                header.resizeSection(column, header.sectionSize(column) + 16)
-        header.setSectionResizeMode(_STRETCH, QHeaderView.ResizeMode.Stretch)
+        self._columns.autosize()
 
         if self._tickets is None:
             self._count.setText("")
@@ -373,6 +367,11 @@ class NewTicketsView(QWidget):
     def preview_host(self) -> QSplitter:
         """Der waagerechte Trenner, in den das Fenster die Ticket-Vorschau haengt."""
         return self._side
+
+    def clear_selection(self) -> None:
+        """Hebt die Auswahl auf - ohne Auswahl blendet das Fenster die Vorschau aus."""
+        self._table.clearSelection()
+        self._table.setCurrentCell(-1, -1)
 
     def current_key(self) -> str | None:
         """Nummer des gewaehlten Tickets, None ohne Auswahl."""

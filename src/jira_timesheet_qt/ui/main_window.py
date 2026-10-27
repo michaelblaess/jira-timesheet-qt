@@ -18,6 +18,7 @@ from pathlib import Path
 
 import qtawesome as qta
 from PySide6.QtCore import (
+    QEasingCurve,
     QEvent,
     QModelIndex,
     QObject,
@@ -29,11 +30,22 @@ from PySide6.QtCore import (
     QThread,
     QTimer,
     QUrl,
+    QVariantAnimation,
     Signal,
 )
-from PySide6.QtGui import QCloseEvent, QColor, QDesktopServices, QIcon, QKeySequence, QShortcut, QWheelEvent
+from PySide6.QtGui import (
+    QCloseEvent,
+    QColor,
+    QDesktopServices,
+    QIcon,
+    QKeyEvent,
+    QKeySequence,
+    QShortcut,
+    QWheelEvent,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QComboBox,
     QFrame,
     QHeaderView,
@@ -123,6 +135,12 @@ from jira_timesheet_qt.ui.timesheet_model import ENTRY_ROLE, SORT_ROLE, Timeshee
 from jira_timesheet_qt.ui.timesheet_tree_model import TimesheetTreeModel
 from jira_timesheet_qt.ui.toast import Toast
 from jira_timesheet_qt.ui.year_view import YearView
+
+# Dauer der Fahrt, mit der die Vorschau herein- und hinausgleitet.
+PREVIEW_SLIDE_MS = 200
+# So breit bleibt die Liste mindestens neben der Vorschau. Braucht eine Seite
+# mehr (Teamflow: Stern plus Seitenleiste), gilt ihre eigene Mindestbreite.
+PREVIEW_LIST_MIN = 480
 
 _VIEWS = (
     "Stundenzettel",
@@ -469,6 +487,18 @@ class MainWindow(QMainWindow):
         self._preview = TicketPreview(self._mode)
         self._preview.refresh_requested.connect(lambda: self._update_preview(force=True))
         self._preview.person_requested.connect(self.show_person_tickets)
+        self._preview.close_requested.connect(self._close_preview)
+        # Die Vorschau gleitet beim ersten gewaehlten Ticket herein, in der
+        # zuletzt gezogenen Breite. 0 = noch nie gezogen, dann zwei Fuenftel.
+        self._preview_min_width = self._preview.minimumWidth()
+        stored_width = self._qsettings.value("preview/width", 0, type=int)
+        self._preview_width = stored_width if isinstance(stored_width, int) else 0
+        self._preview_anim: QVariantAnimation | None = None
+        # Der Trenner, in den die Vorschau nach der Fahrt zurueckkehrt.
+        self._preview_anim_host: QSplitter | None = None
+        self._preview_anim_show = False
+        self._preview_anim_ms = PREVIEW_SLIDE_MS
+        self._width_hosts: set[int] = set()
         self._list_splitter = QSplitter(Qt.Orientation.Horizontal)
         self._list_splitter.setObjectName("PreviewSplitter")
         self._list_splitter.setChildrenCollapsible(False)
@@ -476,6 +506,7 @@ class MainWindow(QMainWindow):
         self._list_splitter.addWidget(self._preview)
         self._list_splitter.setStretchFactor(0, 3)
         self._list_splitter.setStretchFactor(1, 2)
+        self._watch_preview_width(self._list_splitter)
 
         self._stack = QStackedWidget()
         self._stack.addWidget(self._list_splitter)
@@ -898,23 +929,24 @@ class MainWindow(QMainWindow):
     def _fill_description(self, view: QTableView | QTreeView, model: TimesheetModel | TimesheetTreeModel) -> None:
         """Gibt der Beschreibungs-Spalte die freie Restbreite der Ansicht.
 
-        Nur solange der Nutzer die Beschreibung nicht selbst gezogen hat - eine
-        gespeicherte Breite bleibt unangetastet. So sieht die Liste ohne leeren
-        rechten Rand aus, ist aber trotzdem ueberall frei ziehbar.
+        Eine vom Nutzer gezogene Breite ist die Untergrenze, sonst die Vorgabe.
+        Frueher schaltete eine gezogene Breite das Fuellen ganz ab. Seit die
+        Vorschau erst mit einem gewaehlten Ticket erscheint, blieb dann rechts
+        ein leerer Streifen stehen (Michael, 27.10.2026).
         """
         stretch = model.stretch_column()
         if stretch < 0:
             return
         keys = model.column_keys()
-        if stretch < len(keys) and self._settings.column_widths.get(keys[stretch]):
-            return
+        saved = self._settings.column_widths.get(keys[stretch]) if stretch < len(keys) else None
+        floor = saved if saved and saved > 0 else model.column_width(stretch)
         used = sum(view.columnWidth(s) for s in range(model.columnCount()) if s != stretch)
-        available = view.viewport().width() - used
-        if available <= model.column_width(stretch):
+        target = max(floor, view.viewport().width() - used)
+        if view.columnWidth(stretch) == target:
             return
         self._adjusting_columns = True
         try:
-            view.setColumnWidth(stretch, available)
+            view.setColumnWidth(stretch, target)
         finally:
             self._adjusting_columns = False
 
@@ -1674,8 +1706,7 @@ class MainWindow(QMainWindow):
 
     def _on_new_ticket_selected(self) -> None:
         """Neue Auswahl in der Liste. Zaehlt nur, wenn der Reiter vorn steht."""
-        if self._settings.show_ticket_preview and self._stack.currentWidget() is self._new_tickets:
-            self._preview_timer.start()
+        self._on_preview_selection(self._new_tickets)
 
     def _on_new_count(self, count: int) -> None:
         """Traegt die Anzahl in den Reitertitel - dann sieht man sie schon beim Start."""
@@ -1746,8 +1777,7 @@ class MainWindow(QMainWindow):
 
     def _on_perf_ticket_selected(self) -> None:
         """Neue Auswahl in der Booster-Tabelle. Zaehlt nur, wenn der Reiter vorn steht."""
-        if self._settings.show_ticket_preview and self._stack.currentWidget() is self._performance:
-            self._preview_timer.start()
+        self._on_preview_selection(self._performance)
 
     def _on_perf_hint_ticket(self, key: str) -> None:
         """Ticketnummer in einem Hinweis: ohne Vorschau geht es direkt nach Jira."""
@@ -1859,8 +1889,7 @@ class MainWindow(QMainWindow):
 
     def _on_flow_ticket_selected(self) -> None:
         """Neue Auswahl in der Ticketliste. Zaehlt nur, wenn der Reiter vorn steht."""
-        if self._settings.show_ticket_preview and self._stack.currentWidget() is self._ticket_flow:
-            self._preview_timer.start()
+        self._on_preview_selection(self._ticket_flow)
 
     def _open_flow_ticket(self, key: str) -> None:
         """Ticket aus der Liste am Pfeil in Jira oeffnen - nicht im Screenshot-Modus."""
@@ -2673,13 +2702,66 @@ class MainWindow(QMainWindow):
     def _on_row_changed(self, current: QModelIndex, _previous: QModelIndex) -> None:
         """Merkt sich den gewaehlten Eintrag fuer den Details-Befehl und die Vorschau."""
         self._current_entry = current.data(ENTRY_ROLE) if current.isValid() else None
-        if self._settings.show_ticket_preview:
-            self._preview_timer.start()
+        self._on_preview_selection(self._list_splitter)
 
     def _on_board_ticket_selected(self, view: TicketBoardView) -> None:
         """Neue Auswahl in einer Ticketliste. Zaehlt nur, wenn diese Liste vorn steht."""
-        if self._settings.show_ticket_preview and self._stack.currentWidget() is view:
+        self._on_preview_selection(view)
+
+    def _on_preview_selection(self, page: QWidget) -> None:
+        """Neue Auswahl auf einer Seite: Vorschau herein- oder hinausgleiten lassen.
+
+        Steht noch keine Vorschau, laedt das Ticket sofort statt nach der
+        Wartezeit - sonst glitte der alte Stand herein. Danach entprellt der
+        Zeitgeber wie gehabt das Blaettern mit den Pfeiltasten.
+
+        Args:
+            page:
+                Die Seite, deren Auswahl sich geaendert hat. Nur die vordere zaehlt.
+        """
+        if not self._settings.show_ticket_preview or self._stack.currentWidget() is not page:
+            return
+        if self._preview.isHidden() and self._preview_wanted():
+            self._preview_timer.stop()
+            self._update_preview()
+        else:
             self._preview_timer.start()
+        self._sync_preview_visibility(animate=True)
+
+    def _close_preview(self) -> None:
+        """Schliessen per x oder Esc: hebt die Auswahl der Seite auf.
+
+        Ohne Auswahl gleitet die Vorschau hinaus. Weil die Auswahl weg ist,
+        bringt auch ein erneuter Klick auf dasselbe Ticket sie zurueck.
+        """
+        page = self._stack.currentWidget()
+        if page is self._list_splitter:
+            for view in (self._table, self._tree):
+                view.clearSelection()
+                view.setCurrentIndex(QModelIndex())
+            # Ohne gueltige Zeile meldet das Modell keinen Wechsel - der Eintrag geht trotzdem.
+            self._current_entry = None
+        elif isinstance(page, (TicketBoardView, NewTicketsView, PerformanceView, TicketFlowView)):
+            page.clear_selection()
+        self._sync_preview_visibility(animate=True)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        """Esc in einer Liste schliesst die Vorschau.
+
+        Die Listen reichen Esc ungenutzt nach oben durch. Ein offener Zelleditor
+        faengt es vorher ab, dort bricht Esc weiter nur die Bearbeitung ab.
+        """
+        focus = QApplication.focusWidget()
+        if (
+            event.key() == Qt.Key.Key_Escape
+            and not self._preview.isHidden()
+            and focus is not None
+            and self._stack.isAncestorOf(focus)
+        ):
+            self._close_preview()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def _preview_host(self, page: int) -> QSplitter | None:
         """Der Trenner, der auf einer Seite die Vorschau aufnimmt - None fuer Monat und Jahr."""
@@ -2706,16 +2788,20 @@ class MainWindow(QMainWindow):
 
     def _move_preview_to(self, host: QSplitter) -> None:
         """Haengt die Vorschau rechts in einen anderen Trenner und nimmt die Breiten mit."""
+        # Mitten in einer Fahrt haengt sie ueber der Liste, nicht im Trenner.
+        self._finish_preview_animation()
         if host.indexOf(self._preview) >= 0:
             return
         old = self._preview.parentWidget()
         sizes = old.sizes() if isinstance(old, QSplitter) and old.count() == 2 else []
         host.addWidget(self._preview)
+        self._watch_preview_width(host)
         host.setStretchFactor(0, 3)
         host.setStretchFactor(1, 2)
         # Eine ausgeblendete Vorschau hat die Breite 0 - die taugt nicht als Vorlage.
         if len(sizes) == 2 and min(sizes) > 0:
             host.setSizes(sizes)
+        # Ohne Fahrt: ein Reiterwechsel zeigt sofort den Stand der neuen Seite.
         self._sync_preview_visibility()
         # Kein setVisible noetig: der Trenner uebernimmt die zuletzt gesetzte
         # Sichtbarkeit (per Mutationsprobe am 15.09.2026 belegt, beide Faelle
@@ -2745,16 +2831,146 @@ class MainWindow(QMainWindow):
         self._preview_cache().prune(datetime.now())
         self._update_preview()
 
-    def _sync_preview_visibility(self, *_args: object) -> None:
+    def _preview_wanted(self) -> bool:
+        """Ob die Vorschau stehen soll: eingeschaltet und ein Ticket gewaehlt.
+
+        Ohne Auswahl stand sie als leeres Drittel mit "Kein Ticket gewaehlt"
+        neben jeder Liste (Michael, 27.10.2026). Neben dem leeren Stundenzettel
+        fehlt sie seit dem 23.09.2026 aus demselben Grund.
+        """
+        if not self._settings.show_ticket_preview:
+            return False
+        if self._preview.parentWidget() is self._list_splitter and self._list_stack.currentIndex() == 0:
+            return False
+        return self._preview_key(self._stack.currentIndex())[0] is not None
+
+    def _sync_preview_visibility(self, *_args: object, animate: bool = False) -> None:
         """Die einzige Stelle, die die Vorschau ein- oder ausblendet.
 
-        Sichtbar ist sie, wenn sie eingeschaltet ist - ausser neben dem leeren
-        Stundenzettel. Dort stand sie beim ersten Laden als grosse graue Flaeche
-        mit "Kein Eintrag gewaehlt" neben dem Startbild (23.09.2026). Das Bild
-        bekommt dann die volle Breite.
+        Args:
+            animate:
+                True gleitet sie herein oder hinaus - nur fuer eine neue Auswahl,
+                nicht fuer Reiterwechsel und Einstellungen.
         """
-        beside_empty = self._preview.parentWidget() is self._list_splitter and self._list_stack.currentIndex() == 0
-        self._preview.setVisible(self._settings.show_ticket_preview and not beside_empty)
+        wanted = self._preview_wanted()
+        shown = self._preview_anim_show if self._preview_anim is not None else not self._preview.isHidden()
+        if wanted == shown:
+            return
+        if animate:
+            self._slide_preview(wanted)
+            return
+        self._finish_preview_animation()
+        self._preview.setVisible(wanted)
+        if wanted:
+            self._apply_preview_width()
+
+    @staticmethod
+    def _list_min_width(host: QSplitter) -> int:
+        """Mindestbreite der Liste links im Trenner, mindestens PREVIEW_LIST_MIN."""
+        page = host.widget(0)
+        if page is None:
+            return PREVIEW_LIST_MIN
+        return max(PREVIEW_LIST_MIN, page.minimumWidth(), page.minimumSizeHint().width())
+
+    def _preview_target(self, host: QSplitter) -> int:
+        """Breite der Vorschau: zuletzt gezogen, sonst zwei Fuenftel, mit Platz fuer die Liste."""
+        total = host.width()
+        width = self._preview_width or round(total * 0.4)
+        room = total - host.handleWidth() - self._list_min_width(host)
+        return max(self._preview_min_width, min(width, room))
+
+    def _apply_preview_width(self) -> None:
+        """Setzt die Breite der Vorschau im Trenner: gemerkt oder zwei Fuenftel."""
+        host = self._preview.parentWidget()
+        if isinstance(host, QSplitter) and host.count() == 2 and host.width() > 0:
+            total = host.width()
+            target = self._preview_target(host)
+            host.setSizes([total - target, target])
+
+    def _slide_preview(self, show: bool) -> None:
+        """Laesst die Vorschau von rechts herein- oder nach rechts hinausgleiten.
+
+        Sie gleitet ueber der Liste, nicht im Trenner. Im Trenner verteilte die
+        Liste ihre Spalten in jedem Bild neu: 58 ms je Bild neben 1200 Tickets,
+        ohne Liste 10 ms (gemessen offscreen am 27.10.2026). So passt die Liste
+        ihre Breite nur einmal an - beim Hereingleiten am Ende, beim
+        Hinausgleiten am Anfang. Steht der Trenner nicht auf dem Bildschirm
+        (Tests, verdecktes Fenster), gilt der Endzustand sofort.
+        """
+        self._finish_preview_animation()
+        host = self._preview.parentWidget()
+        stage = host.parentWidget() if isinstance(host, QSplitter) else None
+        if (
+            not isinstance(host, QSplitter)
+            or stage is None
+            or host.count() != 2
+            or not host.isVisible()
+            or self._preview_anim_ms <= 0
+        ):
+            self._preview.setVisible(show)
+            if show:
+                self._apply_preview_width()
+            return
+        area = host.geometry()
+        width = self._preview_target(host) if show else self._preview.width()
+        right = area.x() + area.width()
+        # Raus aus dem Trenner, als Ebene ueber der Liste. Im Trenner selbst
+        # ginge das nicht - er nimmt jedes neue Kind als weiteren Bereich auf.
+        self._preview.setParent(stage)
+        # Als Ebene braucht sie eine eigene Flaeche, sonst scheint die Liste durch.
+        self._preview.setAutoFillBackground(True)
+        self._preview.setGeometry(right if show else right - width, area.y(), width, area.height())
+        self._preview.show()
+        self._preview.raise_()
+        anim = QVariantAnimation(self)
+        anim.setStartValue(right if show else right - width)
+        anim.setEndValue(right - width if show else right)
+        anim.setDuration(self._preview_anim_ms)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic if show else QEasingCurve.Type.InCubic)
+        anim.valueChanged.connect(lambda x: self._preview.move(int(x), area.y()))
+        anim.finished.connect(self._finish_preview_animation)
+        self._preview_anim = anim
+        self._preview_anim_host = host
+        self._preview_anim_show = show
+        anim.start()
+
+    def _finish_preview_animation(self) -> None:
+        """Beendet eine laufende Fahrt und legt die Vorschau zurueck rechts in den Trenner."""
+        anim = self._preview_anim
+        if anim is None:
+            return
+        self._preview_anim = None
+        anim.stop()
+        anim.deleteLater()
+        host = self._preview_anim_host
+        self._preview_anim_host = None
+        self._preview.setAutoFillBackground(False)
+        if host is not None:
+            host.addWidget(self._preview)
+            host.setStretchFactor(0, 3)
+            host.setStretchFactor(1, 2)
+        self._preview.setVisible(self._preview_anim_show)
+        if self._preview_anim_show:
+            self._apply_preview_width()
+
+    def _watch_preview_width(self, host: QSplitter) -> None:
+        """Merkt sich die Breite, wenn jemand den Trenner zieht - je Trenner einmal verbunden."""
+        if id(host) in self._width_hosts:
+            return
+        self._width_hosts.add(id(host))
+        # Auch beim Ziehen am Trenner bleibt die Liste so breit. QSplitter haelt
+        # die Mindestbreite seiner Kinder ein.
+        page = host.widget(0)
+        if page is not None:
+            page.setMinimumWidth(max(page.minimumWidth(), PREVIEW_LIST_MIN))
+        host.splitterMoved.connect(lambda _pos, _index, h=host: self._remember_preview_width(h))
+
+    def _remember_preview_width(self, host: QSplitter) -> None:
+        """Nur gezogene Breiten zaehlen, nicht die waehrend einer Fahrt."""
+        if self._preview_anim is not None or self._preview.isHidden() or self._preview.parentWidget() is not host:
+            return
+        self._preview_width = self._preview.width()
+        self._qsettings.setValue("preview/width", self._preview_width)
 
     def _update_preview(self, force: bool = False) -> None:
         """Zeigt das gewaehlte Ticket: sofort aus dem Cache, dann frisch aus Jira.
@@ -2775,24 +2991,7 @@ class MainWindow(QMainWindow):
             # Monat und Jahr haben keine Vorschau. Beim Zurueckwechseln laeuft
             # die Aktualisierung ohnehin (_on_page_changed).
             return
-        mode = _BOARD_MODES.get(page)
-        if page == _PERF_VIEW:
-            key = self._performance.current_key()
-            nothing = "Kein Ticket gewählt"
-        elif page == _NEW_VIEW:
-            key = self._new_tickets.current_key()
-            nothing = "Kein Ticket gewählt"
-        elif page == _FLOW_VIEW:
-            key = self._ticket_flow.current_key()
-            nothing = "Klick auf einen Pfeil, dann auf ein Ticket"
-        elif mode is not None:
-            ticket = self._board_view(mode).current_ticket()
-            key = ticket.key if ticket is not None else None
-            nothing = "Kein Ticket gewählt"
-        else:
-            entry = self._current_entry
-            key = entry.ticket if entry is not None else None
-            nothing = "Kein Eintrag gewählt"
+        key, nothing = self._preview_key(page)
         if key is None:
             self._preview.show_placeholder(nothing)
             return
@@ -2818,6 +3017,25 @@ class MainWindow(QMainWindow):
         else:
             self._preview.set_note(f"Stand {german_datetime(cached.fetched_at)} - wird geprüft ...")
         self._start_preview_worker(key, None if force else cached)
+
+    def _preview_key(self, page: int) -> tuple[str | None, str]:
+        """Das gewaehlte Ticket einer Seite und der Hinweis ohne Auswahl.
+
+        Returns:
+            Nummer oder None ohne Auswahl, bei manuell erfassten Eintraegen "".
+        """
+        mode = _BOARD_MODES.get(page)
+        if page == _PERF_VIEW:
+            return self._performance.current_key(), "Kein Ticket gewählt"
+        if page == _NEW_VIEW:
+            return self._new_tickets.current_key(), "Kein Ticket gewählt"
+        if page == _FLOW_VIEW:
+            return self._ticket_flow.current_key(), "Klick auf einen Pfeil, dann auf ein Ticket"
+        if mode is not None:
+            ticket = self._board_view(mode).current_ticket()
+            return (ticket.key if ticket is not None else None), "Kein Ticket gewählt"
+        entry = self._current_entry
+        return (entry.ticket if entry is not None else None), "Kein Eintrag gewählt"
 
     def _start_preview_worker(self, key: str, cached: TicketPreviewData | None) -> None:
         """Startet den Abruf fuer die Vorschau unter der aktuellen Abruf-Nummer.

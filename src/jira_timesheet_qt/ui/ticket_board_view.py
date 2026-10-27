@@ -410,6 +410,11 @@ class TicketBoardView(QWidget):
         """Der waagerechte Trenner, in den das Fenster die Ticket-Vorschau haengt."""
         return self._side
 
+    def clear_selection(self) -> None:
+        """Hebt die Auswahl auf - ohne Auswahl blendet das Fenster die Vorschau aus."""
+        self._tree.clearSelection()
+        self._tree.setCurrentIndex(QModelIndex())
+
     def current_ticket(self) -> Ticket | None:
         """Das gewaehlte Ticket, oder None auf einer Gruppenzeile und ohne Auswahl."""
         return self._ticket_at(self._tree.currentIndex())
