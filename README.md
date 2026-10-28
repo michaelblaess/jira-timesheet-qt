@@ -125,9 +125,11 @@ The application follows the light or dark theme and a configurable accent colour
   automatically (no manual ID lookup)
 - **List view** - Tabular with calendar week, weekday, day groups and target/actual hours;
   day totals coloured green above and red below the target
-- **Ticket preview** - Optionally (Settings, page **Appearance**) a splitter next to the
-  timesheet and next to **My tickets**, **My activity** and **My team** shows the selected ticket
-  read-only: status, logged hours, fix versions, assignee, author, due date, environments and
+- **Ticket preview** - Optionally (Settings, page **Appearance**) the preview slides in from the
+  right as soon as you select a ticket, on every tab from the timesheet through **My tickets**,
+  **My activity** and **My team** to **New tickets**, **Performance booster** and **Teamflow**.
+  × or Esc closes it, its width is remembered, and the list next to it keeps a minimum width. It
+  shows the selected ticket read-only: status, logged hours, fix versions, assignee, author, due date, environments and
   team, followed by the title and the description with images. The data comes from the cache, a
   button reloads the ticket. Assignee and author are links: a click shows that person's tickets
   under **My team**, and people who are not on the watch list appear there temporarily

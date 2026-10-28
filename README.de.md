@@ -127,9 +127,12 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   automatisch (kein manuelles Nachschlagen der Field-ID)
 - **Listenansicht** - Tabellarisch mit Kalenderwoche, Wochentag, Tagesgruppen und Soll-/Ist-Stunden;
   die Tagessummen sind über Soll grün und unter Soll rot eingefärbt
-- **Ticket-Vorschau** - Auf Wunsch (Einstellungen, Seite **Darstellung**) zeigt ein Splitter
-  neben dem Stundenzettel und neben **Meine Tickets**, **Meine Aktivitäten** und **Mein Team**
-  das gewählte Ticket read-only: Status, gebuchte Stunden, Lösungsversionen, zugewiesene Person,
+- **Ticket-Vorschau** - Auf Wunsch (Einstellungen, Seite **Darstellung**) gleitet die Vorschau
+  von rechts herein, sobald Du ein Ticket wählst, in allen Reitern vom Stundenzettel über
+  **Meine Tickets**, **Meine Aktivitäten** und **Mein Team** bis **Neue Tickets**,
+  **Performance-Booster** und **Teamflow**. × oder Esc schließen sie, ihre Breite bleibt
+  gespeichert, und die Liste daneben behält eine Mindestbreite. Sie zeigt das gewählte Ticket
+  read-only: Status, gebuchte Stunden, Lösungsversionen, zugewiesene Person,
   Autor, Fälligkeitsdatum, Environments und Team, darunter Titel und Beschreibung mit Bildern.
   Die Daten kommen aus dem Cache, ein Knopf lädt das Ticket neu. Zugewiesene Person und Autor
   sind Links: ein Klick zeigt die Tickets dieser Person unter **Mein Team**, wer nicht auf der
