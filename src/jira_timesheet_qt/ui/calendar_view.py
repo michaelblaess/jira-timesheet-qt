@@ -196,6 +196,31 @@ def bar_fractions(hours: float, target: float) -> tuple[float, float]:
     return min(hours, target) / scale, max(0.0, hours - target) / scale
 
 
+def paint_hours_bar(painter: QPainter, rect: QRectF, hours: float, target: float, fill: QColor, p: Palette) -> None:
+    """Zeichnet einen Balken Ist gegen Soll samt Ueberstunden (siehe bar_fractions).
+
+    Gemeinsam fuer die Tageskacheln im Monat und die Monatskacheln im Jahr,
+    damit beide Ansichten Ueberstunden und Soll-Marke gleich zeigen.
+    """
+    radius = rect.height() / 2
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(p.border))
+    painter.drawRoundedRect(rect, radius, radius)
+
+    regular, overtime = bar_fractions(hours, target)
+    if regular <= 0:
+        return
+    painter.setBrush(fill)
+    painter.drawRoundedRect(QRectF(rect.x(), rect.y(), rect.width() * regular, rect.height()), radius, radius)
+    if overtime > 0:
+        start = rect.x() + rect.width() * regular
+        painter.setBrush(QColor(p.accent))
+        painter.drawRoundedRect(QRectF(start, rect.y(), rect.width() * overtime, rect.height()), radius, radius)
+        # Marke dort, wo das Soll endete.
+        painter.setBrush(QColor(p.text_primary))
+        painter.drawRect(QRectF(start - 1, rect.y() - 2, 2, rect.height() + 4))
+
+
 def week_tooltip(kw: int, total: float, target: float) -> str:
     """Hinweistext des Wochenbands, z.B. 'KW 41: 47,75 h von 40,00 h, 7,75 h über Soll'."""
     head = f"<b>KW {kw}</b>: {format_hours(total)} h"
@@ -496,28 +521,6 @@ class CalendarView(QWidget):
         right_of_hint = inner.adjusted(0, 0, -(hint_w + 14) if hint_text else 0, 0)
         painter.drawText(right_of_hint, middle | int(Qt.AlignmentFlag.AlignRight), total_text)
 
-    def _paint_bar(
-        self, painter: QPainter, rect: QRectF, hours: float, target: float, fill: QColor, p: Palette
-    ) -> None:
-        """Zeichnet einen Balken Ist gegen Soll samt Ueberstunden (siehe bar_fractions)."""
-        radius = rect.height() / 2
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(p.border))
-        painter.drawRoundedRect(rect, radius, radius)
-
-        regular, overtime = bar_fractions(hours, target)
-        if regular <= 0:
-            return
-        painter.setBrush(fill)
-        painter.drawRoundedRect(QRectF(rect.x(), rect.y(), rect.width() * regular, rect.height()), radius, radius)
-        if overtime > 0:
-            start = rect.x() + rect.width() * regular
-            painter.setBrush(QColor(p.accent))
-            painter.drawRoundedRect(QRectF(start, rect.y(), rect.width() * overtime, rect.height()), radius, radius)
-            # Marke dort, wo das Soll endete.
-            painter.setBrush(QColor(p.text_primary))
-            painter.drawRect(QRectF(start - 1, rect.y() - 2, 2, rect.height() + 4))
-
     def _paint_cell(self, painter: QPainter, rect: QRectF, cell: DayCell, today: date) -> None:
         """Zeichnet eine Tageskachel."""
         p = palette_for(self._mode)
@@ -580,7 +583,7 @@ class CalendarView(QWidget):
         y = inner.y() + QFontMetricsF(head_font).height() + 4
         if cell.is_workday and (cell.hours > 0 or state not in (DayState.FUTURE, DayState.UNKNOWN)):
             bar = QRectF(inner.x(), y, inner.width(), self.BAR_HEIGHT)
-            self._paint_bar(painter, bar, cell.hours, self._target_hours, self._hours_color(cell, p), p)
+            paint_hours_bar(painter, bar, cell.hours, self._target_hours, self._hours_color(cell, p), p)
         y += self.BAR_HEIGHT + 8
 
         area = QRectF(inner.x(), y, inner.width(), max(0.0, inner.bottom() - y))

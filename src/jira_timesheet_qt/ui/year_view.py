@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QWidget
 
 from jira_timesheet_qt.models.timesheet import WorklogEntry
 from jira_timesheet_qt.services.holiday_service import HolidayService
+from jira_timesheet_qt.ui.calendar_view import paint_hours_bar
 from jira_timesheet_qt.ui.theme import Mode, palette_for
 
 _MONTHS = (
@@ -338,15 +339,10 @@ class YearView(QWidget):
                 y += line_height
 
         # Auslastungsbalken am unteren Rand
+        # Derselbe Balken wie in der Monatsansicht: Ueberstunden und Soll-Marke inklusive.
         bar_area = QRectF(rect.x() + 14, rect.bottom() - 20, rect.width() - 28, 6)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(p.border))
-        painter.drawRoundedRect(bar_area, 3, 3)
-        if cell.ratio > 0:
-            filled = QRectF(bar_area)
-            filled.setWidth(bar_area.width() * cell.ratio)
-            painter.setBrush(QColor(p.green if cell.ratio >= 0.98 else p.accent))
-            painter.drawRoundedRect(filled, 3, 3)
+        reached = cell.target > 0 and cell.hours + 1e-6 >= cell.target
+        paint_hours_bar(painter, bar_area, cell.hours, cell.target, QColor(p.green if reached else p.orange), p)
 
     # --- Auswahl --------------------------------------------------------
 

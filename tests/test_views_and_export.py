@@ -128,6 +128,28 @@ class TestYearView:
         view.set_year(2026, {1: 9999.0}, {1: 5})
         assert view.cells[0].ratio == 1.0
 
+    def test_ueberstunden_zeigen_die_soll_marke(self, qapp: QApplication) -> None:
+        """Wie im Monat: ueber Soll steht ein heller Strich ueber dem Balken, darunter keiner."""
+        from PySide6.QtGui import QPixmap
+
+        from jira_timesheet_qt.ui.theme import palette_for
+
+        view = YearView(Mode.DARK)
+        view.resize(1400, 900)
+        view.set_year(2026, {6: 200.0, 7: 100.0}, {6: 20, 7: 15}, hours_per_day=8.0)
+        bild = QPixmap(view.size())
+        view.render(bild)
+        aufnahme = bild.toImage()
+        hell = palette_for(Mode.DARK).text_primary.lower()
+
+        def marken(index: int) -> int:
+            rect = view._rect_for(index)
+            y = int(rect.bottom() - 21)
+            return sum(1 for x in range(int(rect.left()), int(rect.right())) if aufnahme.pixelColor(x, y).name() == hell)
+
+        assert marken(5) > 0, "Juni ueber Soll ohne Marke"
+        assert marken(6) == 0, "Juli unter Soll mit Marke"
+
     def test_total(self, qapp: QApplication) -> None:
         view = YearView()
         view.set_year(2026, {1: 10.0, 2: 20.0}, {1: 1, 2: 2})
