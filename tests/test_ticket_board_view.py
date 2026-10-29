@@ -13,7 +13,7 @@ import pytest
 from PySide6.QtCore import QModelIndex, Qt
 from PySide6.QtWidgets import QApplication, QComboBox
 
-from jira_timesheet_qt.models.settings import Settings
+from jira_timesheet_qt.models.settings import BUSY_CLASSIC, Settings
 from jira_timesheet_qt.services.anonymizer import _FAKE_AUTHORS
 from jira_timesheet_qt.services.ticket_board import (
     Board,
@@ -1198,9 +1198,10 @@ class TestLadeanzeige:
     def test_balken_ist_unbestimmt(self, qapp: QApplication) -> None:
         # Eine Prozentzahl wäre erfunden - wir wissen nicht, wie lange es
         # dauert. Bereich 0..0 heisst genau das.
-        window = MainWindow(Settings(), Mode.DARK)
-        assert window._busy.minimum() == 0
-        assert window._busy.maximum() == 0
+        # Die selbstgezeichneten Darstellungen kennen gar keinen Wert.
+        window = MainWindow(Settings(busy_indicator=BUSY_CLASSIC), Mode.DARK)
+        assert window._busy.classic_bar.minimum() == 0
+        assert window._busy.classic_bar.maximum() == 0
 
     def test_ansicht_zeigt_hinweis_statt_leerer_flaeche(self, qapp: QApplication) -> None:
         view = TicketBoardView("Test")

@@ -54,7 +54,6 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
-    QProgressBar,
     QPushButton,
     QSizePolicy,
     QSplitter,
@@ -92,6 +91,7 @@ from jira_timesheet_qt.services.ticket_preview import IssuePreviewCache, TicketP
 from jira_timesheet_qt.ui.about_dialog import AboutDialog
 from jira_timesheet_qt.ui.arrow_cursor import use_arrow_cursor
 from jira_timesheet_qt.ui.avatar_worker import AvatarWorker
+from jira_timesheet_qt.ui.busy_indicator import BusyIndicator
 from jira_timesheet_qt.ui.calendar_view import CalendarView, DayCell
 from jira_timesheet_qt.ui.cell_delegate import CellDelegate
 from jira_timesheet_qt.ui.detail_dialog import TicketDetailDialog
@@ -544,12 +544,9 @@ class MainWindow(QMainWindow):
         # Unbestimmter Fortschrittsbalken: ein Abruf kann je nach Leitung
         # und Ticketzahl eine Minute dauern, und eine leere Maske ohne jedes
         # Lebenszeichen sieht aus wie ein Absturz. Bereich 0..0 heisst "laeuft,
-        # Dauer unbekannt" - eine Prozentzahl waere hier erfunden.
-        self._busy = QProgressBar()
-        self._busy.setObjectName("BusyBar")
-        self._busy.setRange(0, 0)
-        self._busy.setTextVisible(False)
-        self._busy.setFixedWidth(120)
+        # Dauer unbekannt" - eine Prozentzahl waere hier erfunden. Die
+        # Darstellung waehlt der Anwender unter Darstellung.
+        self._busy = BusyIndicator(self._mode, self._settings.busy_indicator)
         self._busy.setVisible(False)
 
         status_bar = QStatusBar()
@@ -2535,6 +2532,7 @@ class MainWindow(QMainWindow):
         self._apply_day_total_colors()
         self._apply_board_settings()
         self._apply_preview_setting()
+        self._busy.set_style(self._settings.busy_indicator)
         # Der Modell-Reset beim Anwenden klappt den Baum zu - gemerkten Zustand
         # wiederherstellen, sonst steht die gruppierte Liste voellig eingeklappt.
         self._apply_group_state()
@@ -3168,6 +3166,7 @@ class MainWindow(QMainWindow):
         self._preview.apply_mode(self._mode)
         self._performance.apply_mode(self._mode)
         self._ticket_flow.apply_mode(self._mode)
+        self._busy.apply_mode(self._mode)
         self._recolor_menu_icons()
         # Das Protokoll traegt seine Farben als HTML und bleibt sonst stehen.
         self._log.apply_theme()

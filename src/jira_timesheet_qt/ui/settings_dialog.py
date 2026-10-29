@@ -14,6 +14,7 @@ from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
@@ -50,6 +51,7 @@ from jira_timesheet_qt.services.team import (
 )
 from jira_timesheet_qt.ui import registration
 from jira_timesheet_qt.ui.arrow_cursor import use_arrow_cursor
+from jira_timesheet_qt.ui.busy_indicator import BUSY_LABELS
 from jira_timesheet_qt.ui.busy_spinner import BusySpinner
 from jira_timesheet_qt.ui.jira_worker import BudgetFieldWorker
 from jira_timesheet_qt.ui.team_worker import TeamSearchWorker
@@ -1156,6 +1158,15 @@ class SettingsDialog(SettingsDialogBase):
             self.color_day_totals.toggled.connect(widget.setEnabled)
             widget.setEnabled(self.color_day_totals.isChecked())
 
+        # Ladeanzeige in der Statusleiste, solange ein Abruf laeuft.
+        self.busy_indicator = QComboBox()
+        self.busy_indicator.setObjectName("SettingsBusyIndicator")
+        for key, label in BUSY_LABELS.items():
+            self.busy_indicator.addItem(label, key)
+        self.busy_indicator.setCurrentIndex(max(0, self.busy_indicator.findData(self._settings.busy_indicator)))
+        self.busy_indicator.setFixedWidth(FIELD_WIDTH)
+        form.addRow(self.beschriftung("Ladeanzeige"), self.busy_indicator)
+
     def result_settings(self) -> Settings:
         """Liefert die Einstellungen mit den Werten aus dem Dialog."""
         s = self._settings
@@ -1223,6 +1234,7 @@ class SettingsDialog(SettingsDialogBase):
         s.effect_darker_frame = effekte.darker_frame
         s.effect_gradient = effekte.gradient
         s.effect_accent_frame = effekte.accent_frame
+        s.busy_indicator = str(self.busy_indicator.currentData())
         s.mark_manual_entries = self.mark_manual.isChecked()
         s.manual_entry_color = self.farbe_von(self.manual_color)
         s.color_day_totals = self.color_day_totals.isChecked()

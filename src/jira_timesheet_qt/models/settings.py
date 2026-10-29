@@ -27,6 +27,15 @@ DEFAULT_DAY_UNDER_COLOR = "C92A2A"
 # Vorbelegte Kundenliste - der Benutzer pflegt sie in den Einstellungen.
 DEFAULT_CUSTOMERS = ("Vertrieb", "Corporate")
 
+# Ladeanzeige in der Statusleiste. "classic" ist der unbestimmte QProgressBar,
+# den es bis v0.19 als einzige Anzeige gab.
+BUSY_SEGMENTS = "segments"
+BUSY_COMET = "comet"
+BUSY_SHIMMER = "shimmer"
+BUSY_CLASSIC = "classic"
+BUSY_INDICATORS = (BUSY_SEGMENTS, BUSY_COMET, BUSY_SHIMMER, BUSY_CLASSIC)
+DEFAULT_BUSY_INDICATOR = BUSY_SEGMENTS
+
 _HEX_COLOR = re.compile(r"^[0-9A-Fa-f]{6}$")
 _RGB_TRIPLE = re.compile(r"^(\d{1,3})\s*[,;/ ]\s*(\d{1,3})\s*[,;/ ]\s*(\d{1,3})$")
 
@@ -126,6 +135,8 @@ class Settings:
     effect_darker_frame: bool = True
     effect_gradient: bool = True
     effect_accent_frame: bool = False
+    # Ladeanzeige in der Statusleiste, einer der Werte aus BUSY_INDICATORS.
+    busy_indicator: str = DEFAULT_BUSY_INDICATOR
     language: str = "de"
     jira_host: str = ""
     jira_token: str = ""
@@ -247,6 +258,7 @@ class Settings:
         "effect_darker_frame",
         "effect_gradient",
         "effect_accent_frame",
+        "busy_indicator",
         "language",
         "jira_host",
         "jira_token",
@@ -376,6 +388,7 @@ class Settings:
                 effect_darker_frame=bool(data.get("effect_darker_frame", True)),
                 effect_gradient=bool(data.get("effect_gradient", True)),
                 effect_accent_frame=bool(data.get("effect_accent_frame", False)),
+                busy_indicator=Settings._parse_busy_indicator(data.get("busy_indicator")),
                 language=data.get("language", "de"),
                 jira_host=data.get("jira_host", ""),
                 jira_token=data.get("jira_token", ""),
@@ -546,6 +559,12 @@ class Settings:
         """
         value = str(raw) if raw is not None else ""
         return value if value in THEMES else DEFAULT_THEME
+
+    @staticmethod
+    def _parse_busy_indicator(raw: object) -> str:
+        """Nimmt nur bekannte Ladeanzeigen an, sonst die Vorgabe."""
+        value = str(raw) if raw is not None else ""
+        return value if value in BUSY_INDICATORS else DEFAULT_BUSY_INDICATOR
 
     @staticmethod
     def _parse_customers(raw: object) -> list[str]:
