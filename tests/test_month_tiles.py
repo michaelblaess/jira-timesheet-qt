@@ -306,3 +306,38 @@ class TestWochenband:
             return aufnahme.pixelColor(int(band.left() + band.width() * 0.4), int(band.center().y())).name()
 
         assert farbe(30) != farbe(31), "Der Verlauf fehlt in der gebuchten Woche"
+
+    def test_soll_marke_steht_ueber_das_band_hinaus(self, qapp: QApplication) -> None:
+        """Wie bei den Tagesbalken: ein heller Strich, oben sichtbar ueber dem Band."""
+        from jira_timesheet_qt.ui.theme import palette_for
+
+        view = self._juli(qapp)
+        bild = QPixmap(view.size())
+        view.render(bild)
+        aufnahme = bild.toImage()
+        hell = palette_for(Mode.DARK).text_primary.lower()
+        band = view.band_rect(0)
+        y = int(band.top() - 2)
+        treffer = [x for x in range(int(band.left()), int(band.right())) if aufnahme.pixelColor(x, y).name() == hell]
+        assert treffer, "Keine Soll-Marke ueber dem Band"
+
+    @pytest.mark.parametrize(
+        ("ist", "soll", "erwartet"),
+        [
+            (47.75, 40.0, "<b>KW 41</b>: 47,75 h von 40,00 h, 7,75 h über Soll"),
+            (39.0, 40.0, "<b>KW 41</b>: 39,00 h von 40,00 h, 1,00 h unter Soll"),
+            (40.0, 40.0, "<b>KW 41</b>: 40,00 h von 40,00 h, Soll erreicht"),
+            (3.0, 0.0, "<b>KW 41</b>: 3,00 h"),
+        ],
+    )
+    def test_hinweis_des_bands(self, ist: float, soll: float, erwartet: str) -> None:
+        from jira_timesheet_qt.ui.calendar_view import week_tooltip
+
+        assert week_tooltip(41, ist, soll) == erwartet
+
+    def test_band_wird_beim_verweilen_erkannt(self, qapp: QApplication) -> None:
+        view = self._juli(qapp)
+        band = view.band_rect(2)
+        assert view._band_at(band.center().x(), band.center().y()) == 2
+        tag = view.day_rect(3)
+        assert view._band_at(tag.center().x(), tag.center().y()) is None

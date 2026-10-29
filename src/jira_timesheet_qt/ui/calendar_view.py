@@ -196,6 +196,21 @@ def bar_fractions(hours: float, target: float) -> tuple[float, float]:
     return min(hours, target) / scale, max(0.0, hours - target) / scale
 
 
+def week_tooltip(kw: int, total: float, target: float) -> str:
+    """Hinweistext des Wochenbands, z.B. 'KW 41: 47,75 h von 40,00 h, 7,75 h über Soll'."""
+    head = f"<b>KW {kw}</b>: {format_hours(total)} h"
+    if target <= 0:
+        return head
+    diff = total - target
+    if abs(diff) < 1e-6:
+        rest = "Soll erreicht"
+    elif diff > 0:
+        rest = f"{format_hours(diff)} h über Soll"
+    else:
+        rest = f"{format_hours(-diff)} h unter Soll"
+    return f"{head} von {format_hours(target)} h, {rest}"
+
+
 def tooltip_html(cell: DayCell, target_hours: float) -> str:
     """Hinweistext einer Kachel: Datum, Stunden gegen Soll und alle Eintraege.
 
@@ -465,13 +480,13 @@ class CalendarView(QWidget):
                 gradient.setColorAt(stop, step)
             painter.setBrush(gradient)
             painter.drawRoundedRect(fill, radius, radius)
-            # Leuchtende Kante am Ende des Ist.
-            painter.setBrush(color)
-            painter.drawRoundedRect(QRectF(fill.right() - 3, rect.y() + 3, 3, rect.height() - 6), 1.5, 1.5)
         if target > 0 and track.width() > 0:
+            # Soll-Marke wie bei den Tagesbalken: heller Strich, der oben und unten uebersteht.
+            # Die Strichlinie vorher ging im Verlauf unter (Michael, 29.10.2026).
             x = track.x() + track.width() * target / scale
-            painter.setPen(QPen(QColor(p.text_tertiary), 1, Qt.PenStyle.DashLine))
-            painter.drawLine(QPointF(x, rect.y() + 4), QPointF(x, rect.bottom() - 4))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(p.text_primary))
+            painter.drawRoundedRect(QRectF(x - 1, rect.y() - 3, 2, rect.height() + 6), 1, 1)
 
         painter.setFont(hint)
         painter.setPen(QColor(p.text_secondary))
@@ -718,6 +733,10 @@ class CalendarView(QWidget):
         if event.type() == QEvent.Type.ToolTip and isinstance(event, QHelpEvent):
             cell = self._cell_at(event.pos().x(), event.pos().y())
             text = tooltip_html(cell, self._target_hours) if cell is not None else ""
+            row = self._band_at(event.pos().x(), event.pos().y())
+            if row is not None:
+                kw, total = self.week_summaries()[row]
+                text = week_tooltip(kw, total, self.week_targets()[row])
             if text:
                 QToolTip.showText(event.globalPos(), text, self)
             else:
@@ -769,6 +788,13 @@ class CalendarView(QWidget):
             self._selected = cell.day
             self.update()
             self.day_activated.emit(cell)
+
+    def _band_at(self, x: float, y: float) -> int | None:
+        """Liefert die Wochenzeile, deren Band unter dem Punkt liegt, sonst None."""
+        for row in range(len(self._cells) // 7):
+            if self.band_rect(row).contains(QPointF(x, y)):
+                return row
+        return None
 
     def _cell_at(self, x: float, y: float) -> DayCell | None:
         """Findet die Kachel unter einem Punkt (Wochenband ausgenommen)."""
