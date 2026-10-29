@@ -599,6 +599,7 @@ class TestHauptfenster:
         fenster._on_row_changed(QModelIndex(), QModelIndex())
         assert fenster._preview_timer.isActive()
         assert attrappe == [], "Erst nach der Wartezeit wird abgerufen"
+        fenster._preview_timer.stop()
 
     def test_ohne_cache_voller_abruf(self, qapp: QApplication, attrappe: list[Any]) -> None:
         fenster = _fenster()
@@ -724,6 +725,9 @@ class TestVorschauInTicketlisten:
         attrappe.clear()
         assert view.select_ticket("ABC-8")
         assert fenster._preview_timer.isActive(), "Auch in der Ticketliste erst nach der Wartezeit"
+        # Selbst ausloesen statt warten - und den Takt anhalten, sonst feuert er spaeter
+        # in einen anderen Test hinein, solange dieses Fenster noch lebt.
+        fenster._preview_timer.stop()
         fenster._update_preview()
         assert [w.key for w in attrappe] == ["ABC-8"]
 
