@@ -196,6 +196,9 @@ Die Anwendung folgt dem hellen oder dunklen Erscheinungsbild und einer einstellb
   nicht zu einer einzigen Fläche wird: Datenbereich heller, Rahmen dunkler, ein Verlauf mit
   Lichtkante an Menü, Werkzeugleiste, Reitern und Statusleiste, wahlweise ein Hauch Akzentfarbe.
   Jeder ist auf der Seite Darstellung schaltbar, die Schrift hält dabei ihr Kontrastziel
+- **Ladeanzeige** - Während Jira abgefragt wird, zeigt die Statusleiste eine gut sichtbare
+  Anzeige: ein Lauflicht (Vorgabe), einen Kometen, der hin und her läuft, einen Schimmer oder den
+  bisherigen klassischen Balken. Gewählt auf der Seite Darstellung, gilt sofort nach dem Speichern
 - **Monats-Cache, der eine Archivierung übersteht** - Abgeschlossene Monate bleiben lokal erhalten.
   Jira archiviert alte, abgeschlossene Tickets, und Deine Worklogs darauf verschwinden aus jeder
   Abfrage. Beim Aktualisieren wird das frische Ergebnis mit dem Cache verglichen, und zu jedem
@@ -490,6 +493,7 @@ Die Einstellungen liegen in `~/.jira-timesheet-qt/settings.json`:
 | Pile-of-Shame-Schwellen | Arbeitstage je Gruppe, 0 schaltet ab | 20 / 10 / 0 |
 | Theme / Akzent / Zoom | Erscheinungsbild | System / Orange / 100 % |
 | Effekte | Darstellung: Datenbereich heller, Rahmen dunkler, Verlauf, Akzent im Rahmen | an / an / an / aus |
+| Ladeanzeige | Darstellung: Lauflicht, Komet, Schimmer oder klassischer Balken | Lauflicht |
 | Ticket-Vorschau | Splitter mit dem gewählten Ticket neben der Liste | falsch |
 | Zusatzfelder der Vorschau | Jira-Felder nach Namen, z. B. Environments, Team | leer |
 | Sprache | Oberflächensprache (de / en) | de |

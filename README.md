@@ -191,6 +191,9 @@ The application follows the light or dark theme and a configurable accent colour
   big surface: lighter content area, darker frame, a gradient with a highlight edge on menu,
   toolbar, tabs and status bar, and optionally a touch of accent colour. Each one can be switched
   on the Appearance page, text keeps its contrast target either way
+- **Loading indicator** - While Jira is being queried, the status bar shows a clearly visible
+  indicator: a running light (default), a comet sweeping back and forth, a shimmer, or the
+  previous classic bar. Chosen on the Appearance page, applied right after saving
 - **Month cache that survives archiving** - Completed months are kept locally. Jira archives old,
   closed tickets, and your worklogs on them vanish from every query. A refresh compares the fresh
   result with the cache and asks Jira about each ticket that is gone: if it is no longer visible,
@@ -474,6 +477,7 @@ Settings are stored in `~/.jira-timesheet-qt/settings.json`:
 | Pile of Shame thresholds | Working days per group, 0 disables | 20 / 10 / 0 |
 | Theme / accent / zoom | Appearance | system / orange / 100 % |
 | Effects | Appearance: lighter content, darker frame, gradient, accent in the frame | on / on / on / off |
+| Loading indicator | Appearance: running light, comet, shimmer or classic bar | running light |
 | Ticket preview | Splitter with the selected ticket next to the list | false |
 | Preview extra fields | Jira fields by name, e.g. Environments, Team | empty |
 | Language | UI language (de / en) | de |
