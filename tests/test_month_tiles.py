@@ -153,13 +153,10 @@ class TestFeiertag:
         view.render(bild)
         aufnahme = bild.toImage()
 
-        area, zelle_b, zelle_h, _ = view._geometry()
-
         def unten_mitte(tag: date) -> tuple[int, int]:
             index = next(i for i, c in enumerate(view.cells) if c.day == tag)
-            x = area.x() + (index % 7) * zelle_b + zelle_b / 2
-            y = area.y() + view.HEADER_HEIGHT + (index // 7) * zelle_h + zelle_h - 20
-            return int(x), int(y)
+            rect = view.day_rect(index)
+            return int(rect.center().x()), int(rect.bottom() - 16)
 
         feiertag = aufnahme.pixelColor(*unten_mitte(date(2026, 10, 3))).name()
         sonntag = aufnahme.pixelColor(*unten_mitte(date(2026, 10, 4))).name()
@@ -244,3 +241,68 @@ def test_der_reiter_heisst_monat() -> None:
 
     assert _VIEWS[_MONTH_VIEW] == "Monat"
     assert "Kalender" not in _VIEWS
+
+
+class TestWochenband:
+    """Das Band unter jeder Woche ersetzt die fruehere Summen-Spalte rechts."""
+
+    @staticmethod
+    def _juli(qapp: QApplication) -> CalendarView:
+        from jira_timesheet_qt.models.timesheet import TimesheetDay
+
+        # KW 30 (20.-24.07.2026) voll gebucht, KW 31 leer.
+        tage = [
+            TimesheetDay(date=date(2026, 7, d), entries=[_entry("ABC-1", 8.0, day=date(2026, 7, d))])
+            for d in range(20, 25)
+        ]
+        zettel = Timesheet(
+            developer="Max Mustermann", email="", date_from=date(2026, 7, 1), date_to=date(2026, 7, 31), days=tage
+        )
+        view = CalendarView(Mode.DARK)
+        view.resize(1400, 900)
+        view.set_month(2026, 7, zettel, "SN", 8.0)
+        return view
+
+    @pytest.mark.parametrize(
+        ("ist", "soll", "erwartet"), [(47.75, 40.0, "+7,75 h"), (39.0, 40.0, "-1,00 h"), (40.0, 40.0, "+0,00 h")]
+    )
+    def test_differenz(self, ist: float, soll: float, erwartet: str) -> None:
+        from jira_timesheet_qt.ui.calendar_view import week_delta
+
+        assert week_delta(ist, soll) == erwartet
+
+    def test_band_liegt_unter_der_woche_und_ueber_alle_tage(self, qapp: QApplication) -> None:
+        view = self._juli(qapp)
+        for row in range(len(view.cells) // 7):
+            band = view.band_rect(row)
+            montag, sonntag = view.day_rect(row * 7), view.day_rect(row * 7 + 6)
+            assert band.top() > montag.bottom()
+            assert band.left() == pytest.approx(montag.left())
+            assert band.right() == pytest.approx(sonntag.right())
+            if row + 1 < len(view.cells) // 7:
+                assert band.bottom() < view.day_rect((row + 1) * 7).top()
+
+    def test_die_tage_bekommen_die_volle_breite(self, qapp: QApplication) -> None:
+        view = self._juli(qapp)
+        area, _, _, _ = view._geometry()
+        assert view.day_rect(6).right() == pytest.approx(area.right() - 4)
+
+    def test_klick_aufs_band_waehlt_keinen_tag(self, qapp: QApplication) -> None:
+        view = self._juli(qapp)
+        band = view.band_rect(0)
+        assert view._cell_at(band.center().x(), band.center().y()) is None
+        tag = view.day_rect(3)
+        assert view._cell_at(tag.center().x(), tag.center().y()) is view.cells[3]
+
+    def test_gebuchte_woche_leuchtet_im_band(self, qapp: QApplication) -> None:
+        view = self._juli(qapp)
+        bild = QPixmap(view.size())
+        view.render(bild)
+        aufnahme = bild.toImage()
+        zeile = {kw: i for i, (kw, _) in enumerate(view.week_summaries())}
+
+        def farbe(kw: int) -> str:
+            band = view.band_rect(zeile[kw])
+            return aufnahme.pixelColor(int(band.left() + band.width() * 0.4), int(band.center().y())).name()
+
+        assert farbe(30) != farbe(31), "Der Verlauf fehlt in der gebuchten Woche"

@@ -21,7 +21,17 @@ from datetime import date
 from enum import Enum
 
 from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetricsF, QHelpEvent, QMouseEvent, QPainter, QPaintEvent, QPen
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QFontMetricsF,
+    QHelpEvent,
+    QLinearGradient,
+    QMouseEvent,
+    QPainter,
+    QPaintEvent,
+    QPen,
+)
 from PySide6.QtWidgets import QToolTip, QWidget
 
 from jira_timesheet_qt.models.timesheet import Timesheet, WorklogEntry
@@ -51,6 +61,12 @@ def scaled_font(base: QFont, delta: int = 0, bold: bool = False) -> QFont:
 def format_hours(hours: float) -> str:
     """Stunden mit zwei Nachkommastellen und Komma, ohne Einheit."""
     return f"{hours:.2f}".replace(".", ",")
+
+
+def week_delta(total: float, target: float) -> str:
+    """Abweichung der Woche vom Soll mit Vorzeichen, z.B. '+7,75 h' oder '-1,00 h'."""
+    diff = total - target
+    return f"{'+' if diff >= -1e-6 else '-'}{format_hours(abs(diff))} h"
 
 
 @dataclass
@@ -228,8 +244,9 @@ class CalendarView(QWidget):
 
     HEADER_HEIGHT = 26
     PADDING = 14
-    # Breite der Wochensummen-Spalte rechts (KW, Wochenstunden, Soll und Balken).
-    SUMMARY_WIDTH = 104
+    # Hoehe des Wochenbands unter jeder Wochenzeile (KW, Verlauf Ist gegen Soll, Summe).
+    # Frueher eine schmale Spalte rechts - Michael fand sie zu klein (28.10.2026).
+    BAND_HEIGHT = 34
     # Abstand zwischen Nummer, Beschreibung und Stunden einer Ticketzeile.
     GAP = 8
     # Schmaler als das lohnt keine Beschreibung mehr - dann faellt sie weg.
@@ -357,7 +374,7 @@ class CalendarView(QWidget):
             painter.end()
             return
 
-        area, cell_w, cell_h, rows = self._geometry()
+        area, cell_w, _, _ = self._geometry()
         today = date.today()
 
         # Trefferflaechen der Ticketnummern bei jedem Zeichnen neu aufbauen.
@@ -366,87 +383,103 @@ class CalendarView(QWidget):
         self._paint_header(painter, area.x(), area.y(), cell_w)
 
         for index, cell in enumerate(self._cells):
-            column, row = index % 7, index // 7
-            rect = QRectF(
-                area.x() + column * cell_w,
-                area.y() + self.HEADER_HEIGHT + row * cell_h,
-                cell_w - 4,
-                cell_h - 4,
-            )
-            self._paint_cell(painter, rect, cell, today)
+            self._paint_cell(painter, self.day_rect(index), cell, today)
 
-        # Wochensummen-Spalte rechts.
-        summary_x = area.x() + 7 * cell_w
         weeks = zip(self.week_summaries(), self.week_targets(), strict=True)
         for row, ((kw, total), target) in enumerate(weeks):
-            rect = QRectF(
-                summary_x,
-                area.y() + self.HEADER_HEIGHT + row * cell_h,
-                self.SUMMARY_WIDTH - 4,
-                cell_h - 4,
-            )
-            self._paint_summary(painter, rect, kw, total, target)
+            self._paint_week_band(painter, self.band_rect(row), kw, total, target)
         painter.end()
 
     def _geometry(self) -> tuple[QRectF, float, float, int]:
         """Liefert Zeichenflaeche, Tagesbreite, Zeilenhoehe und Zeilenzahl.
 
-        Die Wochensummen-Spalte rechts belegt SUMMARY_WIDTH, die sieben Tage
-        teilen sich den Rest. Paint und Trefferpruefung nutzen dieselbe Rechnung.
+        Die Zeilenhoehe umfasst die Tageskacheln UND das Wochenband darunter.
+        Paint und Trefferpruefung nutzen dieselbe Rechnung.
         """
         rows = len(self._cells) // 7
         area = QRectF(self.rect().adjusted(self.PADDING, self.PADDING, -self.PADDING, -self.PADDING))
-        cell_w = (area.width() - self.SUMMARY_WIDTH) / 7
-        cell_h = (area.height() - self.HEADER_HEIGHT) / max(1, rows)
-        return area, cell_w, cell_h, rows
+        cell_w = area.width() / 7
+        row_h = (area.height() - self.HEADER_HEIGHT) / max(1, rows)
+        return area, cell_w, row_h, rows
+
+    def day_rect(self, index: int) -> QRectF:
+        """Rechteck der Tageskachel mit diesem Index im Raster."""
+        area, cell_w, row_h, _ = self._geometry()
+        column, row = index % 7, index // 7
+        return QRectF(
+            area.x() + column * cell_w,
+            area.y() + self.HEADER_HEIGHT + row * row_h,
+            cell_w - 4,
+            row_h - self.BAND_HEIGHT - 4,
+        )
+
+    def band_rect(self, row: int) -> QRectF:
+        """Rechteck des Wochenbands unter der Wochenzeile `row`, ueber alle sieben Tage."""
+        area, cell_w, row_h, _ = self._geometry()
+        top = area.y() + self.HEADER_HEIGHT + (row + 1) * row_h - self.BAND_HEIGHT - 2
+        return QRectF(area.x(), top, 7 * cell_w - 4, self.BAND_HEIGHT - 6)
 
     def _paint_header(self, painter: QPainter, x: float, y: float, cell_w: float) -> None:
-        """Zeichnet die Wochentagsleiste samt Kopf der Wochensummen-Spalte."""
+        """Zeichnet die Wochentagsleiste."""
         p = palette_for(self._mode)
         painter.setFont(scaled_font(self.font(), -2, bold=True))
         painter.setPen(QColor(p.text_tertiary))
         for column, name in enumerate(_WEEKDAYS):
             rect = QRectF(x + column * cell_w, y, cell_w - 4, self.HEADER_HEIGHT)
             painter.drawText(rect, int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), f" {name}")
-        summary_rect = QRectF(x + 7 * cell_w, y, self.SUMMARY_WIDTH - 4, self.HEADER_HEIGHT)
-        painter.drawText(summary_rect, int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter), "Σ h")
 
-    def _paint_summary(self, painter: QPainter, rect: QRectF, kw: int, total: float, target: float) -> None:
-        """Zeichnet eine Wochensummen-Kachel: KW, Stunden, Soll der Woche und Balken."""
+    def _paint_week_band(self, painter: QPainter, rect: QRectF, kw: int, total: float, target: float) -> None:
+        """Zeichnet das Wochenband: KW links, Verlauf Ist gegen Soll, rechts Summe und Differenz."""
         p = palette_for(self._mode)
+        radius = rect.height() / 2
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(p.bg_secondary))
-        painter.setPen(QColor(p.border))
-        painter.drawRoundedRect(rect, 8, 8)
+        painter.drawRoundedRect(rect, radius, radius)
 
-        inner = rect.adjusted(8, 6, -8, -6)
-        right_top = int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
-
-        small = scaled_font(self.font(), -3, bold=True)
-        painter.setFont(small)
+        inner = rect.adjusted(14, 0, -14, 0)
+        middle = int(Qt.AlignmentFlag.AlignVCenter)
+        painter.setFont(scaled_font(self.font(), -1, bold=True))
         painter.setPen(QColor(p.text_tertiary))
-        painter.drawText(inner, right_top, f"KW {kw}")
-        y = inner.y() + QFontMetricsF(small).height() + 2
-
+        painter.drawText(inner, middle | int(Qt.AlignmentFlag.AlignLeft), f"KW {kw}")
         if total <= 0 and target <= 0:
             return
 
-        big = scaled_font(self.font(), 1, bold=True)
-        painter.setFont(big)
-        painter.setPen(QColor(p.green if target > 0 and total + 1e-6 >= target else p.text_secondary))
-        painter.drawText(QRectF(inner.x(), y, inner.width(), inner.bottom() - y), right_top, f"{format_hours(total)} h")
-        y += QFontMetricsF(big).height() + 1
+        big = scaled_font(self.font(), 3, bold=True)
+        hint = scaled_font(self.font(), -1)
+        total_text = f"{format_hours(total)} h"
+        hint_text = f"von {format_hours(target)} h   {week_delta(total, target)}" if target > 0 else ""
+        hint_w = QFontMetricsF(hint).horizontalAdvance(hint_text)
+        text_w = QFontMetricsF(big).horizontalAdvance(total_text) + 14 + hint_w
+        reached = target > 0 and total + 1e-6 >= target
+        color = QColor(p.green if reached else p.orange) if target > 0 else QColor(p.text_primary)
 
-        if target <= 0:
-            return
-        hint = scaled_font(self.font(), -3)
+        # Der Verlauf endet vor den Zahlen, sonst liefe er unter die Schrift.
+        track = rect.adjusted(0, 0, -(text_w + 40), 0)
+        scale = max(total, target * 1.25, 1.0)
+        if total > 0 and track.width() > 0:
+            fill = QRectF(track.x(), track.y(), track.width() * total / scale, track.height())
+            gradient = QLinearGradient(fill.topLeft(), fill.topRight())
+            for stop, alpha in ((0.0, 0), (0.75, 70), (1.0, 200)):
+                step = QColor(color)
+                step.setAlpha(alpha)
+                gradient.setColorAt(stop, step)
+            painter.setBrush(gradient)
+            painter.drawRoundedRect(fill, radius, radius)
+            # Leuchtende Kante am Ende des Ist.
+            painter.setBrush(color)
+            painter.drawRoundedRect(QRectF(fill.right() - 3, rect.y() + 3, 3, rect.height() - 6), 1.5, 1.5)
+        if target > 0 and track.width() > 0:
+            x = track.x() + track.width() * target / scale
+            painter.setPen(QPen(QColor(p.text_tertiary), 1, Qt.PenStyle.DashLine))
+            painter.drawLine(QPointF(x, rect.y() + 4), QPointF(x, rect.bottom() - 4))
+
         painter.setFont(hint)
-        painter.setPen(QColor(p.text_tertiary))
-        painter.drawText(QRectF(inner.x(), y, inner.width(), inner.bottom() - y), right_top, f"von {format_hours(target)} h")
-        y += QFontMetricsF(hint).height() + 4
-
-        if y + self.BAR_HEIGHT <= inner.bottom():
-            fill = QColor(p.green if total + 1e-6 >= target else p.orange)
-            self._paint_bar(painter, QRectF(inner.x(), y, inner.width(), self.BAR_HEIGHT), total, target, fill, p)
+        painter.setPen(QColor(p.text_secondary))
+        painter.drawText(inner, middle | int(Qt.AlignmentFlag.AlignRight), hint_text)
+        painter.setFont(big)
+        painter.setPen(color)
+        right_of_hint = inner.adjusted(0, 0, -(hint_w + 14) if hint_text else 0, 0)
+        painter.drawText(right_of_hint, middle | int(Qt.AlignmentFlag.AlignRight), total_text)
 
     def _paint_bar(
         self, painter: QPainter, rect: QRectF, hours: float, target: float, fill: QColor, p: Palette
@@ -738,14 +771,17 @@ class CalendarView(QWidget):
             self.day_activated.emit(cell)
 
     def _cell_at(self, x: float, y: float) -> DayCell | None:
-        """Findet die Kachel unter einem Punkt (Wochensummen-Spalte ausgenommen)."""
+        """Findet die Kachel unter einem Punkt (Wochenband ausgenommen)."""
         if not self._cells:
             return None
-        area, cell_w, cell_h, rows = self._geometry()
+        area, cell_w, row_h, rows = self._geometry()
 
         column = int((x - area.x()) // cell_w)
-        row = int((y - area.y() - self.HEADER_HEIGHT) // cell_h)
+        offset = y - area.y() - self.HEADER_HEIGHT
+        row = int(offset // row_h)
         if not (0 <= column < 7 and 0 <= row < rows):
+            return None
+        if offset - row * row_h >= row_h - self.BAND_HEIGHT:
             return None
         index = row * 7 + column
         return self._cells[index] if 0 <= index < len(self._cells) else None
